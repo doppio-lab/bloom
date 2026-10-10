@@ -1,0 +1,560 @@
+<title>Doppio Bloom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout : cockpit à onglets. Résumé chiffré en tête, puis files de travail (valider, faire, répondre). */
+:root {
+  --bg: #f3f4f6;
+  --surface: #ffffff;
+  --sunken: #e9ebef;
+  --ink: #16181d;
+  --muted: #5d6370;
+  --line: #d9dce3;
+  --accent: #6b3a22;          /* espresso */
+  --accent-soft: #f1e6df;
+  --good: #1f7a4d; --good-soft: #e1f2e9;
+  --warn: #9a6200; --warn-soft: #fbefd6;
+  --bad: #b3261e;  --bad-soft: #fbe3e1;
+  --info: #2f55b8; --info-soft: #e3e9fa;
+  --f-display: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
+  --f-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --r: 10px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #121317; --surface: #1b1d22; --sunken: #23262c; --ink: #eceef2; --muted: #9aa0ac; --line: #30333a;
+  --accent: #e0a07c; --accent-soft: #3a2a21;
+  --good: #5fcf96; --good-soft: #17301f; --warn: #f0b54a; --warn-soft: #33290f;
+  --bad: #ff8a80; --bad-soft: #3a1a18; --info: #8fb0ff; --info-soft: #1d2640;
+  color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #121317; --surface: #1b1d22; --sunken: #23262c; --ink: #eceef2; --muted: #9aa0ac; --line: #30333a;
+  --accent: #e0a07c; --accent-soft: #3a2a21;
+  --good: #5fcf96; --good-soft: #17301f; --warn: #f0b54a; --warn-soft: #33290f;
+  --bad: #ff8a80; --bad-soft: #3a1a18; --info: #8fb0ff; --info-soft: #1d2640;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px; display: grid; gap: 20px; }
+header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
+.brand { font: 700 1.5rem/1.1 var(--f-display); letter-spacing: -0.01em; }
+.brand span { color: var(--accent); }
+.meta { color: var(--muted); font-size: .85rem; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 10px; font: 600 .72rem/1.6 var(--f-body); letter-spacing: .04em; text-transform: uppercase; }
+.pill.dry { background: var(--warn-soft); color: var(--warn); }
+.pill.live { background: var(--good-soft); color: var(--good); }
+.pill.demo { background: var(--info-soft); color: var(--info); }
+
+nav.tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); }
+nav.tabs button { all: unset; cursor: pointer; padding: 10px 14px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
+nav.tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--accent); }
+nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+nav.tabs .count { font: 600 .72rem var(--f-mono); background: var(--sunken); border-radius: 999px; padding: 1px 7px; margin-left: 6px; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
+.kpi { background: var(--surface); padding: 14px 16px; display: grid; gap: 2px; }
+.kpi .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+.kpi .value { font: 600 1.6rem/1.2 var(--f-mono); font-variant-numeric: tabular-nums; }
+.kpi .sub { font-size: .8rem; color: var(--muted); }
+.kpi.bad .value { color: var(--bad); } .kpi.ok .value { color: var(--ink); }
+
+h2 { font: 700 1.1rem/1.3 var(--f-display); margin: 0; text-wrap: balance; }
+.section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.section-head p { margin: 0; color: var(--muted); font-size: .85rem; }
+.cols { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+@media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.stack { display: grid; gap: 12px; min-width: 0; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.card.blocked { border-left: 3px solid var(--bad); }
+.who { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: .85rem; color: var(--muted); }
+.who strong { color: var(--ink); font-weight: 600; }
+.chan { font: 600 .7rem var(--f-mono); letter-spacing: .05em; padding: 2px 8px; border-radius: 6px; background: var(--sunken); color: var(--muted); }
+.subject { font-weight: 600; }
+.body { white-space: pre-wrap; line-height: 1.55; overflow-wrap: anywhere; }
+.cite { font: 600 .68rem var(--f-mono); color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 4px; cursor: pointer; vertical-align: 1px; border: 0; }
+.facts { display: grid; gap: 6px; font-size: .82rem; border-top: 1px dashed var(--line); padding-top: 8px; }
+.fact { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
+.fact code { font: 600 .7rem var(--f-mono); color: var(--accent); }
+.fact a { color: var(--muted); }
+.fact.flash { background: var(--accent-soft); border-radius: 6px; }
+.guard { display: grid; gap: 4px; font-size: .8rem; }
+.guard .v { padding: 4px 8px; border-radius: 6px; }
+.guard .v.BLOCK { background: var(--bad-soft); color: var(--bad); }
+.guard .v.WARN { background: var(--warn-soft); color: var(--warn); }
+.why { font-size: .82rem; color: var(--muted); font-style: italic; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { font: 600 .85rem var(--f-body); border-radius: 8px; padding: 7px 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.btn.ghost { border-color: transparent; color: var(--muted); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+textarea, input[type=text] { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+textarea { min-height: 160px; resize: vertical; }
+.empty { color: var(--muted); font-size: .9rem; padding: 14px; border: 1px dashed var(--line); border-radius: var(--r); }
+
+.intent { font: 600 .7rem var(--f-mono); padding: 2px 8px; border-radius: 6px; }
+.intent.pos { background: var(--good-soft); color: var(--good); }
+.intent.neu { background: var(--info-soft); color: var(--info); }
+.intent.neg { background: var(--bad-soft); color: var(--bad); }
+
+.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
+table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: .88rem; }
+th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; background: var(--sunken); }
+tr:last-child td { border-bottom: 0; }
+.score { display: grid; grid-template-columns: 2.2em 1fr; align-items: center; gap: 8px; min-width: 120px; font: 600 .9rem var(--f-mono); font-variant-numeric: tabular-nums; }
+.bar { height: 6px; background: var(--sunken); border-radius: 3px; overflow: hidden; display: flex; }
+.bar i { display: block; height: 100%; }
+.bar .fit { background: var(--muted); } .bar .int { background: var(--accent); } .bar .warm { background: var(--good); }
+.tier { font: 600 .68rem var(--f-mono); padding: 1px 6px; border-radius: 4px; }
+.tier.ACT_NOW { background: var(--accent); color: var(--surface); }
+.tier.NURTURE { background: var(--accent-soft); color: var(--accent); }
+.tier.WATCH { background: var(--sunken); color: var(--muted); }
+.reasons { color: var(--muted); font-size: .8rem; }
+.legend { display: flex; gap: 14px; font-size: .78rem; color: var(--muted); flex-wrap: wrap; }
+.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+
+.funnel { display: grid; gap: 8px; }
+.stage { display: grid; grid-template-columns: 9em minmax(0, 1fr) 7em; gap: 10px; align-items: center; font-size: .88rem; }
+.stage .track { background: var(--sunken); border-radius: 4px; height: 26px; overflow: hidden; }
+.stage .fill { height: 100%; background: var(--accent); opacity: .85; display: flex; align-items: center; padding-left: 8px; color: var(--surface); font: 600 .78rem var(--f-mono); min-width: 2em; }
+.stage .amt { text-align: right; font: 600 .85rem var(--f-mono); font-variant-numeric: tabular-nums; }
+@media (max-width: 520px) { .stage { grid-template-columns: 6.5em minmax(0, 1fr) 5.5em; } }
+
+.health { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.gauge { display: grid; gap: 6px; }
+.gauge .row { display: flex; justify-content: space-between; font-size: .88rem; }
+.gauge .row b { font: 600 .95rem var(--f-mono); }
+.gauge .track { position: relative; height: 8px; background: var(--sunken); border-radius: 4px; }
+.gauge .track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
+.gauge .track .limit { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); opacity: .5; }
+.gauge small { color: var(--muted); font-size: .76rem; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.file-btn { position: relative; overflow: hidden; }
+.file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.src-chip { font: 600 .68rem var(--f-mono); padding: 2px 7px; border-radius: 6px; background: var(--info-soft); color: var(--info); }
+.roles { display: flex; gap: 6px; flex-wrap: wrap; }
+.roles a { font-size: .8rem; text-decoration: none; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
+.form-grid label { display: grid; gap: 3px; font-size: .75rem; color: var(--muted); font-weight: 600; }
+.mini-score { display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 8px; align-items: center; font: 600 .9rem var(--f-mono); max-width: 260px; }
+.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: .85rem; }
+.note { font-size: .8rem; color: var(--muted); }
+@media (prefers-reduced-motion: no-preference) { .fact.flash { transition: background .6s; } }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <div class="brand">doppio<span>.</span> bloom</div>
+    <div class="meta">
+      <span id="mode" class="pill demo">Données d'exemple</span>
+      <span id="today"></span>
+    </div>
+  </header>
+
+  <section class="kpis" id="kpis" aria-label="Indicateurs sur 30 jours"></section>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-today" aria-selected="true" data-tab="today">Aujourd'hui<span class="count" id="c-today">0</span></button>
+    <button role="tab" id="tab-new" aria-selected="false" data-tab="new">Nouveaux prospects<span class="count" id="c-new">0</span></button>
+    <button role="tab" id="tab-accounts" aria-selected="false" data-tab="accounts">Comptes<span class="count" id="c-accounts">0</span></button>
+    <button role="tab" id="tab-pipeline" aria-selected="false" data-tab="pipeline">Pipeline</button>
+    <button role="tab" id="tab-health" aria-selected="false" data-tab="health">Santé</button>
+  </nav>
+
+  <main id="view-today" class="cols">
+    <div class="stack">
+      <div class="section-head"><h2>À valider</h2><p>Chaque affirmation renvoie à sa source. Rien ne part sans vous.</p></div>
+      <div id="drafts" class="stack"></div>
+    </div>
+    <div class="stack">
+      <div class="section-head"><h2>Réponses</h2><p>Séquences arrêtées automatiquement</p></div>
+      <div id="replies" class="stack"></div>
+      <div class="section-head"><h2>LinkedIn, à la main</h2><p>Aucune automatisation sur votre compte</p></div>
+      <div id="tasks" class="stack"></div>
+    </div>
+  </main>
+
+  <main id="view-new" class="stack" hidden>
+    <div class="section-head">
+      <div><h2>Nouveaux prospects</h2><p>Trouvés cette nuit dans les offres d'emploi mobiles et les classements App Store. Il manque la personne à contacter.</p></div>
+      <div class="toolbar">
+        <button class="btn" data-act="run-discovery" data-id="0">Chercher maintenant</button>
+        <label class="btn file-btn">Importer ma liste (CSV)<input type="file" id="csv" accept=".csv,text/csv"></label>
+      </div>
+    </div>
+    <div id="newlist" class="stack"></div>
+    <p class="note">Pour chaque entreprise : ouvre la recherche LinkedIn proposée, choisis la bonne personne, colle son nom et son rôle. L'email est cherché automatiquement si Dropcontact est branché, sinon saisis-le. La séquence démarre dès que l'email est connu.</p>
+  </main>
+
+  <main id="view-accounts" class="stack" hidden>
+    <div class="section-head"><h2>Comptes classés</h2>
+      <div class="legend"><span><i style="background:var(--muted)"></i>adéquation (40)</span><span><i style="background:var(--accent)"></i>intention (50)</span><span><i style="background:var(--good)"></i>lien chaud (10)</span></div>
+    </div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Compte</th><th>Score</th><th>Offre suggérée</th><th>Pourquoi</th><th>Mis à jour</th></tr></thead>
+      <tbody id="accounts"></tbody>
+    </table></div>
+    <p class="note">Score déterministe : adéquation ICP + signaux amortis dans le temps + lien chaud. Au-dessus de 65, on écrit cette semaine.</p>
+  </main>
+
+  <main id="view-pipeline" class="cols" hidden>
+    <div class="card">
+      <div class="section-head"><h2>Pipeline par étape</h2><p id="pipe-total"></p></div>
+      <div class="funnel" id="funnel"></div>
+    </div>
+    <div class="card">
+      <h2>Ce qui convertit</h2>
+      <div id="bysignal" class="funnel"></div>
+      <p class="note">Réponses positives par signal d'origine. C'est la donnée qui recalibre les poids du scoring.</p>
+    </div>
+  </main>
+
+  <main id="view-health" class="stack" hidden>
+    <div class="section-head"><h2>Délivrabilité</h2><p>Seuils Gmail et Yahoo pour les plaintes ; seuils internes pour le reste</p></div>
+    <div class="health" id="gauges"></div>
+    <div class="section-head"><h2>Agents, 7 derniers jours</h2><p>Coût et fiabilité</p></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Agent</th><th>Exécutions</th><th>Échecs</th><th>Tokens entrée</th><th>Tokens sortie</th><th>Durée moyenne</th></tr></thead>
+      <tbody id="agents"></tbody>
+    </table></div>
+  </main>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script>
+const OFFERS = { DISCOVERY: "Audit 2 jours", FORFAIT: "Forfait", REGIE: "Régie", TRAINING_KMP: "Formation KMP", TRAINING_ANTHROPIC: "Formation Anthropic" };
+const STAGES = { QUALIFIED: "Qualifié", MEETING: "Rendez-vous", DISCOVERY_SOLD: "Audit vendu", PROPOSAL: "Proposition", WON: "Gagné", LOST: "Perdu" };
+const INTENTS = {
+  INTERESTED: ["Intéressé", "pos"], MEETING_REQUEST: ["Veut un appel", "pos"], REFERRAL: ["Recommande", "pos"],
+  NOT_NOW: ["Pas maintenant", "neu"], WRONG_PERSON: ["Mauvais contact", "neu"], OUT_OF_OFFICE: ["Absent", "neu"], OTHER: ["Autre", "neu"],
+  NOT_INTERESTED: ["Pas intéressé", "neg"], UNSUBSCRIBE: ["Opposition", "neg"], BOUNCE: ["Rebond", "neg"]
+};
+
+/* Données d'exemple : entreprises fictives, utilisées quand le serveur n'est pas joignable. */
+const DEMO = {
+  overview: {
+    periodDays: 30, dryRun: true,
+    kpis: { sent: 64, replies: 11, positive: 5, meetings: 3, unsubscribed: 1, bounced: 1, replyRate: 0.172, positiveRate: 0.078, unsubscribeRate: 0.016, bounceRate: 0.016 },
+    queues: { pendingReview: 2, approvedEmails: 3, tasks: 2, openReplies: 3, toComplete: 3, discoveredThisWeek: 14 },
+    pipeline: [
+      { stage: "QUALIFIED", count: 9, amountEur: 0 }, { stage: "MEETING", count: 4, amountEur: 0 },
+      { stage: "DISCOVERY_SOLD", count: 2, amountEur: 9000 }, { stage: "PROPOSAL", count: 2, amountEur: 96000 },
+      { stage: "WON", count: 1, amountEur: 38000 }, { stage: "LOST", count: 2, amountEur: 0 }
+    ],
+    bySignal: [
+      { label: "Plaintes qualité (avis)", sent: 18, positive: 3 }, { label: "Recrutement bloqué", sent: 14, positive: 1 },
+      { label: "Recrutement KMP", sent: 9, positive: 1 }, { label: "Levée de fonds", sent: 12, positive: 0 }, { label: "Lien chaud", sent: 4, positive: 2 }
+    ],
+    accounts: [
+      { account: { name: "Vélomoov", domain: "velomoov.example", sector: "MOBILITY_TRANSPORT" }, score: 78, fit: 40, intent: 38, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+20 plaintes qualité", "+14 note en baisse", "+12 app mobile en production"], refreshedAt: "2026-10-10" },
+      { account: { name: "Banque Ardoise", domain: "ardoise.example", sector: "BANK_INSURANCE" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile", "+8 secteur avec référence"], refreshedAt: "2026-10-10" },
+      { account: { name: "Studio Polka", domain: "polka.example", sector: "MUSIC_MEDIA" }, score: 66, fit: 30, intent: 26, warm: 10, recommendedOffer: "TRAINING_KMP", reasons: ["+18 offre qui cite Kotlin Multiplatform", "+10 lien chaud : ex-collègue Music Work"], refreshedAt: "2026-10-09" },
+      { account: { name: "Trackr Logistique", domain: "trackr.example", sector: "LOGISTICS" }, score: 58, fit: 38, intent: 20, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 levée de fonds", "+5 nouvelle app annoncée"], refreshedAt: "2026-10-08" },
+      { account: { name: "Pharmacie Lumen", domain: "lumen.example", sector: "HEALTH" }, score: 47, fit: 24, intent: 23, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+10 aucune version depuis 211 jours", "+13 note en baisse"], refreshedAt: "2026-10-07" },
+      { account: { name: "Nomad Assurances", domain: "nomad.example", sector: "BANK_INSURANCE" }, score: 39, fit: 33, intent: 6, warm: 0, recommendedOffer: "TRAINING_ANTHROPIC", reasons: ["+6 équipe qui recrute sur les LLM"], refreshedAt: "2026-10-05" }
+    ],
+    agents: [
+      { agent: "research-explore", runs: 41, failures: 2, inputTokens: 612000, outputTokens: 48000, avgMs: 38200 },
+      { agent: "research-synthesis", runs: 39, failures: 0, inputTokens: 158000, outputTokens: 31000, avgMs: 9100 },
+      { agent: "writer", runs: 57, failures: 1, inputTokens: 342000, outputTokens: 29000, avgMs: 7600 },
+      { agent: "reply-classifier", runs: 11, failures: 0, inputTokens: 14000, outputTokens: 2100, avgMs: 1400 }
+    ]
+  },
+  drafts: [
+    { draft: { id: 101, channel: "EMAIL", stepIndex: 0, subject: "crash au paiement depuis la 5.2",
+      body: "Bonjour Claire,\n\nDepuis la version 5.2 de Vélomoov, 11 avis sur 30 des 90 derniers jours signalent un problème technique, souvent au moment du paiement [F:a2f1c9e0]. La note des avis récents est descendue à 2,9 [F:7b31d2aa].\n\nMon hypothèse : une régression côté session ou SDK de paiement, qui ne remonte pas dans les crash reports parce que l'app ne plante pas vraiment.\n\nOn fait des audits de 2 jours à prix fixe, avec un rapport et des correctifs priorisés. Ça vous intéresse d'en parler 15 minutes ?",
+      rationale: "Signal le plus fort et le plus récent ; la persona est Head of Mobile, donc angle technique direct.", guardReport: [], citedFactIds: ["a2f1c9e0", "7b31d2aa"] },
+      contactName: "Claire Morel", contactRole: "Head of Mobile", accountName: "Vélomoov",
+      facts: [
+        { id: "a2f1c9e0", statement: "Vélomoov : 11 avis sur 30 des 90 derniers jours signalent un problème technique (version la plus citée : 5.2)", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json" },
+        { id: "7b31d2aa", statement: "Vélomoov : moyenne des 30 avis des 90 derniers jours 2,9, contre 4,3 en moyenne globale", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json" }
+      ] },
+    { draft: { id: 102, channel: "EMAIL", stepIndex: 0, subject: "votre offre iOS",
+      body: "Bonjour Karim,\n\nVotre offre « Développeur iOS senior » est ouverte depuis 74 jours [F:c4d09e11]. Nous accompagnons des banques sur ce type de besoin, dont Crédit Agricole.\n\nUn de nos seniors Swift peut rejoindre l'équipe pendant le recrutement, au mois, sans engagement long. Le sujet est d'actualité ?",
+      rationale: "Recrutement bloqué depuis plus de 45 jours, secteur bancaire avec référence directe.",
+      guardReport: ["[BLOCK] vocabulaire : expression interdite : « accompagn »"], citedFactIds: ["c4d09e11"] },
+      contactName: "Karim Benali", contactRole: "Engineering Manager", accountName: "Banque Ardoise",
+      facts: [{ id: "c4d09e11", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/offres/recherche/detail/000XXXX" }] }
+  ],
+  toComplete: [
+    { row: { account: { id: 11, name: "Banque Ardoise", domain: "ardoise.example", source: "offres d'emploi" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile"] },
+      offer: "REGIE", roles: ["Engineering Manager", "CTO", "Head of Mobile"], why: "celui qui porte le recrutement en retard",
+      searches: [{ role: "Engineering Manager", url: "https://www.linkedin.com/search/results/people/?keywords=Engineering+Manager+Banque+Ardoise" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO+Banque+Ardoise" }],
+      facts: [{ id: "c4d09e11", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/" }, { id: "9a1b2c3d", statement: "Banque Ardoise : tranche d'effectif INSEE 22 (100 à 199)", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }] },
+    { row: { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "classement App Store" }, score: 63, fit: 38, intent: 25, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+15 note en baisse", "+10 aucune version depuis 211 jours"] },
+      offer: "DISCOVERY", roles: ["Head of Mobile", "Lead mobile", "CTO"], why: "celui qui subit le problème technique de l'app",
+      searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head+of+Mobile+Trackr" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO+Trackr" }],
+      facts: [{ id: "5e6f7a8b", statement: "Trackr : moyenne des 22 avis des 90 derniers jours 2,6, contre 4,1 en moyenne globale", sourceUrl: "https://apps.apple.com/" }] },
+    { row: { account: { id: 13, name: "Polka Studio", domain: null, source: "offres d'emploi" }, score: 52, fit: 22, intent: 30, warm: 0, recommendedOffer: "TRAINING_KMP" , reasons: ["+18 offre qui cite Kotlin Multiplatform", "+12 recrutement mobile"] },
+      offer: "TRAINING_KMP", roles: ["Head of Mobile", "Engineering Manager", "Lead Android"], why: "celui qui fait monter l'équipe en compétence",
+      searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head+of+Mobile+Polka+Studio" }],
+      facts: [{ id: "1f2e3d4c", statement: "Offre d'emploi « Développeur Android Kotlin Multiplatform » publiée il y a 9 jours", sourceUrl: "https://candidat.francetravail.fr/" }] }
+  ],
+  tasks: [
+    { draft: { id: 201, channel: "LINKEDIN", body: "Bonjour Inès, j'ai vu que Studio Polka recrute sur Kotlin Multiplatform. On a construit un lecteur en Compose Multiplatform cité par JetBrains. Ravi d'échanger si le sujet vous parle." }, contactName: "Inès Garnier", accountName: "Studio Polka", linkedinUrl: "https://www.linkedin.com/" },
+    { draft: { id: 202, channel: "LINKEDIN", body: "Bonjour Paul, suite à mon email sur la cadence de release de Pharmacie Lumen, je me connecte ici sans relance commerciale." }, contactName: "Paul Riviere", accountName: "Pharmacie Lumen", linkedinUrl: "https://www.linkedin.com/" }
+  ],
+  replies: [
+    { id: 1, from: "claire.morel@velomoov.example", intent: "MEETING_REQUEST", summary: "Propose un appel jeudi ou vendredi matin, confirme des tickets paiement depuis la 5.2.", receivedAt: "2026-10-09T09:12:00Z" },
+    { id: 2, from: "t.lambert@trackr.example", intent: "NOT_NOW", summary: "Budget 2027 bouclé en janvier, recontacter début janvier.", followUpOn: "2027-01-06", receivedAt: "2026-10-08T15:40:00Z" },
+    { id: 3, from: "dsi@nomad.example", intent: "UNSUBSCRIBE", summary: "Demande à ne plus être contacté. Ajouté à la liste d'opposition.", receivedAt: "2026-10-07T08:02:00Z" }
+  ]
+};
+
+let state = { demo: true, overview: null, drafts: [], tasks: [], replies: [], toComplete: [] };
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pct = (x, d = 1) => (x * 100).toFixed(d).replace(".", ",") + " %";
+const num = (n) => new Intl.NumberFormat("fr-FR").format(n);
+const eur = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+
+function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2200); }
+
+async function api(path, opts) {
+  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (!r.ok) { const e = new Error(r.status); e.body = await r.json().catch(() => null); throw e; }
+  return r.json().catch(() => ({}));
+}
+
+async function load() {
+  try {
+    const [overview, drafts, approved, replies, toComplete] = await Promise.all([
+      api("/api/overview"), api("/api/drafts?status=PENDING_REVIEW"), api("/api/drafts?status=APPROVED"), api("/api/replies"), api("/api/to-complete")
+    ]);
+    state = { demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete };
+  } catch (e) {
+    state = { demo: true, overview: DEMO.overview, drafts: structuredClone(DEMO.drafts), tasks: structuredClone(DEMO.tasks), replies: structuredClone(DEMO.replies), toComplete: structuredClone(DEMO.toComplete) };
+  }
+  render();
+}
+
+function render() {
+  const o = state.overview;
+  const mode = $("#mode");
+  mode.className = "pill " + (state.demo ? "demo" : o.dryRun ? "dry" : "live");
+  mode.textContent = state.demo ? "Données d'exemple" : o.dryRun ? "Mode test : aucun envoi" : "Envois actifs";
+  $("#today").textContent = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
+
+  const k = o.kpis;
+  const tiles = [
+    ["Emails envoyés", num(k.sent), `${o.periodDays} jours`],
+    ["Taux de réponse", pct(k.replyRate), `${k.replies} réponses`],
+    ["Réponses positives", pct(k.positiveRate), `${k.positive} prospects`, k.sent > 30 && k.positiveRate < 0.02],
+    ["Nouveaux prospects", num(o.queues.discoveredThisWeek || 0), "trouvés en 7 jours"],
+    ["Rendez-vous", num(k.meetings), "objectif : 2 par semaine"],
+    ["Désinscriptions", pct(k.unsubscribeRate), `${k.unsubscribed} contact${k.unsubscribed > 1 ? "s" : ""}`, k.unsubscribeRate > 0.02],
+    ["Rebonds", pct(k.bounceRate), "seuil interne 2 %", k.bounceRate > 0.02]
+  ];
+  $("#kpis").innerHTML = tiles.map(([l, v, s, bad]) => `<div class="kpi ${bad ? "bad" : "ok"}"><span class="label">${l}</span><span class="value">${v}</span><span class="sub">${s}</span></div>`).join("");
+
+  $("#c-today").textContent = state.drafts.length + state.tasks.length + state.replies.length;
+  $("#c-new").textContent = state.toComplete.length;
+  $("#c-accounts").textContent = o.accounts.length;
+  renderDrafts(); renderReplies(); renderTasks(); renderNew(); renderAccounts(); renderPipeline(); renderHealth();
+}
+
+function bodyWithCites(text) {
+  return esc(text).replace(/\[F:([A-Za-z0-9_-]+)\]/g, (_, id) => `<button class="cite" data-fact="${id}" aria-label="Voir la source ${id}">${id.slice(0, 4)}</button>`);
+}
+
+function renderDrafts() {
+  const box = $("#drafts");
+  if (!state.drafts.length) { box.innerHTML = `<div class="empty">Rien à valider. Les brouillons arrivent la veille de leur créneau d'envoi.</div>`; return; }
+  box.innerHTML = state.drafts.map(({ draft: d, contactName, contactRole, accountName, facts }) => {
+    const blocked = (d.guardReport || []).some((g) => g.startsWith("[BLOCK]"));
+    return `<article class="card ${blocked ? "blocked" : ""}" id="d-${d.id}">
+      <div class="who"><span><strong>${esc(contactName)}</strong>, ${esc(contactRole)} · ${esc(accountName)}</span><span class="chan">${d.channel} · étape ${d.stepIndex + 1}</span></div>
+      ${d.subject ? `<div class="subject">${esc(d.subject)}</div>` : ""}
+      <div class="body" data-view>${bodyWithCites(d.body)}</div>
+      <div data-edit hidden class="stack">
+        ${d.subject != null ? `<input type="text" id="s-${d.id}" value="${esc(d.subject)}" aria-label="Objet">` : ""}
+        <textarea id="b-${d.id}" aria-label="Message">${esc(d.body)}</textarea>
+      </div>
+      ${d.guardReport && d.guardReport.length ? `<div class="guard">${d.guardReport.map((g) => `<div class="v ${g.startsWith("[BLOCK]") ? "BLOCK" : "WARN"}">${esc(g.replace(/^\[\w+\]\s*/, ""))}</div>`).join("")}</div>` : ""}
+      <div class="why">${esc(d.rationale)}</div>
+      <div class="facts">${(facts || []).map((f) => `<div class="fact" data-fid="${f.id}"><code>${f.id.slice(0, 4)}</code><span>${esc(f.statement)} · <a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener">source</a></span></div>`).join("")}</div>
+      <div class="actions">
+        <button class="btn primary" data-act="approve" data-id="${d.id}" ${blocked ? "disabled title=\"Corrigez le message avant de l'approuver\"" : ""}>Approuver</button>
+        <button class="btn" data-act="edit" data-id="${d.id}">Modifier</button>
+        <button class="btn ghost" data-act="reject" data-id="${d.id}">Rejeter</button>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function renderReplies() {
+  const box = $("#replies");
+  if (!state.replies.length) { box.innerHTML = `<div class="empty">Aucune réponse à traiter.</div>`; return; }
+  box.innerHTML = state.replies.map((r) => {
+    const [label, tone] = INTENTS[r.intent] || [r.intent, "neu"];
+    return `<article class="card"><div class="who"><span><strong>${esc(r.from)}</strong></span><span class="intent ${tone}">${label}</span></div>
+      <div>${esc(r.summary)}</div>${r.followUpOn ? `<div class="note">Relance prévue le ${new Date(r.followUpOn).toLocaleDateString("fr-FR")}</div>` : ""}
+      <div class="actions"><button class="btn" data-act="handled" data-id="${r.id}">Traité</button></div></article>`;
+  }).join("");
+}
+
+function renderTasks() {
+  const box = $("#tasks");
+  if (!state.tasks.length) { box.innerHTML = `<div class="empty">Aucune action LinkedIn aujourd'hui.</div>`; return; }
+  box.innerHTML = state.tasks.map(({ draft: d, contactName, accountName, linkedinUrl }) => `<article class="card">
+      <div class="who"><span><strong>${esc(contactName)}</strong> · ${esc(accountName)}</span><span class="chan">NOTE · ${d.body.length}/300</span></div>
+      <div class="body">${esc(d.body.replace(/\s*\[F:[^\]]+\]/g, ""))}</div>
+      <div class="actions"><button class="btn" data-act="copy" data-id="${d.id}">Copier la note</button>
+      ${linkedinUrl ? `<a class="btn" href="${esc(linkedinUrl)}" target="_blank" rel="noopener">Ouvrir le profil</a>` : ""}
+      <button class="btn primary" data-act="done" data-id="${d.id}">Fait</button></div></article>`).join("");
+}
+
+function renderNew() {
+  const box = $("#newlist");
+  if (!state.toComplete.length) { box.innerHTML = `<div class="empty">Aucun nouveau prospect à compléter. La recherche tourne chaque nuit à 2h ; lance-la maintenant ou importe ta liste.</div>`; return; }
+  box.innerHTML = state.toComplete.map(({ row: r, offer, roles, why, searches, facts }) => {
+    const id = r.account.id;
+    const fit = r.fit ?? 0, intent = r.intent ?? 0, warm = r.warm ?? 0;
+    return `<article class="card" id="n-${id}">
+      <div class="who"><span><strong>${esc(r.account.name)}</strong>${r.account.domain ? " · " + esc(r.account.domain) : ""}</span><span class="src-chip">${esc(r.account.source || "manuel")}</span></div>
+      <div class="mini-score"><span>${r.score}</span><div class="bar"><i class="fit" style="width:${fit}%"></i><i class="int" style="width:${intent}%"></i><i class="warm" style="width:${warm}%"></i></div></div>
+      <div><strong>${OFFERS[offer] || offer}</strong> · à contacter : ${esc(roles.join(", "))}, ${esc(why)}</div>
+      <div class="facts">${(facts || []).map((f) => `<div class="fact"><code>${f.id.slice(0, 4)}</code><span>${esc(f.statement)} · <a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener">source</a></span></div>`).join("")}</div>
+      <div class="roles">${searches.map((q) => `<a class="btn" href="${esc(q.url)}" target="_blank" rel="noopener">Chercher « ${esc(q.role)} » sur LinkedIn</a>`).join("")}</div>
+      <form class="form-grid" data-form="${id}" onsubmit="return false">
+        <label for="fn-${id}">Nom<input type="text" id="fn-${id}" placeholder="Claire Morel" autocomplete="off"></label>
+        <label for="ro-${id}">Rôle<input type="text" id="ro-${id}" list="roles-${id}" placeholder="${esc(roles[0])}"><datalist id="roles-${id}">${roles.map((x) => `<option value="${esc(x)}">`).join("")}</datalist></label>
+        <label for="em-${id}">Email (optionnel)<input type="text" id="em-${id}" inputmode="email" placeholder="claire@entreprise.fr"></label>
+        <label for="li-${id}">Profil LinkedIn (optionnel)<input type="text" id="li-${id}" placeholder="https://www.linkedin.com/in/..."></label>
+      </form>
+      <div class="actions">
+        <button class="btn primary" data-act="add-contact" data-id="${id}">Ajouter et lancer la séquence</button>
+        <button class="btn ghost" data-act="exclude" data-id="${id}">Écarter</button>
+      </div>
+    </article>`;
+  }).join("");
+}
+
+function tier(score) { return score >= 65 ? ["ACT_NOW", "agir"] : score >= 45 ? ["NURTURE", "suivre"] : ["WATCH", "veille"]; }
+function renderAccounts() {
+  $("#accounts").innerHTML = state.overview.accounts.map((r) => {
+    const fit = r.fit ?? Math.min(40, r.score), warm = r.warm ?? 0, intent = r.intent ?? Math.max(0, r.score - fit - warm);
+    const [t, tl] = tier(r.score);
+    return `<tr><td><strong>${esc(r.account.name)}</strong><br><span class="reasons">${esc(r.account.domain)}</span></td>
+      <td><div class="score"><span>${r.score}</span><div class="bar" title="adéquation ${fit}, intention ${intent}, lien chaud ${warm}"><i class="fit" style="width:${fit}%"></i><i class="int" style="width:${intent}%"></i><i class="warm" style="width:${warm}%"></i></div></div><span class="tier ${t}">${tl}</span></td>
+      <td>${OFFERS[r.recommendedOffer] || "aucune"}</td>
+      <td class="reasons">${r.reasons.slice(0, 3).map(esc).join("<br>")}</td>
+      <td class="reasons">${r.refreshedAt ? new Date(r.refreshedAt).toLocaleDateString("fr-FR") : "jamais"}</td></tr>`;
+  }).join("");
+}
+
+function renderPipeline() {
+  const p = state.overview.pipeline.filter((s) => s.stage !== "LOST");
+  const max = Math.max(1, ...p.map((s) => s.count));
+  $("#funnel").innerHTML = p.map((s) => `<div class="stage"><span>${STAGES[s.stage]}</span><div class="track"><div class="fill" style="width:${(s.count / max) * 100}%">${s.count}</div></div><span class="amt">${s.amountEur ? eur(s.amountEur) : ""}</span></div>`).join("");
+  const open = state.overview.pipeline.filter((s) => ["DISCOVERY_SOLD", "PROPOSAL"].includes(s.stage)).reduce((a, s) => a + s.amountEur, 0);
+  $("#pipe-total").textContent = `${eur(open)} en cours`;
+  const bs = state.overview.bySignal || [];
+  const m2 = Math.max(1, ...bs.map((s) => s.sent));
+  $("#bysignal").innerHTML = bs.length ? bs.map((s) => `<div class="stage"><span>${esc(s.label)}</span><div class="track"><div class="fill" style="width:${(s.sent / m2) * 100}%">${s.sent}</div></div><span class="amt">${s.positive} pos.</span></div>`).join("")
+    : `<div class="empty">Pas encore assez d'envois pour comparer les signaux.</div>`;
+}
+
+function renderHealth() {
+  const k = state.overview.kpis;
+  const gauges = [
+    ["Désinscriptions", k.unsubscribeRate, 0.02, "Au-delà de 2 %, le ciblage ou le message est en cause."],
+    ["Rebonds", k.bounceRate, 0.02, "Au-delà de 2 %, vérifier les adresses avant envoi."],
+    ["Plaintes spam (estimées)", 0, 0.003, "Gmail exige moins de 0,3 %, vise 0,1 %."],
+    ["Réponses positives", k.positiveRate, 0.02, "Repère bas : sous 2 %, revoir signaux et angle.", true]
+  ];
+  $("#gauges").innerHTML = gauges.map(([l, v, lim, note, higherIsBetter]) => {
+    const scale = Math.max(lim * 2.5, v * 1.2, 0.0001);
+    const bad = higherIsBetter ? v < lim : v > lim;
+    return `<div class="card gauge"><div class="row"><span>${l}</span><b style="color:var(${bad ? "--bad" : "--good"})">${pct(v)}</b></div>
+      <div class="track"><i style="width:${Math.min(100, (v / scale) * 100)}%;background:var(${bad ? "--bad" : "--good"})"></i><span class="limit" style="left:${(lim / scale) * 100}%"></span></div>
+      <small>Trait : seuil ${pct(lim)}. ${note}</small></div>`;
+  }).join("");
+  $("#agents").innerHTML = state.overview.agents.map((a) => `<tr><td>${esc(a.agent)}</td><td>${num(a.runs)}</td><td style="color:var(${a.failures ? "--warn" : "--muted"})">${a.failures}</td><td>${num(a.inputTokens)}</td><td>${num(a.outputTokens)}</td><td>${(a.avgMs / 1000).toFixed(1).replace(".", ",")} s</td></tr>`).join("");
+}
+
+document.addEventListener("click", async (e) => {
+  const tab = e.target.closest("[data-tab]");
+  if (tab) {
+    document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b === tab));
+    ["today", "new", "accounts", "pipeline", "health"].forEach((v) => ($("#view-" + v).hidden = v !== tab.dataset.tab));
+    try { localStorage.setItem("prospect-tab", tab.dataset.tab); } catch (_) {}
+    return;
+  }
+  const cite = e.target.closest(".cite");
+  if (cite) {
+    const card = cite.closest(".card"); const f = card.querySelector(`[data-fid="${cite.dataset.fact}"]`);
+    if (f) { f.classList.add("flash"); f.scrollIntoView({ block: "nearest", behavior: "smooth" }); setTimeout(() => f.classList.remove("flash"), 1200); }
+    return;
+  }
+  const btn = e.target.closest("[data-act]"); if (!btn) return;
+  const id = Number(btn.dataset.id), act = btn.dataset.act;
+  if (act === "edit") {
+    const card = $("#d-" + id); const editing = !card.querySelector("[data-edit]").hidden;
+    card.querySelector("[data-edit]").hidden = editing; card.querySelector("[data-view]").hidden = !editing;
+    btn.textContent = editing ? "Modifier" : "Annuler";
+    const ap = card.querySelector('[data-act="approve"]'); ap.disabled = false; ap.removeAttribute("title");
+    return;
+  }
+  if (act === "copy") {
+    const t = state.tasks.find((x) => x.draft.id === id);
+    try { await navigator.clipboard.writeText(t.draft.body.replace(/\s*\[F:[^\]]+\]/g, "")); toast("Note copiée"); }
+    catch (_) { const b = btn.closest(".card").querySelector(".body"); const r = document.createRange(); r.selectNodeContents(b); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Texte sélectionné, copiez-le"); }
+    return;
+  }
+  try {
+    if (act === "approve") {
+      const card = $("#d-" + id); const editing = !card.querySelector("[data-edit]").hidden;
+      const payload = editing ? { subject: card.querySelector(`#s-${id}`)?.value, body: card.querySelector(`#b-${id}`).value } : {};
+      if (!state.demo) await api(`/api/drafts/${id}/approve`, { method: "POST", body: JSON.stringify(payload) });
+      else if (editing && /accompagn|leader|\u2014/i.test(payload.body)) throw Object.assign(new Error(), { body: ["[BLOCK] vocabulaire : le message contient encore une expression interdite"] });
+      state.drafts = state.drafts.filter((d) => d.draft.id !== id); toast("Approuvé, envoi au prochain créneau");
+    } else if (act === "reject") {
+      if (!state.demo) await api(`/api/drafts/${id}/reject`, { method: "POST" });
+      state.drafts = state.drafts.filter((d) => d.draft.id !== id); toast("Rejeté");
+    } else if (act === "done") {
+      if (!state.demo) await api(`/api/drafts/${id}/done`, { method: "POST" });
+      state.tasks = state.tasks.filter((d) => d.draft.id !== id); toast("Étape suivante planifiée");
+    } else if (act === "add-contact") {
+      const v = (k) => $(`#${k}-${id}`).value.trim();
+      const payload = { fullName: v("fn"), role: v("ro") || $(`#ro-${id}`).placeholder, email: v("em") || null, linkedinUrl: v("li") || null, enroll: true };
+      if (!payload.fullName) { toast("Indique au moins le nom de la personne"); return; }
+      let msg = payload.email ? "Séquence lancée, premier brouillon dans la file À valider" : "Contact ajouté, recherche de l'email en cours";
+      if (!state.demo) msg = (await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) })).message || msg;
+      state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id); toast(msg);
+    } else if (act === "exclude") {
+      if (!state.demo) await api(`/api/accounts/${id}/exclude`, { method: "POST", body: JSON.stringify({ reason: "écarté depuis le dashboard" }) });
+      state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id); toast("Écarté, il ne reviendra pas");
+    } else if (act === "run-discovery") {
+      if (!state.demo) await api("/api/discovery/run", { method: "POST" });
+      toast("Recherche lancée, résultats dans 15 à 30 minutes"); return;
+    } else if (act === "handled") {
+      if (!state.demo) await api(`/api/replies/${id}/handled`, { method: "POST" });
+      state.replies = state.replies.filter((r) => r.id !== id); toast("Marqué comme traité");
+    }
+    render();
+  } catch (err) {
+    const msg = Array.isArray(err.body) ? err.body.join(" · ") : "Action impossible, réessayez.";
+    toast(msg.replace(/^\[\w+\]\s*/, ""));
+  }
+});
+
+$("#csv").addEventListener("change", async (e) => {
+  const file = e.target.files[0]; if (!file) return;
+  const text = await file.text();
+  if (state.demo) { toast(`${Math.max(0, text.trim().split(/\r?\n/).length - 1)} lignes lues (exemple, rien n'est importé)`); e.target.value = ""; return; }
+  try {
+    const r = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "text/csv" }, body: text }).then((x) => x.json());
+    toast(`${r.created} créés, ${r.updated} mis à jour, ${r.contacts} contacts${r.errors.length ? `, ${r.errors.length} erreurs` : ""}`);
+    load();
+  } catch (_) { toast("Import impossible, vérifie l'en-tête du fichier"); }
+  e.target.value = "";
+});
+
+try { const t = localStorage.getItem("prospect-tab"); if (t) document.querySelector(`[data-tab="${t}"]`)?.click(); } catch (_) {}
+load();
+</script>

@@ -1,0 +1,152 @@
+package lab.doppio.bloom.app
+
+import io.ktor.http.HttpStatusCode
+import io.ktor.serialization.kotlinx.json.json
+import io.ktor.server.application.Application
+import io.ktor.server.application.install
+import io.ktor.server.auth.Authentication
+import io.ktor.server.auth.UserIdPrincipal
+import io.ktor.server.auth.authenticate
+import io.ktor.server.auth.basic
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.http.content.staticResources
+import io.ktor.server.netty.Netty
+import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.statuspages.StatusPages
+import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
+import io.ktor.server.routing.get
+import io.ktor.server.routing.routing
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.serialization.json.Json
+import lab.doppio.bloom.agents.Llm
+import lab.doppio.bloom.agents.ReplyClassifierAgent
+import lab.doppio.bloom.agents.ResearchAgent
+import lab.doppio.bloom.agents.RunTracker
+import lab.doppio.bloom.agents.WeeklyCoachAgent
+import lab.doppio.bloom.agents.WriterAgent
+import lab.doppio.bloom.app.outreach.EmailGateway
+import lab.doppio.bloom.app.outreach.ImapPoller
+import lab.doppio.bloom.app.outreach.MailConfig
+import lab.doppio.bloom.app.outreach.Mailbox
+import lab.doppio.bloom.app.outreach.Orchestrator
+import lab.doppio.bloom.app.outreach.UnsubscribeTokens
+import lab.doppio.bloom.app.web.apiRoutes
+import lab.doppio.bloom.app.web.discoveryRoutes
+import lab.doppio.bloom.app.web.unsubscribeRoutes
+import lab.doppio.bloom.core.model.SendingPolicy
+import lab.doppio.bloom.core.sequence.DefaultSequences
+import lab.doppio.bloom.data.db.Db
+import lab.doppio.bloom.data.db.DbConfig
+import lab.doppio.bloom.data.db.Repository
+import lab.doppio.bloom.data.sources.AppStoreSource
+import lab.doppio.bloom.data.sources.CompanyRegistrySource
+import lab.doppio.bloom.data.sources.FranceTravailSource
+import lab.doppio.bloom.data.sources.WebPageSource
+import lab.doppio.bloom.data.sources.DropcontactSource
+import lab.doppio.bloom.data.discovery.DiscoveryConfig
+import lab.doppio.bloom.data.discovery.DiscoveryService
+import lab.doppio.bloom.data.sources.defaultHttpClient
+import kotlinx.coroutines.runBlocking
+
+private fun env(name: String, default: String? = null): String =
+    System.getenv(name) ?: default ?: error("Variable d'environnement manquante : $name")
+
+/** Câblage manuel : pas de framework d'injection pour une douzaine de composants. */
+class AppContext {
+    val repo = Repository()
+    private val http = defaultHttpClient()
+    val llm = Llm(env("ANTHROPIC_API_KEY"))
+    private val tracker = RunTracker(repo)
+    /** Portée des tâches de fond déclenchées depuis le dashboard (découverte, recherche). */
+    val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    val policy = SendingPolicy(maxPerMailboxPerDay = env("MAX_PER_MAILBOX_PER_DAY", "25").toInt())
+
+    val mail = MailConfig(
+        smtpHost = env("SMTP_HOST", "smtp.gmail.com"),
+        smtpPort = env("SMTP_PORT", "587").toInt(),
+        imapHost = env("IMAP_HOST", "imap.gmail.com"),
+        // MAILBOXES="prenom@doppio-studio.fr:motdepasseapplication:Prénom Nom,..."
+        mailboxes = env("MAILBOXES", "").split(',').filter { it.isNotBlank() }.map {
+            val (address, password, name) = it.split(':', limit = 3)
+            Mailbox(address.trim(), password.trim(), name.trim())
+        },
+        publicBaseUrl = env("PUBLIC_BASE_URL", "http://localhost:8080"),
+        unsubscribeSecret = env("UNSUBSCRIBE_SECRET"),
+        legalFooterFr = env(
+            "LEGAL_FOOTER_FR",
+            "Doppio Lab (Advisely), Paris. Vos coordonnées professionnelles proviennent de sources publiques " +
+                "(site de votre entreprise, annuaire des entreprises) et ne servent qu'à ce contact.",
+        ),
+        legalFooterEn = env(
+            "LEGAL_FOOTER_EN",
+            "Doppio Lab (Advisely), Paris, France. Your business contact details come from public sources and are used only for this contact.",
+        ),
+        dryRun = env("DRY_RUN", "true").toBoolean(),
+    )
+    val tokens = UnsubscribeTokens(mail.unsubscribeSecret)
+    private val gateway = EmailGateway(mail, tokens)
+
+    private val appStore = AppStoreSource(http)
+    private val registry = CompanyRegistrySource(http)
+    private val jobs = System.getenv("FT_CLIENT_ID")?.let { FranceTravailSource(http, it, env("FT_CLIENT_SECRET")) }
+
+    /** Optionnel : sans clé Dropcontact, les contacts sont saisis à la main (nom, email ou profil LinkedIn). */
+    val dropcontact = System.getenv("DROPCONTACT_API_KEY")?.let { DropcontactSource(http, it) }
+
+    val research = ResearchAgent(llm, repo, tracker, appStore = appStore, registry = registry, jobs = jobs, web = WebPageSource(http))
+
+    val discovery = DiscoveryService(
+        repo, appStore, registry, jobs,
+        DiscoveryConfig(
+            appsPerRun = env("DISCOVERY_APPS_PER_RUN", "120").toInt(),
+            // Clients actuels et partenaires à ne jamais prospecter, séparés par des virgules
+            extraExclusions = env("DISCOVERY_EXCLUDE", "").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
+        ),
+    )
+    val writer = WriterAgent(llm, repo, tracker, senderName = env("SENDER_NAME", "l'équipe Doppio"))
+    val orchestrator = Orchestrator(
+        repo, writer, research, ReplyClassifierAgent(llm, tracker), WeeklyCoachAgent(llm, repo, tracker),
+        gateway, ImapPoller(mail), mail, policy, discovery,
+    )
+}
+
+fun main() {
+    Db.connect(DbConfig(env("DATABASE_URL", "jdbc:postgresql://localhost:5432/bloom"), env("DB_USER", "bloom"), env("DB_PASSWORD", "bloom")))
+    val ctx = AppContext()
+    runBlocking { ctx.repo.ensureSequences(DefaultSequences.all()) }
+    ctx.orchestrator.start(CoroutineScope(SupervisorJob() + Dispatchers.Default))
+    embeddedServer(Netty, port = env("PORT", "8080").toInt()) { module(ctx) }.start(wait = true)
+}
+
+fun Application.module(ctx: AppContext) {
+    install(CallLogging)
+    install(ContentNegotiation) { json(Json { encodeDefaults = true; ignoreUnknownKeys = true }) }
+    install(StatusPages) {
+        exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }
+        exception<Throwable> { call, e ->
+            this@module.environment.log.error("Erreur", e)
+            call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "erreur interne"))
+        }
+    }
+    val adminPassword = env("ADMIN_PASSWORD")
+    install(Authentication) {
+        basic("admin") {
+            realm = "Doppio Bloom"
+            validate { if (it.name == "doppio" && it.password == adminPassword) UserIdPrincipal(it.name) else null }
+        }
+    }
+    routing {
+        // Public : la désinscription doit marcher sans compte, en un clic
+        unsubscribeRoutes(ctx)
+        authenticate("admin") {
+            staticResources("/", "static")
+            apiRoutes(ctx)
+            discoveryRoutes(ctx)
+        }
+        get("/health") { call.respondText("ok") }
+    }
+}

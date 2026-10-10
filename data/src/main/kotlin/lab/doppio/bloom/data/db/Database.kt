@@ -1,0 +1,213 @@
+package lab.doppio.bloom.data.db
+
+import com.zaxxer.hikari.HikariConfig
+import com.zaxxer.hikari.HikariDataSource
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import org.flywaydb.core.Flyway
+import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.Table
+import org.jetbrains.exposed.sql.javatime.CurrentTimestamp
+import org.jetbrains.exposed.sql.javatime.date
+import org.jetbrains.exposed.sql.javatime.timestamp
+import org.jetbrains.exposed.sql.transactions.transaction
+
+data class DbConfig(val url: String, val user: String, val password: String, val maxPool: Int = 8)
+
+object Db {
+    fun connect(config: DbConfig): Database {
+        val ds = HikariDataSource(
+            HikariConfig().apply {
+                jdbcUrl = config.url
+                username = config.user
+                password = config.password
+                maximumPoolSize = config.maxPool
+                isAutoCommit = false
+                transactionIsolation = "TRANSACTION_READ_COMMITTED"
+            },
+        )
+        Flyway.configure().dataSource(ds).locations("classpath:db/migration").load().migrate()
+        return Database.connect(ds)
+    }
+}
+
+/** Les accès JDBC sont bloquants : on les isole sur Dispatchers.IO. */
+suspend fun <T> dbQuery(block: () -> T): T = withContext(Dispatchers.IO) { transaction { block() } }
+
+object Accounts : Table("accounts") {
+    val id = long("id").autoIncrement()
+    val name = text("name")
+    val domain = text("domain").nullable()
+    val slug = text("slug")
+    val source = text("source").default("manual")
+    val excludedReason = text("excluded_reason").nullable()
+    val siren = text("siren").nullable()
+    val sector = text("sector")
+    val market = text("market")
+    val headcount = integer("headcount").nullable()
+    val iosAppId = long("ios_app_id").nullable()
+    val androidPackage = text("android_package").nullable()
+    val warmPath = text("warm_path").nullable()
+    val ownerNote = text("owner_note").nullable()
+    val score = integer("score").default(0)
+    val scoreDetail = text("score_detail").default("{}")
+    val recommendedOffer = text("recommended_offer").nullable()
+    val refreshedAt = timestamp("refreshed_at").nullable()
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object DiscoverySeen : Table("discovery_seen") {
+    val key = text("key")
+    val kept = bool("kept")
+    val reason = text("reason").nullable()
+    val checkedAt = timestamp("checked_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(key)
+}
+
+object Contacts : Table("contacts") {
+    val id = long("id").autoIncrement()
+    val accountId = long("account_id")
+    val fullName = text("full_name")
+    val role = text("role")
+    val persona = text("persona")
+    val email = text("email").nullable()
+    val linkedinUrl = text("linkedin_url").nullable()
+    val dataSource = text("data_source")
+    val language = text("language").default("fr")
+    val lastInboundAt = timestamp("last_inbound_at").nullable()
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Facts : Table("facts") {
+    val id = text("id")
+    val accountId = long("account_id")
+    val kind = text("kind")
+    val statement = text("statement")
+    val sourceUrl = text("source_url")
+    val excerpt = text("excerpt").nullable()
+    val retrievedAt = timestamp("retrieved_at")
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Signals : Table("signals") {
+    val id = long("id").autoIncrement()
+    val accountId = long("account_id")
+    val type = text("type")
+    val strength = double("strength")
+    val observedAt = timestamp("observed_at")
+    val factIds = text("fact_ids").default("[]")
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Dossiers : Table("dossiers") {
+    val accountId = long("account_id")
+    val summary = text("summary")
+    val hypotheses = text("hypotheses").default("[]")
+    val angle = text("angle")
+    val offer = text("offer")
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(accountId)
+}
+
+object Sequences : Table("sequences") {
+    val id = long("id").autoIncrement()
+    val name = text("name")
+    val offer = text("offer")
+    val steps = text("steps")
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Enrollments : Table("enrollments") {
+    val id = long("id").autoIncrement()
+    val contactId = long("contact_id")
+    val sequenceId = long("sequence_id")
+    val status = text("status")
+    val nextStep = integer("next_step").default(0)
+    val lastActionAt = timestamp("last_action_at").nullable()
+    val enrolledAt = timestamp("enrolled_at").defaultExpression(CurrentTimestamp)
+    val threadMessageId = text("thread_message_id").nullable()
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Drafts : Table("drafts") {
+    val id = long("id").autoIncrement()
+    val enrollmentId = long("enrollment_id")
+    val stepIndex = integer("step_index")
+    val channel = text("channel")
+    val subject = text("subject").nullable()
+    val body = text("body")
+    val citedFactIds = text("cited_fact_ids").default("[]")
+    val referenceUsed = text("reference_used").nullable()
+    val rationale = text("rationale")
+    val status = text("status")
+    val guardReport = text("guard_report").default("[]")
+    val editedByHuman = bool("edited_by_human").default(false)
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    val decidedAt = timestamp("decided_at").nullable()
+    val sentAt = timestamp("sent_at").nullable()
+    val messageId = text("message_id").nullable()
+    val mailbox = text("mailbox").nullable()
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Replies : Table("replies") {
+    val id = long("id").autoIncrement()
+    val enrollmentId = long("enrollment_id").nullable()
+    val fromAddress = text("from_address")
+    val subject = text("subject").nullable()
+    val body = text("body")
+    val intent = text("intent")
+    val confidence = double("confidence")
+    val followUpOn = date("follow_up_on").nullable()
+    val summary = text("summary")
+    val receivedAt = timestamp("received_at")
+    val handled = bool("handled").default(false)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Suppressions : Table("suppressions") {
+    val value = text("value")
+    val reason = text("reason")
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(value)
+}
+
+object Deals : Table("deals") {
+    val id = long("id").autoIncrement()
+    val accountId = long("account_id")
+    val offer = text("offer")
+    val stage = text("stage")
+    val amountEur = long("amount_eur")
+    val sourceSignal = text("source_signal").nullable()
+    val expectedClose = date("expected_close").nullable()
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object AgentRuns : Table("agent_runs") {
+    val id = long("id").autoIncrement()
+    val agent = text("agent")
+    val accountId = long("account_id").nullable()
+    val model = text("model")
+    val inputTokens = integer("input_tokens")
+    val outputTokens = integer("output_tokens")
+    val durationMs = long("duration_ms")
+    val success = bool("success")
+    val error = text("error").nullable()
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Events : Table("events") {
+    val id = long("id").autoIncrement()
+    val type = text("type")
+    val accountId = long("account_id").nullable()
+    val contactId = long("contact_id").nullable()
+    val draftId = long("draft_id").nullable()
+    val payload = text("payload").default("{}")
+    val occurredAt = timestamp("occurred_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
