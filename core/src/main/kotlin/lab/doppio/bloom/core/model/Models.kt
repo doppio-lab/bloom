@@ -50,7 +50,7 @@ data class Account(
     /** Lien chaud : ancien client, alumni d'un client, recommandation. Pèse lourd dans le score. */
     val warmPath: String? = null,
     val ownerNote: String? = null,
-    /** D'où vient le compte : manual, import, offres d'emploi, classement App Store. */
+    /** D'où vient le compte : manual, import, offres d'emploi, classement App Store, BODACC, marché public, presse, GitHub. */
     val source: String = "manual",
 )
 
@@ -98,6 +98,10 @@ enum class SignalType {
     CONTENT_ENGAGEMENT,
     /** Recommandation ou lien chaud (saisie manuelle). */
     REFERRAL,
+    /** Open public tender that asks for a mobile app (BOAMP). */
+    PUBLIC_TENDER,
+    /** The organisation maintains Kotlin Multiplatform code in public (GitHub). */
+    KMP_ADOPTION,
 }
 
 @Serializable
@@ -111,7 +115,7 @@ data class Signal(
 )
 
 @Serializable
-enum class FactKind { APP_METADATA, APP_REVIEW, JOB_POSTING, COMPANY_REGISTRY, WEB_PAGE, MANUAL }
+enum class FactKind { APP_METADATA, APP_REVIEW, JOB_POSTING, COMPANY_REGISTRY, WEB_PAGE, MANUAL, LEGAL_NOTICE, PUBLIC_TENDER, PRESS, CODE_REPOSITORY }
 
 /**
  * Un fait vérifiable, toujours accompagné de sa source.

@@ -5,6 +5,9 @@ services:
       POSTGRES_DB: bloom
       POSTGRES_USER: bloom
       POSTGRES_PASSWORD: ${DB_PASSWORD:-bloom}
+    ports:
+      # Local only: lets ./gradlew :app:run reach the database
+      - "127.0.0.1:5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -17,6 +20,10 @@ services:
     env_file: .env
     environment:
       DATABASE_URL: jdbc:postgresql://db:5432/bloom
+      # Ollama runs on the host (GPU access), not in a container
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
       - "8080:8080"
     depends_on:

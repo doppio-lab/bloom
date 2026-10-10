@@ -38,6 +38,8 @@ object Scoring {
     data class SignalRule(val weight: Double, val halfLifeDays: Double)
 
     val rules: Map<SignalType, SignalRule> = mapOf(
+        // A published tender states the need outright, but it expires with its deadline
+        SignalType.PUBLIC_TENDER to SignalRule(45.0, 21.0),
         SignalType.REFERRAL to SignalRule(30.0, 60.0),
         SignalType.HIRING_STUCK to SignalRule(22.0, 30.0),
         SignalType.QUALITY_COMPLAINTS to SignalRule(20.0, 30.0),
@@ -47,6 +49,7 @@ object Scoring {
         SignalType.FUNDING to SignalRule(15.0, 90.0),
         SignalType.HIRING_MOBILE to SignalRule(12.0, 30.0),
         SignalType.PRODUCT_LAUNCH to SignalRule(12.0, 60.0),
+        SignalType.KMP_ADOPTION to SignalRule(12.0, 60.0),
         SignalType.RELEASE_STALL to SignalRule(10.0, 120.0),
         SignalType.CONTENT_ENGAGEMENT to SignalRule(8.0, 14.0),
         SignalType.AI_ADOPTION to SignalRule(6.0, 90.0),
@@ -66,6 +69,8 @@ object Scoring {
         SignalType.AI_ADOPTION to Offer.TRAINING_ANTHROPIC,
         SignalType.CONTENT_ENGAGEMENT to Offer.DISCOVERY,
         SignalType.REFERRAL to Offer.DISCOVERY,
+        SignalType.PUBLIC_TENDER to Offer.FORFAIT,
+        SignalType.KMP_ADOPTION to Offer.TRAINING_KMP,
     )
 
     private val coreSectors = setOf(

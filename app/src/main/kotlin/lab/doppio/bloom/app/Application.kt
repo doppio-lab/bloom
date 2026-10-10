@@ -23,6 +23,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
 import lab.doppio.bloom.agents.Llm
+import lab.doppio.bloom.agents.LlmConfig
+import lab.doppio.bloom.agents.LlmProvider
 import lab.doppio.bloom.agents.ReplyClassifierAgent
 import lab.doppio.bloom.agents.ResearchAgent
 import lab.doppio.bloom.agents.RunTracker
@@ -43,6 +45,11 @@ import lab.doppio.bloom.data.db.Db
 import lab.doppio.bloom.data.db.DbConfig
 import lab.doppio.bloom.data.db.Repository
 import lab.doppio.bloom.data.sources.AppStoreSource
+import lab.doppio.bloom.data.sources.BoampSource
+import lab.doppio.bloom.data.sources.BodaccSource
+import lab.doppio.bloom.data.sources.GitHubSource
+import lab.doppio.bloom.data.sources.JobBoardSource
+import lab.doppio.bloom.data.sources.PressSource
 import lab.doppio.bloom.data.sources.CompanyRegistrySource
 import lab.doppio.bloom.data.sources.FranceTravailSource
 import lab.doppio.bloom.data.sources.WebPageSource
@@ -55,11 +62,33 @@ import kotlinx.coroutines.runBlocking
 private fun env(name: String, default: String? = null): String =
     System.getenv(name) ?: default ?: error("Variable d'environnement manquante : $name")
 
+/** An empty value in .env (KEY=) counts as an absent key. */
+private fun optionalEnv(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
+
 /** Câblage manuel : pas de framework d'injection pour une douzaine de composants. */
 class AppContext {
     val repo = Repository()
     private val http = defaultHttpClient()
-    val llm = Llm(env("ANTHROPIC_API_KEY"))
+    val llm = LlmProvider.parse(env("LLM_PROVIDER", "anthropic")).let { provider ->
+        Llm(
+            LlmConfig(
+                provider = provider,
+                apiKey = when (provider) {
+                    LlmProvider.ANTHROPIC -> optionalEnv("ANTHROPIC_API_KEY") ?: error("ANTHROPIC_API_KEY est obligatoire avec LLM_PROVIDER=anthropic")
+                    LlmProvider.OPENAI -> optionalEnv("OPENAI_API_KEY")
+                    LlmProvider.OLLAMA -> null
+                },
+                baseUrl = when (provider) {
+                    LlmProvider.ANTHROPIC -> null
+                    LlmProvider.OPENAI -> optionalEnv("OPENAI_BASE_URL")
+                    LlmProvider.OLLAMA -> optionalEnv("OLLAMA_BASE_URL")
+                },
+                model = optionalEnv("LLM_MODEL"),
+                fastModel = optionalEnv("LLM_MODEL_FAST"),
+                contextLength = env("LLM_CONTEXT_LENGTH", "16384").toLong(),
+            ),
+        )
+    }
     private val tracker = RunTracker(repo)
     /** Portée des tâches de fond déclenchées depuis le dashboard (découverte, recherche). */
     val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -92,12 +121,25 @@ class AppContext {
 
     private val appStore = AppStoreSource(http)
     private val registry = CompanyRegistrySource(http)
-    private val jobs = System.getenv("FT_CLIENT_ID")?.let { FranceTravailSource(http, it, env("FT_CLIENT_SECRET")) }
+    private val jobs = optionalEnv("FT_CLIENT_ID")?.let { FranceTravailSource(http, it, env("FT_CLIENT_SECRET")) }
 
     /** Optionnel : sans clé Dropcontact, les contacts sont saisis à la main (nom, email ou profil LinkedIn). */
-    val dropcontact = System.getenv("DROPCONTACT_API_KEY")?.let { DropcontactSource(http, it) }
+    val dropcontact = optionalEnv("DROPCONTACT_API_KEY")?.let { DropcontactSource(http, it) }
 
     val research = ResearchAgent(llm, repo, tracker, appStore = appStore, registry = registry, jobs = jobs, web = WebPageSource(http))
+
+    /**
+     * Sources added to discovery, chosen by DISCOVERY_SOURCES. The press feeds are left out of the default:
+     * their reuse terms have to be checked by the owner before the source is turned on.
+     */
+    private val enabledSources = env("DISCOVERY_SOURCES", "bodacc,boamp,github,jobboards").split(',').map { it.trim().lowercase() }.toSet()
+    private val discoverySources = listOfNotNull(
+        BodaccSource(http, minCapitalEur = env("BODACC_MIN_CAPITAL", "100000").toLong()).takeIf { "bodacc" in enabledSources },
+        BoampSource(http).takeIf { "boamp" in enabledSources },
+        PressSource(http).takeIf { "press" in enabledSources },
+        GitHubSource(http, optionalEnv("GITHUB_TOKEN"), wasSeen = { repo.wasSeen(it, 90) }, markSeen = { key, kept, reason -> repo.markSeen(key, kept, reason) })
+            .takeIf { "github" in enabledSources },
+    )
 
     val discovery = DiscoveryService(
         repo, appStore, registry, jobs,
@@ -106,6 +148,8 @@ class AppContext {
             // Clients actuels et partenaires à ne jamais prospecter, séparés par des virgules
             extraExclusions = env("DISCOVERY_EXCLUDE", "").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
         ),
+        sources = discoverySources,
+        jobBoards = JobBoardSource(http).takeIf { "jobboards" in enabledSources },
     )
     val writer = WriterAgent(llm, repo, tracker, senderName = env("SENDER_NAME", "l'équipe Doppio"))
     val orchestrator = Orchestrator(
@@ -117,6 +161,7 @@ class AppContext {
 fun main() {
     Db.connect(DbConfig(env("DATABASE_URL", "jdbc:postgresql://localhost:5432/bloom"), env("DB_USER", "bloom"), env("DB_PASSWORD", "bloom")))
     val ctx = AppContext()
+    org.slf4j.LoggerFactory.getLogger("bloom").info("LLM : {}", ctx.llm.describe())
     runBlocking { ctx.repo.ensureSequences(DefaultSequences.all()) }
     ctx.orchestrator.start(CoroutineScope(SupervisorJob() + Dispatchers.Default))
     embeddedServer(Netty, port = env("PORT", "8080").toInt()) { module(ctx) }.start(wait = true)

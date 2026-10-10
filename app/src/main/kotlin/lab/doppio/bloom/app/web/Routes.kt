@@ -215,6 +215,7 @@ private val signalLabels = mapOf(
     "RATING_DROP" to "Note en baisse", "HIRING_KMP" to "Recrutement KMP", "NEW_TECH_LEADER" to "Nouveau dirigeant tech",
     "FUNDING" to "Levée de fonds", "HIRING_MOBILE" to "Recrutement mobile", "PRODUCT_LAUNCH" to "Lancement produit",
     "RELEASE_STALL" to "App sans mise à jour", "CONTENT_ENGAGEMENT" to "Interaction LinkedIn", "AI_ADOPTION" to "Équipe LLM",
+    "PUBLIC_TENDER" to "Marché public", "KMP_ADOPTION" to "Code KMP public",
 )
 
 /** Réponses positives par signal dominant des comptes contactés, sur 90 jours. */

@@ -25,6 +25,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import lab.doppio.bloom.core.discovery.HiringRules
 import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
@@ -242,9 +243,6 @@ class FranceTravailSource(
 ) {
     private var token: String? = null
     private var tokenExpiry: Instant = Instant.EPOCH
-    private val mobileTitle = Regex("(?i)\\b(ios|android|mobile|swift|kotlin|flutter|react native)\\b")
-    private val kmp = Regex("(?i)(kotlin multiplatform|compose multiplatform|\\bkmp\\b|\\bcmp\\b)")
-    private val crossPlatformCompetitor = Regex("(?i)(flutter|react native)")
 
     private suspend fun accessToken(): String {
         token?.takeIf { Instant.now().isBefore(tokenExpiry) }?.let { return it }
@@ -276,6 +274,8 @@ class FranceTravailSource(
                 publieeDepuis?.let { parameter("publieeDepuis", it) }
                 parameter("range", "${page * 150}-${page * 150 + 149}")
             }
+            // Rejected credentials must be visible: silently reading zero offers hid a misconfiguration
+            if (res.status.value == 401 || res.status.value == 403) error("France Travail a refusé les identifiants (HTTP ${res.status.value})")
             if (res.status.value == 204 || res.status.value >= 400) break
             val results = sourcesJson.parseToJsonElement(res.bodyAsText()).jsonObject["resultats"]?.jsonArray.orEmpty().map { it.jsonObject }
             addAll(results)
@@ -286,7 +286,7 @@ class FranceTravailSource(
     fun companyName(offer: JsonObject): String? = offer["entreprise"]?.jsonObject?.get("nom").str()?.trim()?.takeIf { it.isNotBlank() }
     fun companyUrl(offer: JsonObject): String? = offer["entreprise"]?.jsonObject?.get("url").str()
     fun offerId(offer: JsonObject): String? = offer["id"].str()
-    fun isMobileOffer(offer: JsonObject): Boolean = mobileTitle.containsMatchIn(offer["intitule"].str().orEmpty())
+    fun isMobileOffer(offer: JsonObject): Boolean = HiringRules.isMobile(offer["intitule"].str().orEmpty())
 
     /** Faits et signaux tirés d'offres déjà filtrées sur une entreprise. */
     fun factsFromOffers(accountId: AccountId, offers: List<JsonObject>, now: Instant = Instant.now()): SourceResult {
@@ -308,9 +308,9 @@ class FranceTravailSource(
             )
             facts += f
             signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, now.toString(), listOf(f.id))
-            if (kmp.containsMatchIn(title + description)) signals += Signal(accountId, SignalType.HIRING_KMP, 0.9, now.toString(), listOf(f.id))
-            if (age != null && age > 45) signals += Signal(accountId, SignalType.HIRING_STUCK, ((age - 45) / 60.0).coerceIn(0.3, 1.0), now.toString(), listOf(f.id))
-            if (crossPlatformCompetitor.containsMatchIn(title + description)) {
+            if (HiringRules.mentionsKmp(title + description)) signals += Signal(accountId, SignalType.HIRING_KMP, 0.9, now.toString(), listOf(f.id))
+            HiringRules.stuckStrength(age)?.let { signals += Signal(accountId, SignalType.HIRING_STUCK, it, now.toString(), listOf(f.id)) }
+            if (HiringRules.mentionsCrossPlatform(title + description)) {
                 facts += fact(accountId, FactKind.JOB_POSTING, "L'offre « $title » mentionne une stack cross-platform (Flutter ou React Native)", url)
             }
         }
@@ -352,8 +352,11 @@ class CompanyRegistrySource(private val http: HttpClient) {
         }
     }
 
+    /** Exact lookup: the search endpoint accepts a SIREN as query. */
+    suspend fun bySiren(siren: String): Company? = search(siren).firstOrNull { it.siren == siren }
+
     suspend fun facts(accountId: AccountId, siren: String): List<Fact> {
-        val company = search(siren).firstOrNull { it.siren == siren } ?: return emptyList()
+        val company = bySiren(siren) ?: return emptyList()
         val url = "https://annuaire-entreprises.data.gouv.fr/entreprise/$siren"
         return listOfNotNull(
             company.headcountRange?.let { fact(accountId, FactKind.COMPANY_REGISTRY, "${company.name} : tranche d'effectif INSEE $it (${headcountLabel(it)})", url) },

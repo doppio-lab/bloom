@@ -4,6 +4,8 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+import lab.doppio.bloom.core.discovery.BoardProvider
+import lab.doppio.bloom.core.discovery.BoardRef
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.AccountId
@@ -90,7 +92,7 @@ class Repository {
             Accounts.update({ Accounts.id eq existing }) { it.fill(a) }
             existing
         } else {
-            Accounts.insert { it.fill(a); it[source] = a.source } get Accounts.id
+            Accounts.insert { it.fill(a); it[origin] = a.source } get Accounts.id
         }
     }
 
@@ -101,15 +103,23 @@ class Repository {
     suspend fun mergeDiscovered(a: Account): Pair<AccountId, Boolean> = dbQuery {
         val existing = findAccountIdTx(a)
         if (existing == null) {
-            (Accounts.insert { it.fill(a); it[source] = a.source } get Accounts.id) to true
+            (Accounts.insert { it.fill(a); it[origin] = a.source } get Accounts.id) to true
         } else {
             val row = Accounts.selectAll().where { Accounts.id eq existing }.first()
-            Accounts.update({ Accounts.id eq existing }) {
-                if (row[Accounts.domain] == null && a.domain != null) it[domain] = a.domain
-                if (row[Accounts.siren] == null && a.siren != null) it[siren] = a.siren
-                if (row[Accounts.headcount] == null && a.headcount != null) it[headcount] = a.headcount
-                if (row[Accounts.iosAppId] == null && a.iosAppId != null) it[iosAppId] = a.iosAppId
-                if (row[Accounts.sector] == "OTHER" && a.sector.name != "OTHER") it[sector] = a.sector.name
+            val fillDomain = row[Accounts.domain] == null && a.domain != null
+            val fillSiren = row[Accounts.siren] == null && a.siren != null
+            val fillHeadcount = row[Accounts.headcount] == null && a.headcount != null
+            val fillApp = row[Accounts.iosAppId] == null && a.iosAppId != null
+            val fillSector = row[Accounts.sector] == "OTHER" && a.sector.name != "OTHER"
+            // Exposed refuses an UPDATE that sets nothing: an account that is already complete is left alone
+            if (fillDomain || fillSiren || fillHeadcount || fillApp || fillSector) {
+                Accounts.update({ Accounts.id eq existing }) {
+                    if (fillDomain) it[domain] = a.domain
+                    if (fillSiren) it[siren] = a.siren
+                    if (fillHeadcount) it[headcount] = a.headcount
+                    if (fillApp) it[iosAppId] = a.iosAppId
+                    if (fillSector) it[sector] = a.sector.name
+                }
             }
             existing to false
         }
@@ -126,6 +136,21 @@ class Repository {
 
     suspend fun markSeen(key: String, kept: Boolean, reason: String? = null) = dbQuery {
         DiscoverySeen.upsert { it[this.key] = key; it[this.kept] = kept; it[this.reason] = reason; it[checkedAt] = Instant.now() }
+    }
+
+    /** Job board remembered for an account. Null: never looked. A null ref inside: looked, none found. */
+    suspend fun jobBoard(accountId: AccountId): Pair<BoardRef?, Instant>? = dbQuery {
+        AccountJobBoards.selectAll().where { AccountJobBoards.accountId eq accountId }.firstOrNull()?.let { row ->
+            val provider = row[AccountJobBoards.provider]?.let { runCatching { BoardProvider.valueOf(it) }.getOrNull() }
+            val token = row[AccountJobBoards.token]
+            (if (provider != null && token != null) BoardRef(provider, token) else null) to row[AccountJobBoards.checkedAt]
+        }
+    }
+
+    suspend fun saveJobBoard(accountId: AccountId, ref: BoardRef?) = dbQuery {
+        AccountJobBoards.upsert {
+            it[this.accountId] = accountId; it[provider] = ref?.provider?.name; it[token] = ref?.token; it[checkedAt] = Instant.now()
+        }
     }
 
     /** Comptes intéressants (score >= 45) à qui il manque la personne à contacter. */
@@ -156,7 +181,7 @@ class Repository {
         id = this[Accounts.id], name = this[Accounts.name], domain = this[Accounts.domain], siren = this[Accounts.siren],
         sector = Sector.valueOf(this[Accounts.sector]), market = Market.valueOf(this[Accounts.market]),
         headcount = this[Accounts.headcount], iosAppId = this[Accounts.iosAppId], androidPackage = this[Accounts.androidPackage],
-        warmPath = this[Accounts.warmPath], ownerNote = this[Accounts.ownerNote], source = this[Accounts.source],
+        warmPath = this[Accounts.warmPath], ownerNote = this[Accounts.ownerNote], source = this[Accounts.origin],
     )
 
     suspend fun account(id: AccountId): Account? = dbQuery {
@@ -441,6 +466,12 @@ class Repository {
 
     suspend fun logEvent(type: String, accountId: AccountId? = null, contactId: ContactId? = null, draftId: Long? = null, payload: String = "{}") = dbQuery {
         Events.insert { it[this.type] = type; it[this.accountId] = accountId; it[this.contactId] = contactId; it[this.draftId] = draftId; it[this.payload] = payload }
+    }
+
+    /** Payload and time of the most recent event of a type. */
+    suspend fun lastEvent(type: String): Pair<String, Instant>? = dbQuery {
+        Events.selectAll().where { Events.type eq type }.orderBy(Events.occurredAt, SortOrder.DESC).limit(1)
+            .firstOrNull()?.let { it[Events.payload] to it[Events.occurredAt] }
     }
 
     suspend fun countEvents(type: String, since: Instant): Int = dbQuery {

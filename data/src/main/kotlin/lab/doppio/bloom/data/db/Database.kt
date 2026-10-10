@@ -39,7 +39,8 @@ object Accounts : Table("accounts") {
     val name = text("name")
     val domain = text("domain").nullable()
     val slug = text("slug")
-    val source = text("source").default("manual")
+    // Named origin: Table already exposes a `source` member (ColumnSet.source)
+    val origin = text("source").default("manual")
     val excludedReason = text("excluded_reason").nullable()
     val siren = text("siren").nullable()
     val sector = text("sector")
@@ -63,6 +64,14 @@ object DiscoverySeen : Table("discovery_seen") {
     val reason = text("reason").nullable()
     val checkedAt = timestamp("checked_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(key)
+}
+
+object AccountJobBoards : Table("job_boards") {
+    val accountId = long("account_id")
+    val provider = text("provider").nullable()
+    val token = text("token").nullable()
+    val checkedAt = timestamp("checked_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(accountId)
 }
 
 object Contacts : Table("contacts") {

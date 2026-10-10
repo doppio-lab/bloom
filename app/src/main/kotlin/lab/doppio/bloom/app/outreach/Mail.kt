@@ -145,7 +145,7 @@ class ImapPoller(private val config: MailConfig) {
             val unseen = inbox.search(FlagTerm(Flags(Flags.Flag.SEEN), false))
             return unseen.map { m ->
                 val from = (m.from?.firstOrNull() as? InternetAddress)?.address ?: m.from?.firstOrNull()?.toString().orEmpty()
-                val refs = (m.getHeader("In-Reply-To").orEmpty() + m.getHeader("References").orEmpty())
+                val refs = (m.getHeader("In-Reply-To")?.toList().orEmpty() + m.getHeader("References")?.toList().orEmpty())
                     .flatMap { it.split(Regex("\\s+")) }.filter { it.startsWith("<") }
                 val bounce = from.contains("mailer-daemon", true) || from.contains("postmaster", true) ||
                     (m.contentType?.contains("report-type=delivery-status", true) == true)

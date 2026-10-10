@@ -22,6 +22,7 @@ import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.scoring.Scoring
 import lab.doppio.bloom.data.db.AccountRow
+import lab.doppio.bloom.data.discovery.DiscoveryReport
 import org.slf4j.LoggerFactory
 
 @Serializable data class PeopleSearch(val role: String, val url: String)
@@ -55,6 +56,16 @@ suspend fun enrollContact(ctx: AppContext, contact: Contact): Boolean {
     return true
 }
 
+@Serializable
+data class LastDiscovery(
+    val ranAt: String? = null,
+    val running: Boolean = false,
+    val bySource: Map<String, Int> = emptyMap(),
+    val notes: List<String> = emptyList(),
+)
+
+private val lenientJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
 fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
     val repo = ctx.repo
 
@@ -68,6 +79,13 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
         call.respond(HttpStatusCode.Accepted, mapOf("status" to "lancée"))
     }
 
+    /** What the last discovery run found, per source, and what failed or is switched off. */
+    get("/discovery/last") {
+        val (payload, at) = repo.lastEvent("DISCOVERY_RUN") ?: return@get call.respond(LastDiscovery())
+        val report = runCatching { lenientJson.decodeFromString(DiscoveryReport.serializer(), payload) }.getOrDefault(DiscoveryReport())
+        call.respond(LastDiscovery(at.toString(), ctx.orchestrator.discoveryRunning, report.bySource, report.notes))
+    }
+
     /** Comptes qui valent le coup mais à qui il manque la personne à contacter. */
     get("/to-complete") {
         val items = repo.accountsToComplete().map { row ->
@@ -79,7 +97,11 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
                 roles = persona.roles,
                 why = persona.why,
                 searches = persona.roles.map { PeopleSearch(it, Targeting.linkedinSearchUrl(it, row.account.name)) },
-                facts = repo.factsOf(row.account.id).take(3),
+                // The facts behind the strongest signals come first: they are why the account is in the list
+                facts = repo.signalsOf(row.account.id)
+                    .sortedByDescending { Scoring.rules.getValue(it.type).weight * it.strength }
+                    .flatMap { it.factIds }.distinct().withIndex().associate { (rank, id) -> id to rank }
+                    .let { rank -> repo.factsOf(row.account.id).sortedBy { rank[it.id] ?: Int.MAX_VALUE }.take(3) },
             )
         }
         call.respond(items)
