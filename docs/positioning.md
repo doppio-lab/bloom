@@ -284,7 +284,7 @@ The draft and the figure in template A are placeholders. They must be replaced b
 
 Production rules:
 
-- 12 words maximum per slide, one font (Bricolage Grotesque, already in the dashboard), espresso `#6b3a22` as the only accent.
+- 12 words maximum per slide, the Horizon design system in its Monochrome theme, as in the dashboard: Cormorant Garamond capitals for the headline, Space Grotesk for the rest, black and white only.
 - Slide 6 is always a real screenshot, produced with the `app-marketing-screenshots` skill from a running instance. No mock-up passed off as the product.
 - Real photos or commercially licensed ones only. No realistic AI-generated people or places.
 - Trending sound added by hand on TikTok and Instagram. No account farms, no automation of the posting accounts.

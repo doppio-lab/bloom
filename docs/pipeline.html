@@ -1,116 +1,188 @@
 <title>Pipeline Bloom</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300..700;1,300..700&family=Space+Grotesk:wght@300..700&display=swap">
+<script>
+// Applies the stored theme before first paint. Nothing stored means "auto": the page follows the system.
+try { const t = localStorage.getItem("bloom-theme"); if (t === "light" || t === "dark") document.documentElement.dataset.theme = t; } catch (_) {}
+</script>
 <style>
-/* Layout : une colonne de lecture. Le pipeline en ligne verticale, chaque étape suivie par le même prospect fictif. */
+/* Horizon Design System v8, Monochrome theme (the Doppio Lab variant). Token values come from
+   colors_and_type.css in the Horizon project: black on white, hierarchy by weight, size, rules and greys. */
 :root {
-  --bg: #f3f4f6;
-  --surface: #ffffff;
-  --sunken: #e9ebef;
-  --ink: #16181d;
-  --muted: #5d6370;
-  --line: #d9dce3;
-  --accent: #6b3a22;
-  --accent-soft: #f1e6df;
-  --auto: #2f55b8; --auto-soft: #e3e9fa;
-  --ai: #7a4fb0; --ai-soft: #efe7f8;
-  --you: #1f7a4d; --you-soft: #e1f2e9;
-  --todo: #9a6200; --todo-soft: #fbefd6;
-  --bad: #b3261e; --bad-soft: #fbe3e1;
-  --f-display: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
-  --f-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --f-mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+  --primary: #000000; --on-primary: #FFFFFF; --primary-container: #EDEDED; --on-primary-container: #000000;
+  --background: #FFFFFF; --on-background: #000000; --surface: #FFFFFF; --on-surface: #000000;
+  --on-surface-variant: #3A3A3A;
+  --surface-container-low: #FAFAFA; --surface-container: #F5F5F5; --surface-container-high: #EDEDED;
+  --outline: #6E6E6E; --outline-variant: #D0D0D0;
+  --inverse-surface: #000000; --inverse-on-surface: #FFFFFF;
+  --error: #000000; --on-error: #FFFFFF; --error-container: #E6E6E6; --on-error-container: #000000;
+  --success: #000000; --on-success: #FFFFFF; --success-container: #F2F2F2; --on-success-container: #000000;
+  --warning: #3A3A3A; --on-warning: #FFFFFF; --warning-container: #EDEDED; --on-warning-container: #000000;
+  --info: #000000; --on-info: #FFFFFF; --info-container: #E6E6E6; --on-info-container: #000000;
+  --champagne: #000000; --champagne-warm: #8A8A8A;
+  --elev-1: 0 1px 2px rgba(0,0,0,.06);
+  --elev-2: 0 4px 12px -2px rgba(0,0,0,.10);
+  --focus-halo: 0 0 0 3px rgba(0,0,0,.18);
+
+  --radius-xs: 2px; --radius-s: 4px; --radius-m: 6px;
+  --ease-luxury: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-reveal: cubic-bezier(0, 0, 0.2, 1);
+  --dur-micro: 150ms; --dur-standard: 300ms;
+  --font-serif: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --font-sans: "Space Grotesk", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  /* Page-level aliases, resolved from the Horizon tokens above */
+  --bg: var(--background);
+  --sunken: var(--surface-container);
+  --ink: var(--on-background);
+  --fg-2: var(--on-surface-variant);
+  --muted: var(--outline);
+  --line: var(--outline-variant);
+  --accent: var(--primary);
+  --accent-soft: var(--primary-container);
+  --good: var(--outline);
+  --bad: var(--error);
+  --warn: var(--on-background);
+  --seg-fit: var(--champagne-warm);
+  --seg-int: var(--primary);
+  --seg-warm: var(--outline-variant);
+  --f-display: var(--font-serif);
+  --f-body: var(--font-sans);
+  --f-mono: var(--font-mono);
+  --r: var(--radius-s);
 }
+/* Monochrome dark: white on near-black #0A0A0A, never pure black */
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #121317; --surface: #1b1d22; --sunken: #23262c; --ink: #eceef2; --muted: #9aa0ac; --line: #30333a;
-  --accent: #e0a07c; --accent-soft: #3a2a21;
-  --auto: #8fb0ff; --auto-soft: #1d2640; --ai: #c9a6f2; --ai-soft: #2c2140;
-  --you: #5fcf96; --you-soft: #17301f; --todo: #f0b54a; --todo-soft: #33290f; --bad: #ff8a80; --bad-soft: #3a1a18;
+  --primary: #FFFFFF; --on-primary: #000000; --primary-container: #1F1F1F; --on-primary-container: #FFFFFF;
+  --background: #0A0A0A; --on-background: #FFFFFF; --surface: #0A0A0A; --on-surface: #FFFFFF;
+  --on-surface-variant: #C8C8C8;
+  --surface-container-low: #111111; --surface-container: #161616; --surface-container-high: #1F1F1F;
+  --outline: #8A8A8A; --outline-variant: #333333;
+  --inverse-surface: #FFFFFF; --inverse-on-surface: #000000;
+  --error: #FFFFFF; --on-error: #000000; --error-container: #2A2A2A; --on-error-container: #FFFFFF;
+  --success: #FFFFFF; --on-success: #000000; --success-container: #1A1A1A; --on-success-container: #FFFFFF;
+  --warning: #C8C8C8; --on-warning: #000000; --warning-container: #1F1F1F; --on-warning-container: #FFFFFF;
+  --info: #FFFFFF; --on-info: #000000; --info-container: #2A2A2A; --on-info-container: #FFFFFF;
+  --champagne: #FFFFFF; --champagne-warm: #8A8A8A;
+  --elev-1: 0 1px 2px rgba(255,255,255,.06);
+  --elev-2: 0 4px 12px -2px rgba(255,255,255,.08);
+  --focus-halo: 0 0 0 3px rgba(255,255,255,.22);
   color-scheme: dark;
 } }
 :root[data-theme="dark"] {
-  --bg: #121317; --surface: #1b1d22; --sunken: #23262c; --ink: #eceef2; --muted: #9aa0ac; --line: #30333a;
-  --accent: #e0a07c; --accent-soft: #3a2a21;
-  --auto: #8fb0ff; --auto-soft: #1d2640; --ai: #c9a6f2; --ai-soft: #2c2140;
-  --you: #5fcf96; --you-soft: #17301f; --todo: #f0b54a; --todo-soft: #33290f; --bad: #ff8a80; --bad-soft: #3a1a18;
+  --primary: #FFFFFF; --on-primary: #000000; --primary-container: #1F1F1F; --on-primary-container: #FFFFFF;
+  --background: #0A0A0A; --on-background: #FFFFFF; --surface: #0A0A0A; --on-surface: #FFFFFF;
+  --on-surface-variant: #C8C8C8;
+  --surface-container-low: #111111; --surface-container: #161616; --surface-container-high: #1F1F1F;
+  --outline: #8A8A8A; --outline-variant: #333333;
+  --inverse-surface: #FFFFFF; --inverse-on-surface: #000000;
+  --error: #FFFFFF; --on-error: #000000; --error-container: #2A2A2A; --on-error-container: #FFFFFF;
+  --success: #FFFFFF; --on-success: #000000; --success-container: #1A1A1A; --on-success-container: #FFFFFF;
+  --warning: #C8C8C8; --on-warning: #000000; --warning-container: #1F1F1F; --on-warning-container: #FFFFFF;
+  --info: #FFFFFF; --on-info: #000000; --info-container: #2A2A2A; --on-info-container: #FFFFFF;
+  --champagne: #FFFFFF; --champagne-warm: #8A8A8A;
+  --elev-1: 0 1px 2px rgba(255,255,255,.06);
+  --elev-2: 0 4px 12px -2px rgba(255,255,255,.08);
+  --focus-halo: 0 0 0 3px rgba(255,255,255,.22);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-body { background: var(--bg); color: var(--ink); font: 16px/1.6 var(--f-body); }
-.wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 32px 64px; display: grid; gap: 40px; }
-h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; margin: 0; }
-h1 { font-size: clamp(1.9rem, 5vw, 2.6rem); line-height: 1.1; letter-spacing: -0.015em; }
-h1 span { color: var(--accent); }
-h2 { font-size: 1.35rem; line-height: 1.25; }
-h3 { font-size: 1.08rem; line-height: 1.3; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 400 15px/22px var(--f-body); letter-spacing: .25px;
+  font-feature-settings: "ss01", "kern"; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+::selection { background: var(--primary); color: var(--on-primary); }
+:focus-visible { outline: 2px solid var(--champagne); outline-offset: 3px; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; }
+}
+/* Layout : une colonne de lecture. Le pipeline en ligne verticale, chaque étape suivie par le même prospect fictif. */
+.wrap { max-width: 760px; margin: 0 auto; padding-inline: 16px; padding-block: 48px 64px; display: grid; gap: 48px; }
+h1, h2, h3 { font-family: var(--f-display); font-weight: 400; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(36px, 7vw, 52px); line-height: 1.12; letter-spacing: -0.01em; text-transform: uppercase; }
+h1 span { color: var(--muted); }
+h2 { font-size: 28px; line-height: 36px; letter-spacing: -0.01em; text-transform: uppercase; }
+h3 { font: 500 16px/24px var(--f-body); letter-spacing: .15px; }
 p { margin: 0; }
-.lead { font-size: 1.1rem; color: var(--muted); max-width: 62ch; }
-.intro { display: grid; gap: 14px; }
-.eyebrow { font: 600 .74rem var(--f-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+.lead { font: 400 21px/1.6 var(--f-display); color: var(--fg-2); max-width: 62ch; }
+.intro { display: grid; gap: 16px; }
+.intro-top { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; }
+/* Theme switch: three joined segments, Auto follows the system. Same tokens as .chip. */
+.theme { display: inline-flex; }
+.theme button { all: unset; cursor: pointer; position: relative; font: 500 11px/1.5 var(--f-body); letter-spacing: .14em; text-transform: uppercase; padding: 4px 10px; border: 1px solid var(--line); color: var(--fg-2); transition: border-color var(--dur-micro) var(--ease-reveal), color var(--dur-micro) var(--ease-reveal); }
+.theme button + button { margin-left: -1px; }
+.theme button:first-child { border-radius: var(--radius-xs) 0 0 var(--radius-xs); }
+.theme button:last-child { border-radius: 0 var(--radius-xs) var(--radius-xs) 0; }
+.theme button:hover { color: var(--ink); }
+.theme button[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); z-index: 1; }
+.theme button:focus-visible { outline: 2px solid var(--champagne); outline-offset: 3px; z-index: 2; }
+.eyebrow { font: 500 12px/1.5 var(--f-body); letter-spacing: .2em; text-transform: uppercase; color: var(--fg-2); }
 
 .legend { display: flex; flex-wrap: wrap; gap: 8px; }
-.who { display: inline-flex; align-items: center; gap: 6px; font: 600 .74rem/1 var(--f-body); letter-spacing: .03em; padding: 5px 9px; border-radius: 999px; white-space: nowrap; }
-.who::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
-.who.auto { background: var(--auto-soft); color: var(--auto); }
-.who.ai { background: var(--ai-soft); color: var(--ai); }
-.who.you { background: var(--you-soft); color: var(--you); }
-.who.todo { background: var(--todo-soft); color: var(--todo); }
-.who.todo::before { border-radius: 2px; }
+.who { display: inline-flex; align-items: center; gap: 6px; font: 500 10px/1.6 var(--f-body); letter-spacing: .14em; text-transform: uppercase; padding: 3px 9px; border-radius: var(--radius-xs); border: 1px solid transparent; white-space: nowrap; }
+.who::before { content: ""; width: 6px; height: 6px; background: currentColor; transform: rotate(45deg); }
+.who.auto { background: var(--info-container); color: var(--on-info-container); }
+.who.ai { background: transparent; color: var(--ink); border-color: var(--outline); }
+.who.you { background: var(--primary); color: var(--on-primary); }
+.who.todo { background: transparent; color: var(--muted); border: 1px dashed var(--outline); }
+.who.todo::before { background: transparent; border: 1px solid currentColor; }
 
-.funnel { display: grid; gap: 10px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 18px; }
+.funnel { display: grid; gap: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; }
 .frow { display: grid; grid-template-columns: minmax(0, 1fr) 3.2em; gap: 12px; align-items: center; }
-.frow .lab { font-size: .9rem; display: grid; gap: 4px; min-width: 0; }
-.frow .track { height: 10px; background: var(--sunken); border-radius: 5px; overflow: hidden; }
-.frow .track i { display: block; height: 100%; background: var(--accent); border-radius: 5px; min-width: 6px; }
-.frow .n { font: 600 1.1rem var(--f-mono); text-align: right; font-variant-numeric: tabular-nums; }
-.frow.goal .lab { font-weight: 600; } .frow.goal .n { color: var(--accent); }
-.note { font-size: .85rem; color: var(--muted); }
+.frow .lab { font-size: 14px; line-height: 20px; display: grid; gap: 4px; min-width: 0; }
+.frow .track { height: 8px; background: var(--sunken); border-radius: var(--radius-xs); overflow: hidden; }
+.frow .track i { display: block; height: 100%; background: var(--primary); min-width: 6px; }
+.frow .n { font: 400 28px/36px var(--f-display); text-align: right; font-variant-numeric: lining-nums tabular-nums; }
+.frow.goal .lab { font-weight: 500; } .frow.goal .n { font-weight: 500; }
+.note { font-size: 13px; line-height: 18px; color: var(--muted); }
 
 .steps { list-style: none; margin: 0; padding: 0; display: grid; position: relative; }
-.steps::before { content: ""; position: absolute; left: 17px; top: 18px; bottom: 18px; width: 2px; background: var(--line); }
-.step { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 16px; padding-bottom: 28px; }
+.steps::before { content: ""; position: absolute; left: 17px; top: 18px; bottom: 18px; width: 1px; background: var(--line); }
+.step { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 16px; padding-bottom: 32px; }
 .step:last-child { padding-bottom: 0; }
-.num { width: 36px; height: 36px; border-radius: 50%; background: var(--surface); border: 2px solid var(--accent); color: var(--accent); display: grid; place-items: center; font: 700 .95rem var(--f-mono); position: relative; z-index: 1; }
-.step.todo .num { border-style: dashed; border-color: var(--todo); color: var(--todo); }
-.step.you .num { background: var(--accent); color: var(--surface); }
-.body { display: grid; gap: 10px; min-width: 0; padding-top: 4px; }
-.head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+.num { width: 36px; height: 36px; border-radius: 50%; background: var(--surface); border: 1px solid var(--primary); color: var(--primary); display: grid; place-items: center; font: italic 400 20px/1 var(--f-display); font-variant-numeric: lining-nums; position: relative; z-index: 1; }
+.step.todo .num { border-style: dashed; border-color: var(--outline); color: var(--muted); }
+.step.you .num { background: var(--primary); color: var(--on-primary); }
+.body { display: grid; gap: 12px; min-width: 0; padding-top: 4px; }
+.head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .what { color: var(--ink); }
 .what li { margin-bottom: 2px; }
 .what ul { margin: 0; padding-left: 1.1em; }
-.ex { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; display: grid; gap: 6px; font-size: .92rem; min-width: 0; }
-.ex .tag { font: 600 .7rem var(--f-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
-.ex code, .mono { font: .82rem var(--f-mono); }
+.ex { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 12px 16px; display: grid; gap: 8px; font-size: 14px; line-height: 20px; min-width: 0; }
+.ex .tag { font: 500 11px/1.5 var(--f-body); letter-spacing: .15em; text-transform: uppercase; color: var(--muted); }
+.ex code, .mono { font: 13px var(--f-mono); }
 .ex .fact { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
-.ex .fact b { font: 600 .72rem var(--f-mono); color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 1px 5px; align-self: start; }
-.mail { white-space: pre-wrap; font-size: .93rem; line-height: 1.55; border-left: 3px solid var(--accent); padding-left: 12px; overflow-wrap: anywhere; }
-.mail .src { font: 600 .68rem var(--f-mono); color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 4px; }
+.ex .fact b { font: 500 11px var(--f-mono); color: var(--on-primary-container); background: var(--accent-soft); border-radius: var(--radius-xs); padding: 1px 5px; align-self: start; }
+.mail { white-space: pre-wrap; font-size: 15px; line-height: 1.55; border-left: 2px solid var(--primary); padding-left: 12px; overflow-wrap: anywhere; }
+.mail .src { font: 500 11px var(--f-mono); color: var(--on-primary-container); background: var(--accent-soft); border-radius: var(--radius-xs); padding: 0 4px; }
 .blocked { display: grid; gap: 4px; }
-.blocked span { font-size: .84rem; padding: 4px 8px; border-radius: 6px; background: var(--bad-soft); color: var(--bad); }
-.score { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.score big { font: 700 2rem/1 var(--f-mono); color: var(--accent); }
-.bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--sunken); }
+.blocked span { font-size: 13px; line-height: 18px; font-weight: 500; padding: 8px 12px; border-radius: var(--r); background: var(--error-container); color: var(--on-error-container); border: 1px solid var(--error); }
+.score { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.score big { font: 300 40px/48px var(--f-display); font-variant-numeric: lining-nums tabular-nums; color: var(--ink); }
+.bar { display: flex; height: 8px; border-radius: var(--radius-xs); overflow: hidden; background: var(--sunken); }
 .bar i { display: block; height: 100%; }
 .seq { display: grid; gap: 6px; }
-.seq div { display: grid; grid-template-columns: 4.6em minmax(0, 1fr); gap: 10px; font-size: .9rem; }
-.seq b { font: 600 .82rem var(--f-mono); color: var(--muted); }
+.seq div { display: grid; grid-template-columns: 4.6em minmax(0, 1fr); gap: 12px; font-size: 14px; line-height: 20px; }
+.seq b { font: 500 12px/20px var(--f-mono); color: var(--muted); }
 .replies { display: grid; gap: 6px; }
-.replies div { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); gap: 10px; font-size: .9rem; }
-.replies b { font-weight: 600; }
-.time { font: 600 .74rem var(--f-mono); color: var(--muted); }
+.replies div { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); gap: 12px; font-size: 14px; line-height: 20px; }
+.replies b { font-weight: 500; }
+.time { font: 500 12px var(--f-mono); color: var(--muted); }
 
-.day { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.day { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
 .day div { background: var(--surface); display: grid; grid-template-columns: 4.5em minmax(0, 1fr); gap: 12px; padding: 12px 16px; }
-.day b { font: 600 .95rem var(--f-mono); color: var(--accent); }
+.day b { font: 500 14px/22px var(--f-mono); color: var(--ink); }
 
 .status { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-.col { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 8px; align-content: start; }
-.col ul { margin: 0; padding-left: 1.1em; font-size: .92rem; }
+.col { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 8px; align-content: start; }
+.col ul { margin: 0; padding-left: 1.1em; font-size: 14px; line-height: 20px; }
 .col li { margin-bottom: 4px; }
 
 .rules { margin: 0; padding-left: 1.1em; display: grid; gap: 6px; }
-section { display: grid; gap: 14px; }
+section { display: grid; gap: 16px; }
 @media (max-width: 480px) {
   .replies div, .seq div { grid-template-columns: minmax(0, 1fr); gap: 0; }
   .step { gap: 12px; }
@@ -119,7 +191,14 @@ section { display: grid; gap: 14px; }
 
 <div class="wrap">
   <header class="intro">
-    <span class="eyebrow">Bloom, par Doppio Lab</span>
+    <div class="intro-top">
+      <span class="eyebrow">Bloom • Doppio Lab • Prospection</span>
+      <div class="theme" role="group" aria-label="Thème">
+        <button aria-pressed="true" data-theme-set="auto">Auto</button>
+        <button aria-pressed="false" data-theme-set="light">Clair</button>
+        <button aria-pressed="false" data-theme-set="dark">Sombre</button>
+      </div>
+    </div>
     <h1>D'une offre d'emploi ou d'un avis à une étoile, <span>jusqu'au contrat signé</span></h1>
     <p class="lead">Le pipeline en onze étapes. Pour chacune : ce qui se passe, qui le fait, et ce que ça donne sur un prospect suivi de bout en bout, Vélomoov, une app de vélo fictive.</p>
     <div class="legend" aria-label="Qui fait quoi">
@@ -195,7 +274,7 @@ section { display: grid; gap: 14px; }
           <p class="what">Un score sur 100, calculé sans IA donc toujours explicable : adéquation avec ta cible (40 points), force et fraîcheur des signaux (50), lien chaud (10). Au-dessus de 65, on écrit cette semaine. Entre 45 et 65, on suit. En dessous, on surveille.</p>
           <div class="ex">
             <div class="score"><big>78</big><span>à contacter cette semaine</span></div>
-            <div class="bar" role="img" aria-label="Adéquation 40, intention 38, lien chaud 0"><i style="width:40%;background:var(--muted)"></i><i style="width:38%;background:var(--accent)"></i></div>
+            <div class="bar" role="img" aria-label="Adéquation 40, intention 38, lien chaud 0"><i style="width:40%;background:var(--seg-fit)"></i><i style="width:38%;background:var(--seg-int)"></i></div>
             <span class="note">40 adéquation (app sur les deux stores, 100 à 199 personnes, secteur couvert) + 38 intention (plaintes récentes, note en baisse)</span>
           </div>
         </div>
@@ -334,3 +413,19 @@ On fait des audits de 2 jours à prix fixe. Ça vaut un échange de 15 minutes ?
     </ul>
   </section>
 </div>
+<script>
+function setTheme(mode) {
+  if (mode === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = mode;
+  try { if (mode === "auto") localStorage.removeItem("bloom-theme"); else localStorage.setItem("bloom-theme", mode); } catch (_) {}
+  syncTheme();
+}
+function syncTheme() {
+  const mode = document.documentElement.dataset.theme || "auto";
+  document.querySelectorAll("[data-theme-set]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.themeSet === mode));
+}
+document.addEventListener("click", (e) => {
+  const theme = e.target.closest("[data-theme-set]");
+  if (theme) setTheme(theme.dataset.themeSet);
+});
+syncTheme();
+</script>
