@@ -21,6 +21,12 @@ try { const t = localStorage.getItem("bloom-theme"); if (t === "light" || t === 
   --warning: #3A3A3A; --on-warning: #FFFFFF; --warning-container: #EDEDED; --on-warning-container: #000000;
   --info: #000000; --on-info: #FFFFFF; --info-container: #E6E6E6; --on-info-container: #000000;
   --champagne: #000000; --champagne-warm: #8A8A8A;
+  /* Source families: the one place where Bloom leaves monochrome. Horizon Light values, the token is named on each line. */
+  --src-store: #D8E3F0; --on-src-store: #0A1829;   /* primary-container, on-primary-container (Prussian blue) */
+  --src-hiring: #F0D088; --on-src-hiring: #3D2E0A; /* champagne-warm, on-success-container */
+  --src-legal: #6B5E54; --on-src-legal: #FFFFFF;   /* secondary, on-secondary (taupe) */
+  --src-watch: #3A6B8C; --on-src-watch: #FFFFFF;   /* horizon-blue, on-primary */
+  --src-demand: #FFDCC8; --on-src-demand: #351E12; /* coral-warm, on-tertiary-container */
   --elev-1: 0 1px 2px rgba(0,0,0,.06);
   --elev-2: 0 4px 12px -2px rgba(0,0,0,.10);
   --focus-halo: 0 0 0 3px rgba(0,0,0,.18);
@@ -66,6 +72,11 @@ try { const t = localStorage.getItem("bloom-theme"); if (t === "light" || t === 
   --warning: #C8C8C8; --on-warning: #000000; --warning-container: #1F1F1F; --on-warning-container: #FFFFFF;
   --info: #FFFFFF; --on-info: #000000; --info-container: #2A2A2A; --on-info-container: #FFFFFF;
   --champagne: #FFFFFF; --champagne-warm: #8A8A8A;
+  --src-store: #A9C7F5; --on-src-store: #0A1829;   /* Nightfall primary, on-primary */
+  --src-hiring: #E0B878; --on-src-hiring: #3D2E0A; /* champagne-light, Nightfall on-success */
+  --src-legal: #D5C8BE; --on-src-legal: #231D19;   /* Nightfall secondary, on-secondary */
+  --src-watch: #6A9BB8; --on-src-watch: #0A1829;   /* horizon-blue-light, Nightfall on-primary */
+  --src-demand: #F5A882; --on-src-demand: #351E12; /* coral-light, Nightfall on-tertiary */
   --elev-1: 0 1px 2px rgba(255,255,255,.06);
   --elev-2: 0 4px 12px -2px rgba(255,255,255,.08);
   --focus-halo: 0 0 0 3px rgba(255,255,255,.22);
@@ -83,6 +94,11 @@ try { const t = localStorage.getItem("bloom-theme"); if (t === "light" || t === 
   --warning: #C8C8C8; --on-warning: #000000; --warning-container: #1F1F1F; --on-warning-container: #FFFFFF;
   --info: #FFFFFF; --on-info: #000000; --info-container: #2A2A2A; --on-info-container: #FFFFFF;
   --champagne: #FFFFFF; --champagne-warm: #8A8A8A;
+  --src-store: #A9C7F5; --on-src-store: #0A1829;   /* Nightfall primary, on-primary */
+  --src-hiring: #E0B878; --on-src-hiring: #3D2E0A; /* champagne-light, Nightfall on-success */
+  --src-legal: #D5C8BE; --on-src-legal: #231D19;   /* Nightfall secondary, on-secondary */
+  --src-watch: #6A9BB8; --on-src-watch: #0A1829;   /* horizon-blue-light, Nightfall on-primary */
+  --src-demand: #F5A882; --on-src-demand: #351E12; /* coral-light, Nightfall on-tertiary */
   --elev-1: 0 1px 2px rgba(255,255,255,.06);
   --elev-2: 0 4px 12px -2px rgba(255,255,255,.08);
   --focus-halo: 0 0 0 3px rgba(255,255,255,.22);
@@ -214,8 +230,13 @@ tr:last-child td { border-bottom: 0; }
 @media (prefers-reduced-motion: no-preference) { .fact.flash { transition: background var(--dur-standard) var(--ease-luxury); } }
 
 /* Second version of the dashboard (design: bloom-app.css): one header line, a single work queue, three views. */
-header.top { align-items: center; gap: 8px 24px; border-bottom: 1px solid var(--line); }
-.top .tabs { flex: 1; border-bottom: 0; margin-bottom: -1px; }
+header.top { align-items: center; gap: 8px 16px; min-width: 0; border-bottom: 1px solid var(--line); }
+.top .tabs { flex: 1; min-width: 0; border-bottom: 0; margin-bottom: -1px; scrollbar-width: none; }
+/* Five tabs on one line beside the status and the theme switch: tighter than the base tab. On a narrow
+   screen the tabs scroll sideways inside the header, the page itself never does. */
+.top .tabs button { padding-inline: 10px; }
+/* The date left the header to make room for the fifth tab: the status pill and the theme switch stay. */
+.top .meta > span:not(.pill) { display: none; }
 
 /* Theme switch: three joined segments, Auto follows the system. Same tokens as .chip. */
 .theme { display: inline-flex; }
@@ -268,15 +289,66 @@ header.top { align-items: center; gap: 8px 24px; border-bottom: 1px solid var(--
 .done b { font: italic 400 28px/36px var(--f-display); }
 .done span { color: var(--muted); }
 
-/* Prospects: what the last discovery run brought back, one chip per source. A source that found something is outlined in ink. */
+/* Source families: five kinds of source, five Horizon hues (tokens at the top of this block). */
+[data-family="store"] { --src: var(--src-store); --on-src: var(--on-src-store); }
+[data-family="hiring"] { --src: var(--src-hiring); --on-src: var(--on-src-hiring); }
+[data-family="legal"] { --src: var(--src-legal); --on-src: var(--on-src-legal); }
+[data-family="watch"] { --src: var(--src-watch); --on-src: var(--on-src-watch); }
+[data-family="demand"] { --src: var(--src-demand); --on-src: var(--on-src-demand); }
+/* Source chip of a card: filled with the hue of its family. A source outside the five families stays grey. */
+.src-chip { background: var(--src, var(--info-container)); color: var(--on-src, var(--on-info-container)); }
+
+/* Prospects: what the last discovery run brought back, one chip per source. A source that found something
+   is filled with the hue of its family (outlined in ink when it has none), the others stay grey. */
 .runline { display: grid; gap: 8px; }
 .runchips { display: flex; gap: 8px; flex-wrap: wrap; }
 .runchip { font: 500 11px/1.5 var(--f-body); letter-spacing: .14em; text-transform: uppercase; padding: 4px 10px; border-radius: var(--radius-xs); border: 1px solid var(--line); color: var(--muted); }
-.runchip.hit { border-color: var(--primary); color: var(--ink); }
+.runchip.hit { background: var(--src, transparent); border-color: var(--src, var(--primary)); color: var(--on-src, var(--ink)); }
 
 /* Prospect card: the fact that put the company in the list, always visible. Other facts stay in the disclosure. */
 .trigger { display: grid; gap: 4px; padding: 12px 16px; background: var(--surface-container-low); border-radius: var(--radius-xs); }
 .trigger a { color: var(--muted); }
+
+/* Carnet and Liste noire: one line per person or per blocked company. Name and detail on the left,
+   the status or the action on the right. Lines are separated by a hairline, like table rows. */
+.people { display: grid; min-width: 0; }
+.people .eyebrow { padding-bottom: 8px; }
+.person { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 0; border-top: 1px solid var(--line); }
+.person > span:first-child { flex: 1 1 220px; min-width: 0; }
+.person small { font-size: 13px; line-height: 18px; color: var(--muted); }
+.person a { color: var(--muted); }
+.person .pill { border-color: var(--outline); }
+
+/* Méthode view (design: bloom-app.css): the pipeline explained step by step, in one reading column. Its running example is fictional. */
+.method { display: grid; gap: 48px; max-width: 720px; min-width: 0; padding-top: 12px; }
+.part { display: grid; gap: 16px; min-width: 0; }
+.actors { display: flex; flex-wrap: wrap; gap: 8px; }
+.actor { display: inline-flex; align-items: center; gap: 6px; font: 500 10px/1.6 var(--f-body); letter-spacing: .14em; text-transform: uppercase; padding: 3px 9px; border-radius: var(--radius-xs); border: 1px solid transparent; white-space: nowrap; }
+.actor::before { content: ""; width: 6px; height: 6px; background: currentColor; transform: rotate(45deg); }
+.actor.auto { background: var(--info-container); color: var(--on-info-container); }
+.actor.ai { background: transparent; color: var(--ink); border-color: var(--outline); }
+.actor.you { background: var(--primary); color: var(--on-primary); }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; position: relative; min-width: 0; }
+.steps::before { content: ""; position: absolute; left: 17px; top: 18px; bottom: 18px; width: 1px; background: var(--line); }
+.step { position: relative; display: grid; grid-template-columns: 36px minmax(0, 1fr); gap: 16px; padding-bottom: 32px; }
+.step:last-child { padding-bottom: 0; }
+.num { position: relative; z-index: 1; width: 36px; height: 36px; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--primary); border-radius: var(--radius-xs); color: var(--primary); font: italic 400 20px/1 var(--f-display); font-variant-numeric: lining-nums; }
+.step.you .num { background: var(--primary); color: var(--on-primary); }
+.step-body { display: grid; gap: 12px; min-width: 0; padding-top: 4px; }
+.step-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.step-head h3 { margin: 0; font: 500 16px/24px var(--f-body); letter-spacing: .15px; }
+.step-body p, .step-body ul, .rules { margin: 0; }
+.step-body ul, .rules { padding-left: 1.1em; }
+.rules { display: grid; gap: 6px; }
+.when { font: 500 12px var(--f-mono); color: var(--muted); }
+.ex { display: grid; gap: 8px; min-width: 0; padding: 12px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); font-size: 14px; line-height: 20px; }
+.ex .facts { border-top: 0; padding-top: 0; }
+.ex .body { border-left: 2px solid var(--primary); padding-left: 12px; }
+.ex .cite { cursor: default; }
+.rows { display: grid; gap: 6px; }
+.rows div { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); gap: 12px; }
+.rows b { font: 500 12px/20px var(--f-mono); color: var(--muted); }
+@media (max-width: 480px) { .rows div { grid-template-columns: minmax(0, 1fr); gap: 0; } .step { gap: 12px; } }
 </style>
 
 <div class="wrap">
@@ -285,7 +357,9 @@ header.top { align-items: center; gap: 8px 24px; border-bottom: 1px solid var(--
     <nav class="tabs" role="tablist">
       <button role="tab" id="tab-today" aria-selected="true" data-tab="today">À faire<span class="count" id="c-today">0</span></button>
       <button role="tab" id="tab-prospects" aria-selected="false" data-tab="prospects">Prospects<span class="count" id="c-prospects">0</span></button>
+      <button role="tab" id="tab-book" aria-selected="false" data-tab="book">Carnet<span class="count" id="c-book">0</span></button>
       <button role="tab" id="tab-results" aria-selected="false" data-tab="results">Résultats</button>
+      <button role="tab" id="tab-method" aria-selected="false" data-tab="method">Méthode</button>
     </nav>
     <div class="meta">
       <span id="mode" class="pill demo">Données d'exemple</span>
@@ -343,14 +417,36 @@ header.top { align-items: center; gap: 8px 24px; border-bottom: 1px solid var(--
     </div>
     <div class="runline" id="runline" hidden></div>
     <div id="newlist" class="stack"></div>
+    <div class="section-head" id="demands-head" hidden><h2>Demandes à répondre</h2><p>Publiées par des entreprises. On répond sur la plateforme, pas par email.</p></div>
+    <div id="demands" class="stack"></div>
     <div class="section-head"><h2>Comptes classés</h2>
       <div class="legend"><span><i style="background:var(--seg-fit)"></i>adéquation (40)</span><span><i style="background:var(--seg-int)"></i>intention (50)</span><span><i style="background:var(--seg-warm)"></i>lien chaud (10)</span></div>
     </div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Compte</th><th>Score</th><th>Offre suggérée</th><th>Pourquoi</th><th>Mis à jour</th></tr></thead>
+      <thead><tr><th>Compte</th><th>Score</th><th>Offre suggérée</th><th>Pourquoi</th><th>Mis à jour</th><th></th></tr></thead>
       <tbody id="accounts"></tbody>
     </table></div>
     <p class="note">Score sur 100, calculé sans IA : adéquation, signaux récents, lien chaud. Au-dessus de 65, on écrit cette semaine.</p>
+    <div class="section-head"><h2>Liste noire</h2><p>Jamais prospectées : ni recherche, ni séquence, ni email.</p></div>
+    <div class="card">
+      <form class="form-grid" id="block-form" onsubmit="return false">
+        <label for="block-name">Entreprise<input type="text" id="block-name" placeholder="Nom de l'entreprise" autocomplete="off"></label>
+        <label for="block-reason">Raison (optionnel)<input type="text" id="block-reason" placeholder="Client actuel, concurrent, hors cible"></label>
+      </form>
+      <div class="actions"><button class="btn" data-act="block-name" data-id="0">Ajouter à la liste noire</button></div>
+      <div class="people" id="blacklist"></div>
+    </div>
+    <p class="note">Mettre un prospect en liste noire arrête ses séquences en cours et rejette ses brouillons en attente. Le réintégrer ne les relance pas.</p>
+  </main>
+
+  <main id="view-book" class="stack" hidden>
+    <div class="hero">
+      <h1 id="book-headline"></h1>
+      <p>Les personnes à qui écrire, entreprise par entreprise.</p>
+    </div>
+    <div class="toolbar"><a class="btn" id="book-export" href="/api/book.csv">Exporter le carnet (CSV)</a></div>
+    <div id="book" class="stack"></div>
+    <p class="note">Les dirigeants viennent de l'Annuaire des entreprises (registre public). Ce sont des mandataires sociaux : pour un directeur technique ou un responsable mobile, la recherche LinkedIn reste à faire à la main. Personne n'est contacté tant que vous ne l'avez pas ajouté.</p>
   </main>
 
   <main id="view-results" class="stack" hidden>
@@ -376,6 +472,178 @@ header.top { align-items: center; gap: 8px 24px; border-bottom: 1px solid var(--
         <tbody id="agents"></tbody>
       </table></div>
     </details>
+  </main>
+
+  <main id="view-method" class="stack" hidden>
+    <div class="hero">
+      <h1>Du signal au contrat signé.</h1>
+      <p>Le pipeline en onze étapes. Pour chacune : ce qui se passe, qui le fait, et ce que cela donne sur Vélomoov, une app de vélo fictive.</p>
+    </div>
+    <div class="method">
+      <div class="actors" aria-label="Qui fait quoi"><span class="actor auto">Automatique</span><span class="actor ai">Agent IA</span><span class="actor you">Vous</span></div>
+
+      <section class="part">
+        <h2>Les onze étapes</h2>
+        <ol class="steps">
+          <li class="step">
+            <span class="num">1</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Trouver les entreprises</h3><span class="actor auto">Automatique</span><span class="when">chaque nuit, vers 5 h</span></div>
+              <p>Bloom lit des sources publiques, sans IA, puis écarte les ESN, les cabinets de recrutement et les agences.</p>
+              <ul>
+                <li>Les classements App Store France de 12 catégories : 120 apps examinées par nuit. Seules restent celles d'un éditeur français dont les avis se dégradent ou qui n'est plus mise à jour.</li>
+                <li>Les offres d'emploi de développeur mobile publiées en France (API France Travail).</li>
+                <li>Selon la configuration : annonces légales (BODACC), marchés publics français et européens, organisations GitHub qui publient du code Kotlin Multiplatform.</li>
+                <li>Votre propre liste, importée en CSV depuis la vue Prospects.</li>
+              </ul>
+              <p>Chaque entreprise reçoit son SIREN, son effectif, son app et son site quand ils existent, et un premier score.</p>
+              <div class="ex"><span class="eyebrow">Vélomoov</span><span>Trouvée dans le classement Voyage : éditeur français, note des avis récents en baisse.</span></div>
+            </div>
+          </li>
+          <li class="step">
+            <span class="num">2</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Collecter les faits</h3><span class="actor auto">Automatique</span></div>
+              <p>Sans IA : chaque fait est enregistré avec le lien de sa source et sa date. Note et avis App Store, date de la dernière version, offres d'emploi ouvertes, effectif et secteur dans l'annuaire des entreprises.</p>
+              <div class="ex">
+                <span class="eyebrow">Faits enregistrés</span>
+                <div class="facts">
+                  <div class="fact"><code>a2f1</code><span>11 avis sur 30 des 90 derniers jours signalent un problème technique, version la plus citée : 5.2</span></div>
+                  <div class="fact"><code>7b31</code><span>Moyenne des avis récents 2,9, contre 4,3 en moyenne globale</span></div>
+                  <div class="fact"><code>c09e</code><span>Tranche d'effectif INSEE : 100 à 199 salariés</span></div>
+                </div>
+              </div>
+            </div>
+          </li>
+          <li class="step">
+            <span class="num">3</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Comprendre l'entreprise</h3><span class="actor ai">Agent IA</span></div>
+              <p>Un agent lit le site, la page carrières et le blog tech, 6 pages au maximum. Une citation n'est gardée que si le code la retrouve mot pour mot dans la page. L'agent rédige ensuite un dossier : résumé, hypothèse sur le besoin, angle d'approche, offre adaptée, et les raisons de ne pas contacter s'il y en a.</p>
+              <div class="ex">
+                <span class="eyebrow">Dossier</span>
+                <span><strong>Hypothèse :</strong> une régression introduite en 5.2 dans le parcours de paiement, que les crash reports ne voient pas parce que l'app ne plante pas vraiment.</span>
+                <span><strong>Offre :</strong> audit de 2 jours à prix fixe.</span>
+              </div>
+            </div>
+          </li>
+          <li class="step">
+            <span class="num">4</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Classer</h3><span class="actor auto">Automatique</span></div>
+              <p>Un score sur 100, calculé sans IA donc toujours explicable : adéquation avec votre cible (40 points), force et fraîcheur des signaux (50), lien chaud (10). Au-dessus de 65, on écrit cette semaine. Entre 45 et 65, on suit. En dessous, on surveille.</p>
+              <div class="ex">
+                <span class="eyebrow">Vélomoov</span>
+                <div class="mini-score"><span>78</span><div class="bar" title="adéquation 40, intention 38, lien chaud 0"><i class="fit" style="width:40%"></i><i class="int" style="width:38%"></i></div></div>
+                <span class="note">40 d'adéquation (app sur les deux stores, 100 à 199 personnes, secteur couvert), 38 d'intention (plaintes récentes, note en baisse).</span>
+              </div>
+            </div>
+          </li>
+          <li class="step you">
+            <span class="num">5</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Trouver la bonne personne</h3><span class="actor you">Vous</span><span class="actor auto">Automatique</span></div>
+              <p>Pour chaque entreprise au-dessus du seuil, la vue Prospects indique qui viser selon l'offre (Head of Mobile pour un audit, Engineering Manager pour de la régie) et propose la recherche LinkedIn toute prête. Vous choisissez la personne, vous saisissez son nom et son rôle. Si Dropcontact est branché, Bloom cherche son email professionnel. La séquence est lancée.</p>
+              <div class="ex"><span class="eyebrow">Vélomoov</span><span>Claire Morel, Head of Mobile. Séquence « App en difficulté » lancée.</span></div>
+            </div>
+          </li>
+          <li class="step">
+            <span class="num">6</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Rédiger</h3><span class="actor ai">Agent IA</span><span class="actor auto">Garde-fou</span></div>
+              <p>L'agent part du constat sur leur app, jamais d'une présentation de Doppio Lab. Le premier email doit citer au moins un fait sourcé, et chaque chiffre du corps du message doit figurer dans un fait cité. Le garde-fou bloque aussi le jargon (« accompagner », « leader ») et tout lien dans le corps du premier email. L'agent corrige, deux fois au maximum.</p>
+              <div class="ex">
+                <span class="eyebrow">Brouillon, première version refusée</span>
+                <div class="guard"><div class="v BLOCK">« 40 % de vos utilisateurs » : chiffre absent des faits cités</div><div class="v BLOCK">« Nous accompagnons » : expression interdite</div></div>
+              </div>
+              <div class="ex">
+                <span class="eyebrow">Version corrigée</span>
+                <div class="subject">crash au paiement depuis la 5.2</div>
+                <div class="body">Bonjour Claire,
+
+Depuis la version 5.2, 11 avis sur 30 des 90 derniers jours signalent un problème technique, souvent au paiement <span class="cite">a2f1</span>. La note des avis récents est descendue à 2,9 <span class="cite">7b31</span>.
+
+Mon hypothèse : une régression côté session ou SDK de paiement, invisible dans les crash reports.
+
+On fait des audits de 2 jours à prix fixe. Ça vaut un échange de 15 minutes ?</div>
+              </div>
+            </div>
+          </li>
+          <li class="step you">
+            <span class="num">7</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Valider</h3><span class="actor you">Vous</span></div>
+              <p>Rien ne part sans vous. Dans la vue À faire, vous approuvez, vous corrigez ou vous rejetez. Chaque fait garde le lien vers sa source. Quand vous corrigez, le garde-fou revérifie votre version, et vos corrections récentes servent d'exemples de ton pour les messages suivants.</p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="num">8</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Envoyer et relancer</h3><span class="actor auto">Automatique</span><span class="actor you">Vous pour LinkedIn</span></div>
+              <p>L'email part du mardi au jeudi, entre 8 h 30 et 11 h 30, à raison de 25 envois par jour et par boîte par défaut. La désinscription se fait en un clic. Les étapes LinkedIn restent manuelles : Bloom prépare la note, vous l'envoyez et vous cochez « Fait ».</p>
+              <div class="ex">
+                <span class="eyebrow">Séquence « App en difficulté »</span>
+                <div class="rows">
+                  <div><b>Jour 0</b><span>Email avec le constat et l'offre d'audit</span></div>
+                  <div><b>Jour 2</b><span>Demande de connexion LinkedIn, sans pitch (vous)</span></div>
+                  <div><b>Jour 6</b><span>Relance courte : ce qu'un audit comparable a révélé</span></div>
+                </div>
+              </div>
+            </div>
+          </li>
+          <li class="step">
+            <span class="num">9</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Lire les réponses</h3><span class="actor ai">Agent IA</span><span class="actor auto">Automatique</span></div>
+              <p>Toute réponse d'une personne arrête la séquence. Un agent classe la réponse et la résume, puis le code applique la règle qui va avec.</p>
+              <div class="ex rows">
+                <div><b>Intéressé</b><span>Comptée comme réponse positive, résumée dans votre file</span></div>
+                <div><b>Pas maintenant</b><span>Date de recontact extraite du message et affichée</span></div>
+                <div><b>Absence</b><span>Séquence en pause</span></div>
+                <div><b>Stop</b><span>Adresse inscrite sur la liste d'opposition</span></div>
+              </div>
+              <div class="ex"><span class="eyebrow">Vélomoov</span><span>Claire répond : « Oui, on a des tickets paiement depuis la 5.2. Jeudi ou vendredi matin ? »</span></div>
+            </div>
+          </li>
+          <li class="step you">
+            <span class="num">10</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Rendez-vous et signature</h3><span class="actor you">Vous</span></div>
+              <p>Vous faites l'appel avec le dossier sous les yeux. L'objectif du premier appel est de vendre l'audit de 2 jours, pas le projet. L'audit livre un rapport et des correctifs priorisés, puis ouvre le forfait ou la régie. Le pipeline des affaires se lit dans la vue Résultats.</p>
+            </div>
+          </li>
+          <li class="step">
+            <span class="num">11</span>
+            <div class="step-body">
+              <div class="step-head"><h3>Apprendre</h3><span class="actor ai">Agent IA</span><span class="when">le lundi, 7 h</span></div>
+              <p>Le lundi matin, un agent lit les chiffres de la semaine et rédige une note de 200 mots au maximum. Elle est enregistrée dans le journal et n'est pas encore affichée ici.</p>
+            </div>
+          </li>
+        </ol>
+      </section>
+
+      <section class="part">
+        <h2>Votre demi-heure par jour</h2>
+        <div class="ex rows">
+          <div><b>5 min</b><span>Trouver la bonne personne pour 3 à 5 nouveaux prospects</span></div>
+          <div><b>10 min</b><span>Valider 5 à 10 emails dans la vue À faire</span></div>
+          <div><b>5 min</b><span>Envoyer 2 ou 3 notes LinkedIn préparées</span></div>
+          <div><b>10 min</b><span>Répondre aux personnes intéressées et caler les rendez-vous</span></div>
+        </div>
+        <p class="note">Un repère, pas une mesure. Le reste tourne sans vous : trouver, rechercher, classer, rédiger, envoyer les emails validés, trier les réponses.</p>
+      </section>
+
+      <section class="part">
+        <h2>Ce que Bloom ne fait pas</h2>
+        <ul class="rules">
+          <li>Envoyer un message que vous n'avez pas validé.</li>
+          <li>Laisser partir un premier email sans fait sourcé, ou un chiffre absent des faits cités dans le corps du message.</li>
+          <li>Agir à votre place sur LinkedIn.</li>
+          <li>Suivre l'ouverture des emails avec un pixel.</li>
+          <li>Réécrire à une adresse inscrite sur la liste d'opposition.</li>
+        </ul>
+      </section>
+    </div>
   </main>
 </div>
 <div class="toast" id="toast" hidden></div>
@@ -435,7 +703,32 @@ const DEMO = {
       contactName: "Karim Benali", contactRole: "Engineering Manager", accountName: "Banque Ardoise",
       facts: [{ id: "c4d09e11", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/offres/recherche/detail/000XXXX" }] }
   ],
-  lastRun: { ranAt: "2026-10-10T00:14:00Z", running: false, bySource: { "offres d'emploi": 1, "BODACC": 1, "marché public": 1, "classement App Store": 0, "GitHub": 0 }, notes: ["pages carrières : 4 lues, 1 avec une offre mobile"] },
+  lastRun: { ranAt: "2026-10-10T00:14:00Z", running: false, bySource: { "offres d'emploi": 1, "BODACC": 1, "marché public": 1, "Codeur": 2, "presse": 1, "classement App Store": 0, "marché européen": 0, "GitHub": 0 }, notes: ["pages carrières : 4 lues, 1 avec une offre mobile"] },
+  demands: [
+    { key: "codeur:900001", source: "Codeur", title: "Application mobile de réservation pour un réseau de salles de sport", url: "https://www.codeur.com/projects", budget: "1 000 € à 10 000 €", categories: ["Application mobile", "iOS", "Android"], publishedAt: "2026-10-10T08:00:00Z" },
+    { key: "codeur:900002", source: "Codeur", title: "Refonte d'une application Android de suivi de tournées", url: "https://www.codeur.com/projects", budget: "10 000 € et plus", categories: ["Application mobile", "Android", "API"], publishedAt: "2026-10-09T08:00:00Z" }
+  ],
+  blacklist: [
+    { id: 901, accountId: 901, name: "Crédit Horizon", reason: "Client actuel", since: "2026-10-09T09:00:00Z" },
+    { id: 12, name: "Agence Pixelle", reason: "Concurrent", since: "2026-10-02T09:00:00Z" },
+    { id: 902, accountId: 902, name: "Holding Marbrier", reason: "écarté depuis le dashboard", since: "2026-09-28T09:00:00Z" }
+  ],
+  book: [
+    { accountId: 1, name: "Vélomoov", score: 78, source: "classement App Store", offer: "DISCOVERY", why: "celui qui subit le problème technique de l'app",
+      contacts: [{ contact: { fullName: "Claire Morel", role: "Head of Mobile", email: "claire.morel@velomoov.example", dataSource: "saisie manuelle" }, status: "sequence" }],
+      officers: [{ fullName: "Antoine Leroy", role: "Président de SAS", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
+      searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head%20of%20Mobile%20V%C3%A9lomoov" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20V%C3%A9lomoov" }] },
+    { accountId: 11, name: "Banque Ardoise", score: 71, source: "offres d'emploi", offer: "REGIE", why: "celui qui porte le recrutement en retard",
+      contacts: [{ contact: { fullName: "Hugo Perrin", role: "Engineering Manager", email: null, dataSource: "saisie manuelle" }, status: "no-email" }],
+      officers: [{ fullName: "Nadia Benali", role: "Directeur général", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }, { fullName: "Paul Girard", role: "Président du conseil d'administration", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
+      searches: [{ role: "Engineering Manager", url: "https://www.linkedin.com/search/results/people/?keywords=Engineering%20Manager%20Banque%20Ardoise" }] },
+    { accountId: 3, name: "Studio Polka", score: 66, source: "GitHub", offer: "TRAINING_KMP", why: "celui qui fait monter l'équipe en compétence",
+      contacts: [{ contact: { fullName: "Inès Caron", role: "Lead Android", email: "ines@polka.example", dataSource: "import de la liste Doppio" }, status: "email" }],
+      officers: [], searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head%20of%20Mobile%20Studio%20Polka" }] },
+    { accountId: 12, name: "Trackr Logistique", score: 53, source: "BODACC", offer: "FORFAIT", why: "celui qui arbitre le budget du nouveau produit",
+      contacts: [], officers: [{ fullName: "Marc Aubert", role: "Président de SAS", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
+      searches: [{ role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20Trackr%20Logistique" }] }
+  ],
   toComplete: [
     { row: { account: { id: 11, name: "Banque Ardoise", domain: "ardoise.example", source: "offres d'emploi" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile"] },
       offer: "REGIE", roles: ["Engineering Manager", "CTO", "Head of Mobile"], why: "celui qui porte le recrutement en retard",
@@ -478,13 +771,14 @@ async function api(path, opts) {
 
 async function load() {
   try {
-    const [overview, drafts, approved, replies, toComplete, lastRun] = await Promise.all([
+    const [overview, drafts, approved, replies, toComplete, lastRun, demands, book, blacklist] = await Promise.all([
       api("/api/overview"), api("/api/drafts?status=PENDING_REVIEW"), api("/api/drafts?status=APPROVED"), api("/api/replies"), api("/api/to-complete"),
-      api("/api/discovery/last").catch(() => null)
+      api("/api/discovery/last").catch(() => null), api("/api/demands").catch(() => []),
+      api("/api/book").catch(() => []), api("/api/blacklist").catch(() => [])
     ]);
-    state = { demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete, lastRun };
+    state = { demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete, lastRun, demands, book, blacklist };
   } catch (e) {
-    state = { demo: true, overview: DEMO.overview, drafts: structuredClone(DEMO.drafts), tasks: structuredClone(DEMO.tasks), replies: structuredClone(DEMO.replies), toComplete: structuredClone(DEMO.toComplete), lastRun: DEMO.lastRun };
+    state = { demo: true, overview: DEMO.overview, drafts: structuredClone(DEMO.drafts), tasks: structuredClone(DEMO.tasks), replies: structuredClone(DEMO.replies), toComplete: structuredClone(DEMO.toComplete), lastRun: DEMO.lastRun, demands: structuredClone(DEMO.demands), book: structuredClone(DEMO.book), blacklist: structuredClone(DEMO.blacklist) };
   }
   render();
 }
@@ -541,7 +835,7 @@ function render() {
   $("#c-today").textContent = total;
   $("#c-prospects").textContent = waiting;
   $("#new-headline").textContent = waiting ? `${plural(waiting, "prospect", "prospects")} à compléter.` : "Aucun prospect à compléter.";
-  renderDrafts(); renderReplies(); renderTasks(); renderNew(); renderAccounts(); renderPipeline(); renderHealth();
+  renderDrafts(); renderReplies(); renderTasks(); renderNew(); renderAccounts(); renderBlacklist(); renderBook(); renderPipeline(); renderHealth();
 }
 
 function bodyWithCites(text) {
@@ -603,6 +897,10 @@ const FACT_KINDS = {
   APP_REVIEW: "Avis App Store", APP_METADATA: "App Store", COMPANY_REGISTRY: "Annuaire des entreprises", WEB_PAGE: "Site web", MANUAL: "Saisie manuelle"
 };
 
+// Source families: one Horizon hue per kind of source. A source outside the map keeps the grey chip.
+const SOURCE_FAMILIES = { "classement App Store": "store", "offres d'emploi": "hiring", "BODACC": "legal", "marché public": "legal", "marché européen": "legal", "presse": "watch", "GitHub": "watch", "Codeur": "demand" };
+const familyAttr = (source) => SOURCE_FAMILIES[source] ? ` data-family="${SOURCE_FAMILIES[source]}"` : "";
+
 /** Last discovery run: one chip per source with what it found, then the sources that are off or failed. */
 function renderRun() {
   const box = $("#runline"), run = state.lastRun;
@@ -610,12 +908,24 @@ function renderRun() {
   if (box.hidden) return;
   const when = run.ranAt ? new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(run.ranAt)) : "";
   box.innerHTML = `<span class="eyebrow">${run.running ? "Recherche en cours" : "Dernière recherche"}${when ? " · " + esc(when) : ""}</span>
-    <div class="runchips">${Object.entries(run.bySource || {}).map(([label, n]) => `<span class="runchip ${n > 0 ? "hit" : ""}">${esc(label)} · ${n}</span>`).join("")}</div>
+    <div class="runchips">${Object.entries(run.bySource || {}).map(([label, n]) => `<span class="runchip ${n > 0 ? "hit" : ""}"${familyAttr(label)}>${esc(label)} · ${n}</span>`).join("")}</div>
     ${(run.notes || []).map((x) => `<span class="note">${esc(x.charAt(0).toUpperCase() + x.slice(1))}.</span>`).join("")}`;
+}
+
+/** Requests published on a marketplace: no named company, so no email. One action: answer on the platform. */
+function renderDemands() {
+  const list = state.demands || [];
+  $("#demands-head").hidden = !list.length;
+  $("#demands").innerHTML = list.map((d) => `<article class="card">
+      <div class="who"><span><strong>${esc(d.title)}</strong></span><span class="src-chip"${familyAttr(d.source)}>${esc(d.source)}</span></div>
+      <div class="trigger"><span class="eyebrow">Budget : ${esc(d.budget || "non précisé")}</span><span>${esc((d.categories || []).join(", "))}${d.publishedAt ? " · publié le " + new Date(d.publishedAt).toLocaleDateString("fr-FR") : ""}</span></div>
+      <div class="actions"><a class="btn primary" href="${esc(d.url)}" target="_blank" rel="noopener">Répondre sur ${esc(d.source)}</a>
+      <button class="btn ghost" data-act="dismiss-demand" data-key="${esc(d.key)}">Écarter</button></div></article>`).join("");
 }
 
 function renderNew() {
   renderRun();
+  renderDemands();
   const box = $("#newlist");
   if (!state.toComplete.length) { box.innerHTML = `<div class="empty">La recherche tourne chaque nuit à 2h. Lance-la maintenant ou importe ta liste.</div>`; return; }
   box.innerHTML = state.toComplete.map(({ row: r, offer, roles, why, searches, facts }) => {
@@ -625,7 +935,7 @@ function renderNew() {
     const [trigger, ...others] = facts || [];
     const n = others.length;
     return `<article class="card" id="n-${id}">
-      <div class="who"><span><strong>${esc(r.account.name)}</strong>${r.account.domain ? " · " + esc(r.account.domain) : ""}</span><span class="src-chip">${esc(r.account.source || "manuel")}</span></div>
+      <div class="who"><span><strong>${esc(r.account.name)}</strong>${r.account.domain ? " · " + esc(r.account.domain) : ""}</span><span class="src-chip"${familyAttr(r.account.source)}>${esc(r.account.source || "manuel")}</span></div>
       <div class="mini-score"><span>${r.score}</span><div class="bar"><i class="fit" style="width:${fit}%"></i><i class="int" style="width:${intent}%"></i><i class="warm" style="width:${warm}%"></i></div></div>
       ${trigger ? `<div class="trigger"><span class="eyebrow">${FACT_KINDS[trigger.kind] || "Source"}</span><span>${esc(trigger.statement)} · <a href="${esc(trigger.sourceUrl)}" target="_blank" rel="noopener">source</a></span></div>` : ""}
       <div><strong>${OFFERS[offer] || offer}</strong> · à contacter : ${esc(roles.join(", "))}, ${esc(why)}</div>
@@ -639,7 +949,7 @@ function renderNew() {
       </form>
       <div class="actions">
         <button class="btn primary" data-act="add-contact" data-id="${id}">Ajouter et lancer la séquence</button>
-        <button class="btn ghost" data-act="exclude" data-id="${id}">Écarter</button>
+        <button class="btn ghost" data-act="exclude" data-id="${id}">Liste noire</button>
       </div>
     </article>`;
   }).join("");
@@ -654,8 +964,38 @@ function renderAccounts() {
       <td><div class="score"><span>${r.score}</span><div class="bar" title="adéquation ${fit}, intention ${intent}, lien chaud ${warm}"><i class="fit" style="width:${fit}%"></i><i class="int" style="width:${intent}%"></i><i class="warm" style="width:${warm}%"></i></div></div><span class="tier ${t}">${tl}</span></td>
       <td>${OFFERS[r.recommendedOffer] || "aucune"}</td>
       <td class="reasons">${r.reasons.slice(0, 3).map(esc).join("<br>")}</td>
-      <td class="reasons">${r.refreshedAt ? new Date(r.refreshedAt).toLocaleDateString("fr-FR") : "jamais"}</td></tr>`;
+      <td class="reasons">${r.refreshedAt ? new Date(r.refreshedAt).toLocaleDateString("fr-FR") : "jamais"}</td>
+      <td><button class="btn ghost" data-act="exclude" data-id="${r.account.id}">Liste noire</button></td></tr>`;
   }).join("");
+}
+
+/** Companies never prospected: excluded accounts (accountId set) and names blocked by hand share one list. */
+function renderBlacklist() {
+  const list = state.blacklist || [];
+  $("#blacklist").innerHTML = list.map((b) => {
+    const detail = [b.reason, b.since && "depuis le " + new Date(b.since).toLocaleDateString("fr-FR")].filter(Boolean).join(" · ");
+    return `<div class="person"><span><strong>${esc(b.name)}</strong>${detail ? `<br><small>${esc(detail)}</small>` : ""}</span>
+      <button class="btn ghost" data-act="${b.accountId ? "restore" : "unblock"}" data-id="${b.id}">Réintégrer</button></div>`;
+  }).join("");
+}
+
+const CONTACT_STATUS = { sequence: "Séquence en cours", email: "Email connu", "no-email": "Email manquant" };
+
+/** Contact book: per company, the people already chosen, then the legal officers the company registry publishes. */
+function renderBook() {
+  const list = state.book || [];
+  const people = list.reduce((n, e) => n + e.contacts.length, 0);
+  $("#c-book").textContent = people;
+  $("#book-headline").textContent = list.length ? `${plural(list.length, "entreprise", "entreprises")}, ${plural(people, "contact", "contacts")}.` : "Carnet vide.";
+  $("#book-export").hidden = !list.length || state.demo;
+  if (!list.length) { $("#book").innerHTML = `<div class="empty">Le carnet se remplit avec les prospects au-dessus de 45 et les contacts que vous ajoutez.</div>`; return; }
+  $("#book").innerHTML = list.map((e) => `<article class="card">
+      <div class="who"><span><strong>${esc(e.name)}</strong> · score ${e.score}</span><span class="src-chip"${familyAttr(e.source)}>${esc(e.source || "manuel")}</span></div>
+      <div><strong>${OFFERS[e.offer] || e.offer}</strong> · à contacter : ${esc(e.why)}</div>
+      ${e.contacts.length ? `<div class="people"><span class="eyebrow">Contacts choisis</span>${e.contacts.map(({ contact: c, status }) => `<div class="person"><span><strong>${esc(c.fullName)}</strong> · ${esc(c.role)}<br><small>${esc([c.email, c.dataSource].filter(Boolean).join(" · "))}</small></span><span class="pill">${CONTACT_STATUS[status] || ""}</span></div>`).join("")}</div>` : ""}
+      ${e.officers.length ? `<div class="people"><span class="eyebrow">Dirigeants publiés au registre</span>${e.officers.map((o, i) => `<div class="person"><span><strong>${esc(o.fullName)}</strong> · ${esc(o.role)} · <a href="${esc(o.sourceUrl)}" target="_blank" rel="noopener">source</a></span><button class="btn" data-act="add-officer" data-id="${e.accountId}" data-i="${i}">Ajouter au carnet</button></div>`).join("")}</div>` : ""}
+      <div class="roles">${e.searches.map((q) => `<a class="btn" href="${esc(q.url)}" target="_blank" rel="noopener">Chercher « ${esc(q.role)} » sur LinkedIn</a>`).join("")}</div>
+    </article>`).join("");
 }
 
 function renderPipeline() {
@@ -688,7 +1028,7 @@ function renderHealth() {
   $("#agents").innerHTML = state.overview.agents.map((a) => `<tr><td>${esc(a.agent)}</td><td>${num(a.runs)}</td><td style="color:var(${a.failures ? "--warn" : "--muted"});font-weight:${a.failures ? 500 : 400}">${a.failures}</td><td>${num(a.inputTokens)}</td><td>${num(a.outputTokens)}</td><td>${(a.avgMs / 1000).toFixed(1).replace(".", ",")} s</td></tr>`).join("");
 }
 
-const VIEWS = ["today", "prospects", "results"];
+const VIEWS = ["today", "prospects", "book", "results", "method"];
 
 function setTheme(mode) {
   if (mode === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = mode;
@@ -716,7 +1056,7 @@ document.addEventListener("click", async (e) => {
   if (chip) { state.filter = chip.dataset.filter; render(); return; }
   const cite = e.target.closest(".cite");
   if (cite) {
-    const card = cite.closest(".card"); const f = card.querySelector(`[data-fid="${cite.dataset.fact}"]`);
+    const card = cite.closest(".card"); const f = card?.querySelector(`[data-fid="${cite.dataset.fact}"]`);
     if (f) { f.closest("details").open = true; f.classList.add("flash"); setTimeout(() => f.classList.remove("flash"), 1200); }
     return;
   }
@@ -759,11 +1099,36 @@ document.addEventListener("click", async (e) => {
       if (!state.demo) msg = (await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) })).message || msg;
       state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id); toast(msg);
     } else if (act === "exclude") {
-      if (!state.demo) await api(`/api/accounts/${id}/exclude`, { method: "POST", body: JSON.stringify({ reason: "écarté depuis le dashboard" }) });
-      state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id); toast("Écarté, il ne reviendra pas");
+      if (!state.demo) { await api(`/api/accounts/${id}/exclude`, { method: "POST", body: JSON.stringify({ reason: "écarté depuis le dashboard" }) }); toast("En liste noire, il ne reviendra pas"); await load(); return; }
+      const gone = state.toComplete.find((x) => x.row.account.id === id)?.row.account || state.overview.accounts.find((r) => r.account.id === id)?.account;
+      state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id);
+      state.book = (state.book || []).filter((x) => x.accountId !== id);
+      if (gone) state.blacklist = [{ id, accountId: id, name: gone.name, reason: "écarté depuis le dashboard", since: new Date().toISOString() }, ...(state.blacklist || [])];
+      toast("En liste noire, il ne reviendra pas");
+    } else if (act === "restore" || act === "unblock") {
+      if (!state.demo) { await api(act === "restore" ? `/api/accounts/${id}/restore` : `/api/blacklist/${id}/remove`, { method: "POST" }); toast("Réintégré"); await load(); return; }
+      state.blacklist = (state.blacklist || []).filter((b) => b.id !== id); toast("Réintégré");
+    } else if (act === "block-name") {
+      const name = $("#block-name").value.trim(), reason = $("#block-reason").value.trim();
+      if (!name) { toast("Indique le nom de l'entreprise"); return; }
+      $("#block-name").value = ""; $("#block-reason").value = "";
+      if (!state.demo) { await api("/api/blacklist", { method: "POST", body: JSON.stringify({ name, reason: reason || null }) }); toast("Ajouté à la liste noire"); await load(); return; }
+      state.blacklist = [{ id: Date.now(), name, reason: reason || null, since: new Date().toISOString() }, ...(state.blacklist || [])]; toast("Ajouté à la liste noire");
+    } else if (act === "add-officer") {
+      const entry = (state.book || []).find((x) => x.accountId === id), o = entry?.officers[Number(btn.dataset.i)];
+      if (!o) return;
+      const payload = { fullName: o.fullName, role: o.role, enroll: false, fromRegistry: true };
+      if (!state.demo) { const r = await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) }); toast(r.message || "Contact ajouté"); await load(); return; }
+      entry.officers = entry.officers.filter((x) => x !== o);
+      entry.contacts.push({ contact: { fullName: o.fullName, role: o.role, email: null, dataSource: "Annuaire des entreprises (dirigeant publié au registre)" }, status: "no-email" });
+      state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id); toast("Contact ajouté. Ajoute son email pour lancer la séquence.");
     } else if (act === "run-discovery") {
       if (!state.demo) await api("/api/discovery/run", { method: "POST" });
       toast("Recherche lancée, résultats dans 15 à 30 minutes"); return;
+    } else if (act === "dismiss-demand") {
+      const key = btn.dataset.key;
+      if (!state.demo) await api("/api/demands/dismiss", { method: "POST", body: JSON.stringify({ key }) });
+      state.demands = (state.demands || []).filter((d) => d.key !== key); toast("Demande écartée");
     } else if (act === "handled") {
       if (!state.demo) await api(`/api/replies/${id}/handled`, { method: "POST" });
       state.replies = state.replies.filter((r) => r.id !== id); toast("Marqué comme traité");

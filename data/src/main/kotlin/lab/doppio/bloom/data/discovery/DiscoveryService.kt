@@ -9,9 +9,12 @@ import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.scoring.Scoring
+import lab.doppio.bloom.data.db.Demand
+import lab.doppio.bloom.data.db.OfficerRow
 import lab.doppio.bloom.data.db.Repository
 import lab.doppio.bloom.data.sources.AppMeta
 import lab.doppio.bloom.data.sources.AppStoreSource
+import lab.doppio.bloom.data.sources.CodeurSource
 import lab.doppio.bloom.data.sources.CompanyRegistrySource
 import lab.doppio.bloom.data.sources.FranceTravailSource
 import lab.doppio.bloom.data.sources.JobBoardSource
@@ -56,9 +59,15 @@ data class DiscoveryConfig(
     ),
     /** Fenêtre de publication des offres lues (1, 3, 7, 14 ou 31 jours). */
     val jobsPublishedWithinDays: Int = 7,
-    val chartGenres: List<Int> = listOf(6015, 6024, 6023, 6003, 6010, 6013, 6020, 6000, 6007, 6011, 6012, 6004),
-    /** Apps analysées par nuit (environ 10 secondes chacune avec la limite de débit Apple). */
-    val appsPerRun: Int = 120,
+    val chartGenres: List<Int> = listOf(
+        6015, 6024, 6023, 6003, 6010, 6013, 6020, 6000, 6007, 6011, 6012, 6004,
+        // News, education, entertainment, utilities, social, reference, weather, books, photo
+        6009, 6017, 6016, 6002, 6005, 6006, 6001, 6018, 6008,
+    ),
+    /** Charts read for each genre: the free apps and the apps that earn the most (100 apps each). */
+    val chartKinds: List<String> = listOf("topfreeapplications", "topgrossingapplications"),
+    /** Apps analysées par nuit (environ 5 secondes chacune avec la limite de débit Apple). */
+    val appsPerRun: Int = 400,
     /** Une app déjà examinée n'est revue qu'après ce délai. */
     val recheckAfterDays: Long = 30,
     /** Noms à ne jamais prospecter en plus de la liste intégrée (clients actuels, partenaires, concurrents). */
@@ -67,6 +76,8 @@ data class DiscoveryConfig(
     val leadsPerSource: Int = 60,
     /** Company sites searched for a job board per run. Boards already known are always read. */
     val jobBoardLookupsPerRun: Int = 30,
+    /** Accounts whose legal officers are read from the registry per run, for the contact book. */
+    val officerLookupsPerRun: Int = 150,
 )
 
 class DiscoveryService(
@@ -77,15 +88,23 @@ class DiscoveryService(
     private val config: DiscoveryConfig = DiscoveryConfig(),
     private val sources: List<DiscoverySource> = emptyList(),
     private val jobBoards: JobBoardSource? = null,
+    private val codeur: CodeurSource? = null,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /** Names never prospected: the configured ones plus the blacklist kept in the dashboard, read at each run. */
+    @Volatile private var blocked: Set<String> = config.extraExclusions
 
     private companion object {
         const val JOBS_LABEL = "offres d'emploi"
         const val CHARTS_LABEL = "classement App Store"
+        const val DEMANDS_LABEL = "Codeur"
     }
 
     suspend fun run(now: Instant = Instant.now()): DiscoveryReport {
+        blocked = config.extraExclusions + runCatching { repo.blockedNames() }.getOrDefault(emptySet())
+        // Before the sources, for the accounts already known; again at the end, for the ones this run creates
+        runCatching { refreshOfficers() }.onFailure { log.warn("Lecture des dirigeants en échec", it) }
         val ft = jobs
         val a = if (ft != null) runCatching { fromJobs(ft, now) }.getOrElse {
             log.warn("Découverte par les offres d'emploi en échec", it); DiscoveryReport(notes = listOf("offres d'emploi : ${it.message}"))
@@ -101,11 +120,17 @@ class DiscoveryService(
                 log.warn("Découverte ${source.key} en échec", it); DiscoveryReport(notes = listOf("${source.label} : ${it.message}"))
             }
         }
+        if (codeur != null) {
+            report += runCatching { DiscoveryReport(bySource = mapOf(DEMANDS_LABEL to pollDemands())) }.getOrElse {
+                log.warn("Lecture de Codeur en échec", it); DiscoveryReport(notes = listOf("$DEMANDS_LABEL : ${it.message}"))
+            }
+        }
         jobBoards?.let { boards ->
             report += runCatching { refreshJobBoards(boards, now) }.getOrElse {
                 log.warn("Lecture des pages carrières en échec", it); DiscoveryReport(notes = listOf("pages carrières : ${it.message}"))
             }
         }
+        runCatching { refreshOfficers() }.onFailure { log.warn("Lecture des dirigeants en échec", it) }
         repo.logEvent("DISCOVERY_RUN", payload = kotlinx.serialization.json.Json.encodeToString(DiscoveryReport.serializer(), report))
         return report
     }
@@ -149,10 +174,10 @@ class DiscoveryService(
     private enum class Outcome { Created, Refreshed, Excluded, Skipped }
 
     private suspend fun handleHiringCompany(ft: FranceTravailSource, name: String, offers: List<JsonObject>, now: Instant): Outcome {
-        Exclusions.reason(name, extra = config.extraExclusions)?.let { return Outcome.Excluded }
+        Exclusions.reason(name, extra = blocked)?.let { return Outcome.Excluded }
 
-        val company = registry.search(name).firstOrNull { CompanyNames.sameCompany(it.name, name) }
-        if (company != null) Exclusions.reason(company.name, company.naf, config.extraExclusions)?.let { return Outcome.Excluded }
+        val company = registry.matches(name).firstOrNull()
+        if (company != null) Exclusions.reason(company.name, company.naf, blocked)?.let { return Outcome.Excluded }
 
         val app: AppMeta? = appStore.searchByCompany(name).firstOrNull { a -> a.sellerName?.let { CompanyNames.sameCompany(it, name) } == true }
         val domain = CompanyNames.domainOf(ft.companyUrl(offers.first())) ?: CompanyNames.domainOf(app?.sellerUrl)
@@ -182,7 +207,7 @@ class DiscoveryService(
 
     private suspend fun fromCharts(now: Instant): DiscoveryReport {
         val candidates = config.chartGenres
-            .flatMap { g -> runCatching { appStore.topChart(g) }.getOrDefault(emptyList()) }
+            .flatMap { g -> config.chartKinds.flatMap { kind -> runCatching { appStore.topChart(g, chart = kind) }.getOrDefault(emptyList()) } }
             .distinctBy { it.appId }
             .filter { !repo.wasSeen("app:${it.appId}", config.recheckAfterDays) }
             .take(config.appsPerRun)
@@ -191,13 +216,12 @@ class DiscoveryService(
         for (app in candidates) {
             checked++
             val key = "app:${app.appId}"
-            val byName = Exclusions.reason(app.artist, extra = config.extraExclusions)
+            val byName = Exclusions.reason(app.artist, extra = blocked)
             if (byName != null) { repo.markSeen(key, false, byName); excluded++; continue }
             // On ne garde que les éditeurs immatriculés en France : le classement français contient aussi Netflix ou Uber.
-            val company = runCatching { registry.search(app.artist) }.getOrDefault(emptyList())
-                .firstOrNull { CompanyNames.sameCompany(it.name, app.artist) }
+            val company = registry.matches(app.artist).firstOrNull()
             if (company == null) { repo.markSeen(key, false, "éditeur non trouvé dans l'annuaire français"); continue }
-            val byRegistry = Exclusions.reason(company.name, company.naf, config.extraExclusions)
+            val byRegistry = Exclusions.reason(company.name, company.naf, blocked)
             if (byRegistry != null) { repo.markSeen(key, false, byRegistry); excluded++; continue }
 
             val analysis = runCatching { appStore.analyze(0, app.appId, now) }.getOrNull()
@@ -249,10 +273,10 @@ class DiscoveryService(
     /** Shared path of every added source: exclusions, French registry, thresholds, then account, facts and score. */
     private suspend fun ingest(source: DiscoverySource, lead: Lead, now: Instant): Outcome {
         val key = lead.seenKey
-        Exclusions.reason(lead.name, extra = config.extraExclusions)?.let { repo.markSeen(key, false, it); return Outcome.Excluded }
+        Exclusions.reason(lead.name, extra = blocked)?.let { repo.markSeen(key, false, it); return Outcome.Excluded }
 
         val company = if (lead.siren != null) registry.bySiren(lead.siren) else {
-            val matches = registry.search(lead.name).filter { CompanyNames.sameCompany(it.name, lead.name) }
+            val matches = registry.matches(lead.name)
             if (lead.requireUniqueMatch && matches.size > 1) {
                 repo.markSeen(key, false, "plusieurs entreprises portent ce nom"); return Outcome.Skipped
             }
@@ -261,7 +285,7 @@ class DiscoveryService(
         if (company == null && lead.requireRegistry) {
             repo.markSeen(key, false, "non trouvé dans l'annuaire français"); return Outcome.Skipped
         }
-        if (company != null) Exclusions.reason(company.name, company.naf, config.extraExclusions)?.let {
+        if (company != null) Exclusions.reason(company.name, company.naf, blocked)?.let {
             repo.markSeen(key, false, it); return Outcome.Excluded
         }
         val headcount = registry.headcountLowerBound(company?.headcountRange)
@@ -297,6 +321,19 @@ class DiscoveryService(
         return if (isNew) Outcome.Created else Outcome.Refreshed
     }
 
+    // --- Demandes publiées (Codeur) -----------------------------------------------------------------
+
+    /**
+     * Reads the Codeur feed and keeps the new mobile projects. The feed only holds the latest projects,
+     * so this is also called between two nightly runs. Returns how many were new.
+     */
+    suspend fun pollDemands(): Int {
+        val source = codeur ?: return 0
+        return source.mobileProjects().count { p ->
+            repo.saveDemand(Demand("codeur:${p.id}", DEMANDS_LABEL, p.title, p.url, p.budget, p.categories, p.publishedAt?.toString()))
+        }
+    }
+
     // --- Pages carrières des comptes connus ---------------------------------------------------------
 
     /** Finds the hosted job board of known accounts (once a month) and reads their mobile postings (every run). */
@@ -317,6 +354,22 @@ class DiscoveryService(
             if (result.facts.isNotEmpty()) { persist(id, result, now); withMobile++ }
         }
         return DiscoveryReport(refreshedAccounts = withMobile, notes = listOf("pages carrières : $read lues, $withMobile avec une offre mobile"))
+    }
+
+    // --- Dirigeants (carnet de contacts) --------------------------------------------------------------
+
+    /**
+     * Reads the legal officers of the accounts that have a SIREN and were never looked up. They feed the
+     * contact book as suggestions: nobody is written to before a person picks them.
+     */
+    suspend fun refreshOfficers(): Int {
+        var read = 0
+        for ((accountId, siren) in repo.accountsWithoutOfficers(config.officerLookupsPerRun)) {
+            val officers = runCatching { registry.officers(siren) }.getOrNull() ?: continue
+            repo.saveOfficers(accountId, officers.map { OfficerRow(it.fullName, it.role, registry.pageUrl(siren)) })
+            read++
+        }
+        return read
     }
 
     /** Enregistre faits et signaux, puis recalcule le score tout de suite (sans LLM). */

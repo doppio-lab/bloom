@@ -4,16 +4,27 @@ import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.parameter
+import io.ktor.client.request.post
+import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
+import io.ktor.http.ContentType
+import io.ktor.http.contentType
 import io.ktor.http.isSuccess
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import kotlinx.serialization.json.jsonObject
 import lab.doppio.bloom.core.discovery.Boamp
 import lab.doppio.bloom.core.discovery.Bodacc
+import lab.doppio.bloom.core.discovery.Codeur
+import lab.doppio.bloom.core.discovery.CodeurProject
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.GitHub
 import lab.doppio.bloom.core.discovery.Press
+import lab.doppio.bloom.core.discovery.Ted
+import lab.doppio.bloom.core.discovery.Tender
 import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
@@ -114,28 +125,72 @@ class BoampSource(private val http: HttpClient, private val lookbackDays: Long =
         val where = "(objet like \"%application mobile%\" or objet like \"%appli mobile%\" or objet like \"%application smartphone%\") and dateparution>=date'$since'"
         return http.records(URL, where, limit = 100).mapNotNull { Boamp.parse(it) }
             .filter { Boamp.isOpenMobileTender(it, now) }
-            .map { t ->
-                Lead(
-                    name = t.buyer,
-                    seenKey = "boamp:${t.id}",
-                    // Town halls and public bodies are not always matched by name in the registry
-                    requireRegistry = false,
-                    build = { accountId, at ->
-                        val deadline = t.deadline?.atZone(paris)?.toLocalDate()?.format(frDate)
-                        val f = fact(
-                            accountId, FactKind.PUBLIC_TENDER,
-                            "${t.buyer} : appel d'offres publié le ${day(t.publishedOn)}" + (deadline?.let { ", réponse avant le $it" } ?: ""),
-                            t.url,
-                            excerpt = t.subject,
-                        )
-                        SourceResult(listOf(f), listOf(Signal(accountId, SignalType.PUBLIC_TENDER, 1.0, startOfDay(t.publishedOn, at).toString(), listOf(f.id))))
-                    },
-                )
-            }
+            .map { tenderLead(it, "boamp") }
     }
 
     private companion object {
         const val URL = "https://boamp-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/boamp/records"
+    }
+}
+
+/** A tender becomes a lead on its buyer. Shared by BOAMP and TED, which publish the same kind of notice. */
+private fun tenderLead(t: Tender, prefix: String) = Lead(
+    name = t.buyer,
+    seenKey = "$prefix:${t.id}",
+    // Town halls and public bodies are not always matched by name in the registry
+    requireRegistry = false,
+    build = { accountId, at ->
+        val deadline = t.deadline?.minusSeconds(1)?.atZone(paris)?.toLocalDate()?.format(frDate)
+        val f = fact(
+            accountId, FactKind.PUBLIC_TENDER,
+            "${t.buyer} : appel d'offres publié le ${day(t.publishedOn)}" + (deadline?.let { ", réponse avant le $it" } ?: ""),
+            t.url,
+            excerpt = t.subject,
+        )
+        // Observed now, not at publication: the tender was checked as still open, so its weight should not have decayed already
+        SourceResult(listOf(f), listOf(Signal(accountId, SignalType.PUBLIC_TENDER, 1.0, at.toString(), listOf(f.id))))
+    },
+)
+
+// ---------------------------------------------------------------------------------------------
+// TED : marchés publics européens passés en France (API de recherche ouverte, sans clé)
+// ---------------------------------------------------------------------------------------------
+
+class TedSource(private val http: HttpClient, private val lookbackDays: Long = 60) : DiscoverySource {
+    override val key = "ted"
+    override val label = "marché européen"
+
+    override suspend fun leads(now: Instant): List<Lead> {
+        val since = now.atZone(paris).toLocalDate().minusDays(lookbackDays)
+        val res = http.post("https://api.ted.europa.eu/v3/notices/search") {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject {
+                put("query", Ted.query(since))
+                put("fields", JsonArray(Ted.fields.map { JsonPrimitive(it) }))
+                put("limit", 100)
+                put("scope", "ACTIVE")
+                put("paginationMode", "PAGE_NUMBER")
+                put("page", 1)
+            })
+        }
+        if (!res.status.isSuccess()) error("TED HTTP ${res.status.value}")
+        val notices = (sourcesJson.parseToJsonElement(res.bodyAsText()).jsonObject["notices"] as? JsonArray).orEmpty()
+        // The search is full text: only the notices whose subject asks for a mobile app are kept
+        return notices.mapNotNull { Ted.parse(it.jsonObject) }.filter { Boamp.isOpenMobileTender(it, now) }.map { tenderLead(it, "ted") }
+    }
+}
+
+// ---------------------------------------------------------------------------------------------
+// Codeur.com : projets publiés par des entreprises (flux RSS public). Pas d'entreprise nommée :
+// ce ne sont pas des comptes à prospecter mais des demandes auxquelles on répond sur la plateforme.
+// ---------------------------------------------------------------------------------------------
+
+class CodeurSource(private val http: HttpClient, private val minBudgetEur: Int = 1_000) {
+    /** The plain feed only: the site's robots.txt disallows query strings, so the filter runs here. */
+    suspend fun mobileProjects(): List<CodeurProject> {
+        val res = http.get("https://www.codeur.com/projects.rss")
+        if (!res.status.isSuccess()) error("Codeur HTTP ${res.status.value}")
+        return Codeur.parseFeed(res.bodyAsText()).filter { Codeur.isMobileProject(it, minBudgetEur) }
     }
 }
 
@@ -145,18 +200,26 @@ class BoampSource(private val http: HttpClient, private val lookbackDays: Long =
 
 class PressSource(
     private val http: HttpClient,
-    private val feeds: List<String> = listOf("https://www.frenchweb.fr/feed", "https://www.maddyness.com/feed/"),
+    private val feeds: List<String> = listOf(
+        "https://www.frenchweb.fr/feed", "https://www.maddyness.com/feed/", "https://www.journaldunet.com/rss/",
+        "https://www.usine-digitale.fr/rss", "https://siecledigital.fr/feed/",
+    ),
     private val maxAgeDays: Long = 14,
 ) : DiscoverySource {
     override val key = "press"
     override val label = "presse"
 
     override suspend fun leads(now: Instant): List<Lead> {
-        val items = feeds.flatMap { feed ->
-            val res = http.get(feed)
-            if (!res.status.isSuccess()) error("HTTP ${res.status.value} sur $feed")
-            Press.parseFeed(res.bodyAsText())
+        // One feed down does not hide the others: the source fails only when none of them answers
+        val read = feeds.map { feed ->
+            runCatching {
+                val res = http.get(feed)
+                if (!res.status.isSuccess()) error("HTTP ${res.status.value} sur $feed")
+                Press.parseFeed(res.bodyAsText())
+            }
         }
+        if (read.all { it.isFailure }) error(read.first().exceptionOrNull()?.message ?: "aucun flux lisible")
+        val items = read.flatMap { it.getOrDefault(emptyList()) }
         return items
             .filter { it.publishedAt == null || Duration.between(it.publishedAt, now).toDays() <= maxAgeDays }
             .mapNotNull { item -> Press.funding(item.title)?.let { item to it } }

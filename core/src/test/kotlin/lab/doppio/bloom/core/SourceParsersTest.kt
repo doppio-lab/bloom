@@ -8,10 +8,14 @@ import lab.doppio.bloom.core.discovery.BoardProvider
 import lab.doppio.bloom.core.discovery.BoardRef
 import lab.doppio.bloom.core.discovery.Boamp
 import lab.doppio.bloom.core.discovery.Bodacc
+import lab.doppio.bloom.core.discovery.Codeur
+import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.GitHub
 import lab.doppio.bloom.core.discovery.HiringRules
 import lab.doppio.bloom.core.discovery.JobBoards
 import lab.doppio.bloom.core.discovery.Press
+import lab.doppio.bloom.core.discovery.Registry
+import lab.doppio.bloom.core.discovery.Ted
 import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.scoring.Scoring
 import java.time.Instant
@@ -59,6 +63,48 @@ class SourceParsersTest {
         assertTrue(kept.all { it.url.startsWith("https://www.boamp.fr/") })
         // Once the deadline has passed, nothing is left
         assertTrue(tenders.none { Boamp.isOpenMobileTender(it, Instant.parse("2027-01-01T00:00:00Z")) })
+    }
+
+    @Test
+    fun `un avis TED donne l'acheteur, l'objet en français et la date limite`() {
+        val tenders = json("ted.json").jsonObject["notices"]!!.jsonArray.mapNotNull { Ted.parse(it.jsonObject) }
+        assertEquals(6, tenders.size)
+        val award = tenders.first { it.id == "463484-2026" }
+        assertEquals("Vendée Expansion - SEM", award.buyer)
+        assertTrue(award.subject.startsWith("Fourniture, hébergement et maintenance d'une application mobile"))
+        assertEquals("https://ted.europa.eu/fr/notice/-/detail/463484-2026", award.url)
+        // An award notice is never an open tender, whatever its subject
+        assertFalse(Boamp.isOpenMobileTender(award, now))
+        // Open on 10 October, about mobile apps: kept. The design tender matched the full text only: dropped
+        val kept = tenders.filter { Boamp.isOpenMobileTender(it, now) }
+        assertEquals(listOf("645274-2026"), kept.map { it.id })
+        assertTrue(kept.single().subject.contains("applications mobiles"))
+        // The deadline is a day: still open during that day, closed the day after
+        assertTrue(Boamp.isOpenMobileTender(kept.single(), Instant.parse("2026-10-22T18:00:00Z")))
+        assertFalse(Boamp.isOpenMobileTender(kept.single(), Instant.parse("2026-10-23T00:00:01Z")))
+    }
+
+    @Test
+    fun `un projet Codeur donne son budget et ses catégories`() {
+        val projects = Codeur.parseFeed(text("codeur_feed.xml"))
+        assertEquals(35, projects.size)
+        val first = projects.first()
+        assertEquals("491080", first.id)
+        assertEquals("10 000 € et plus", first.budget)
+        assertTrue("SaaS" in first.categories)
+        assertTrue(first.url.startsWith("https://www.codeur.com/projects/"))
+        assertEquals(10_000, Codeur.budgetFloor(first.budget))
+        assertEquals(0, Codeur.budgetFloor("Moins de 500 €"))
+        assertEquals(1_000, Codeur.budgetFloor("1 000 € à 10 000 €"))
+    }
+
+    @Test
+    fun `seuls les projets mobiles au budget suffisant sont gardés`() {
+        val projects = Codeur.parseFeed(text("codeur_feed.xml"))
+        assertEquals(4, projects.count { Codeur.isMobileProject(it, minBudgetEur = 0) })
+        val kept = projects.filter { Codeur.isMobileProject(it, minBudgetEur = 1_000) }
+        assertEquals(1, kept.size)
+        assertTrue("Application mobile" in kept.single().categories)
     }
 
     @Test
@@ -111,6 +157,33 @@ class SourceParsersTest {
         assertEquals(2, ashby.size)
         // Ashby resets the date on republish: it must never feed the "stuck hire" signal
         assertTrue(ashby.none { it.dateIsFirstPublication })
+    }
+
+    @Test
+    fun `SmartRecruiters donne titre, lien public et lieu`() {
+        val postings = JobBoards.parse(BoardProvider.SMARTRECRUITERS, json("smartrecruiters.json"))
+        assertEquals(3, postings.size)
+        assertEquals("https://jobs.smartrecruiters.com/Ubisoft2/744000154736845", postings.first().url)
+        assertEquals("Montreal, QC, Canada", postings.first().location)
+        // The release date moves when a posting is published again: never an age
+        assertTrue(postings.none { it.dateIsFirstPublication })
+        assertEquals(BoardRef(BoardProvider.SMARTRECRUITERS, "Ubisoft2"), JobBoards.detect("<a href=\"https://careers.smartrecruiters.com/Ubisoft2\">"))
+    }
+
+    @Test
+    fun `l'annuaire donne ceux qui dirigent, sans administrateurs ni commissaires aux comptes`() {
+        // The record is the real one of a company, plus three invented lines for the cases it does not hold
+        val company = json("registry.json").jsonObject["results"]!!.jsonArray.first().jsonObject
+        val officers = Registry.officers(company)
+        assertEquals(listOf("Loic Soubeyrand" to "Président de SAS", "Anne-Marie Durand" to "Directeur général délégué"), officers.map { it.fullName to it.role })
+    }
+
+    @Test
+    fun `le nom d'un éditeur est essayé sous plusieurs formes dans l'annuaire`() {
+        assertEquals(listOf("Finary SAS", "finary"), CompanyNames.registryQueries("Finary SAS"))
+        assertEquals(listOf("Bankin' SAS", "bankin"), CompanyNames.registryQueries("Bankin' SAS"))
+        assertTrue("Infomil" in CompanyNames.registryQueries("E.Leclerc - Infomil"))
+        assertEquals(listOf("Swile"), CompanyNames.registryQueries("Swile").filter { it == "Swile" })
     }
 
     @Test

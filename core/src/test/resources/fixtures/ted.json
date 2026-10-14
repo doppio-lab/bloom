@@ -1,0 +1,116 @@
+{
+ "totalNoticeCount": 6,
+ "notices": [
+  {
+   "notice-type": "can-standard",
+   "publication-number": "463484-2026",
+   "buyer-name": {
+    "fra": [
+     "Vendée Expansion - SEM"
+    ]
+   },
+   "publication-date": "2026-07-06+02:00",
+   "notice-title": {
+    "fra": "France – Services de développement de logiciels personnalisés – Fourniture, hébergement et maintenance d'une application mobile dédiée à la diffusion d'informations sur la vie locale et les services de proximité pour les habitants et les touristes",
+    "eng": "France – Custom software development services – Fourniture, hébergement et maintenance d'une application mobile dédiée à la diffusion d'informations sur la vie locale et les services de proximité pour les habitants et les touristes"
+   }
+  },
+  {
+   "notice-type": "cn-standard",
+   "publication-number": "538417-2026",
+   "buyer-name": {
+    "fra": [
+     "Département de la Seine-Maritime"
+    ]
+   },
+   "publication-date": "2026-08-04+02:00",
+   "deadline-receipt-tender-date-lot": [
+    "2026-09-15+02:00"
+   ],
+   "notice-title": {
+    "fra": "France – Services de développement des applications serveur internet ou intranet – Conception d'expériences utilisateur et d'interfaces (UX/UI Design) et Accessibilité Numérique (RGAA)",
+    "eng": "France – Internet or intranet server application development services – Conception d'expériences utilisateur et d'interfaces (UX/UI Design) et Accessibilité Numérique (RGAA)"
+   }
+  },
+  {
+   "notice-type": "cn-standard",
+   "publication-number": "539006-2026",
+   "buyer-name": {
+    "fra": [
+     "Région Occitanie"
+    ]
+   },
+   "publication-date": "2026-08-04+02:00",
+   "deadline-receipt-tender-date-lot": [
+    "2026-10-05+02:00"
+   ],
+   "notice-title": {
+    "fra": "France – Services de développement de logiciels divers et systèmes informatiques – PILOTAGE TECHNIQUE, HEBERGEMENT, MAINTENACE APPLICATIVE ET EVOLUTIVE DE LA PLATEFORME CARTE JEUNE REGION",
+    "eng": "France – Miscellaneous software development services and computer systems – PILOTAGE TECHNIQUE, HEBERGEMENT, MAINTENACE APPLICATIVE ET EVOLUTIVE DE LA PLATEFORME CARTE JEUNE REGION"
+   }
+  },
+  {
+   "notice-type": "cn-standard",
+   "publication-number": "611467-2026",
+   "buyer-name": {
+    "fra": [
+     "Département de la Seine-Maritime"
+    ]
+   },
+   "publication-date": "2026-09-04+02:00",
+   "deadline-receipt-tender-date-lot": [
+    "2026-09-29+02:00"
+   ],
+   "notice-title": {
+    "fra": "France – Services de développement des applications serveur internet ou intranet – Conception d'expériences utilisateur et d'interfaces (UX/UI Design) et Accessibilité Numérique (RGAA)",
+    "eng": "France – Internet or intranet server application development services – Conception d'expériences utilisateur et d'interfaces (UX/UI Design) et Accessibilité Numérique (RGAA)"
+   }
+  },
+  {
+   "notice-type": "cn-standard",
+   "publication-number": "645274-2026",
+   "buyer-name": {
+    "fra": [
+     "Direction régionale et interdépartementale de l'Environnement, de l’Aménagement et des Transports d’Île-de-France"
+    ]
+   },
+   "publication-date": "2026-09-18+02:00",
+   "deadline-receipt-tender-date-lot": [
+    "2026-10-22+02:00"
+   ],
+   "notice-title": {
+    "fra": "France – Maintenance de logiciels de technologies de l'information – Infogérance (MCO, TMA) et hébergement du site et des applications mobiles SYTADIN",
+    "eng": "France – Maintenance of information technology software – Infogérance (MCO, TMA) et hébergement du site et des applications mobiles SYTADIN"
+   }
+  },
+  {
+   "notice-type": "cn-standard",
+   "publication-number": "658659-2026",
+   "buyer-name": {
+    "fra": [
+     "SEMITAN"
+    ]
+   },
+   "publication-date": "2026-09-24+02:00",
+   "deadline-receipt-tender-date-lot": [
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00",
+    "2026-10-14+02:00"
+   ],
+   "notice-title": {
+    "fra": "France – Services de conseil en systèmes informatiques – Accords-cadres de prestations pour la Direction des Systèmes d'Information - 13 lots",
+    "eng": "France – Systems consultancy services – Accords-cadres de prestations pour la Direction des Systèmes d'Information - 13 lots"
+   }
+  }
+ ]
+}

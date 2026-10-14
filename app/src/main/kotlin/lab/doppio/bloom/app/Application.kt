@@ -47,6 +47,8 @@ import lab.doppio.bloom.data.db.Repository
 import lab.doppio.bloom.data.sources.AppStoreSource
 import lab.doppio.bloom.data.sources.BoampSource
 import lab.doppio.bloom.data.sources.BodaccSource
+import lab.doppio.bloom.data.sources.CodeurSource
+import lab.doppio.bloom.data.sources.TedSource
 import lab.doppio.bloom.data.sources.GitHubSource
 import lab.doppio.bloom.data.sources.JobBoardSource
 import lab.doppio.bloom.data.sources.PressSource
@@ -132,10 +134,11 @@ class AppContext {
      * Sources added to discovery, chosen by DISCOVERY_SOURCES. The press feeds are left out of the default:
      * their reuse terms have to be checked by the owner before the source is turned on.
      */
-    private val enabledSources = env("DISCOVERY_SOURCES", "bodacc,boamp,github,jobboards").split(',').map { it.trim().lowercase() }.toSet()
+    private val enabledSources = env("DISCOVERY_SOURCES", "bodacc,boamp,ted,codeur,press,github,jobboards").split(',').map { it.trim().lowercase() }.toSet()
     private val discoverySources = listOfNotNull(
         BodaccSource(http, minCapitalEur = env("BODACC_MIN_CAPITAL", "100000").toLong()).takeIf { "bodacc" in enabledSources },
         BoampSource(http).takeIf { "boamp" in enabledSources },
+        TedSource(http).takeIf { "ted" in enabledSources },
         PressSource(http).takeIf { "press" in enabledSources },
         GitHubSource(http, optionalEnv("GITHUB_TOKEN"), wasSeen = { repo.wasSeen(it, 90) }, markSeen = { key, kept, reason -> repo.markSeen(key, kept, reason) })
             .takeIf { "github" in enabledSources },
@@ -144,12 +147,13 @@ class AppContext {
     val discovery = DiscoveryService(
         repo, appStore, registry, jobs,
         DiscoveryConfig(
-            appsPerRun = env("DISCOVERY_APPS_PER_RUN", "120").toInt(),
+            appsPerRun = env("DISCOVERY_APPS_PER_RUN", "400").toInt(),
             // Clients actuels et partenaires à ne jamais prospecter, séparés par des virgules
             extraExclusions = env("DISCOVERY_EXCLUDE", "").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
         ),
         sources = discoverySources,
         jobBoards = JobBoardSource(http).takeIf { "jobboards" in enabledSources },
+        codeur = CodeurSource(http, minBudgetEur = env("CODEUR_MIN_BUDGET", "1000").toInt()).takeIf { "codeur" in enabledSources },
     )
     val writer = WriterAgent(llm, repo, tracker, senderName = env("SENDER_NAME", "l'équipe Doppio"))
     val orchestrator = Orchestrator(

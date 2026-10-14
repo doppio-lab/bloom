@@ -42,6 +42,8 @@ object Accounts : Table("accounts") {
     // Named origin: Table already exposes a `source` member (ColumnSet.source)
     val origin = text("source").default("manual")
     val excludedReason = text("excluded_reason").nullable()
+    val excludedAt = timestamp("excluded_at").nullable()
+    val officersCheckedAt = timestamp("officers_checked_at").nullable()
     val siren = text("siren").nullable()
     val sector = text("sector")
     val market = text("market")
@@ -64,6 +66,38 @@ object DiscoverySeen : Table("discovery_seen") {
     val reason = text("reason").nullable()
     val checkedAt = timestamp("checked_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(key)
+}
+
+object Demands : Table("demands") {
+    val key = text("key")
+    // Named origin: Table already exposes a `source` member (ColumnSet.source)
+    val origin = text("source")
+    val title = text("title")
+    val url = text("url")
+    val budget = text("budget").nullable()
+    val categories = text("categories").default("[]")
+    val publishedAt = timestamp("published_at").nullable()
+    val dismissedAt = timestamp("dismissed_at").nullable()
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(key)
+}
+
+object Blocklist : Table("blocklist") {
+    val id = long("id").autoIncrement()
+    val name = text("name")
+    val slug = text("slug")
+    val reason = text("reason").nullable()
+    val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(id)
+}
+
+object Officers : Table("officers") {
+    val accountId = long("account_id")
+    val fullName = text("full_name")
+    val role = text("role")
+    val sourceUrl = text("source_url")
+    val fetchedAt = timestamp("fetched_at").defaultExpression(CurrentTimestamp)
+    override val primaryKey = PrimaryKey(accountId, fullName, role)
 }
 
 object AccountJobBoards : Table("job_boards") {

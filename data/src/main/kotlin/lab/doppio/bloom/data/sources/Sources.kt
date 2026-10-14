@@ -25,7 +25,10 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.HiringRules
+import lab.doppio.bloom.core.discovery.Officer
+import lab.doppio.bloom.core.discovery.Registry
 import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
@@ -159,9 +162,9 @@ class AppStoreSource(private val http: HttpClient, private val country: String =
 
     data class ChartApp(val appId: Long, val name: String, val artist: String, val genreId: Int?)
 
-    /** Classement des apps gratuites d'un genre sur le storefront (200 maximum). Flux public sans clé. */
-    suspend fun topChart(genreId: Int, limit: Int = 200): List<ChartApp> {
-        val url = "https://itunes.apple.com/$country/rss/topfreeapplications/limit=$limit/genre=$genreId/json"
+    /** Classement d'un genre sur le storefront (gratuites par défaut, ou « topgrossingapplications »). Flux public sans clé. */
+    suspend fun topChart(genreId: Int, limit: Int = 200, chart: String = "topfreeapplications"): List<ChartApp> {
+        val url = "https://itunes.apple.com/$country/rss/$chart/limit=$limit/genre=$genreId/json"
         val feed = runCatching { limiter.run { sourcesJson.parseToJsonElement(http.get(url).bodyAsText()).jsonObject } }
             .getOrNull()?.get("feed")?.jsonObject ?: return emptyList()
         val entries = when (val e = feed["entry"]) {
@@ -334,23 +337,43 @@ class CompanyRegistrySource(private val http: HttpClient) {
 
     data class Company(val siren: String, val name: String, val headcountRange: String?, val naf: String?, val createdOn: String?)
 
-    suspend fun search(query: String): List<Company> {
+    private suspend fun records(query: String): List<JsonObject> {
         val res = limiter.run {
             http.get("https://recherche-entreprises.api.gouv.fr/search") {
                 parameter("q", query)
                 parameter("per_page", 5)
             }.body<JsonObject>()
         }
-        return res["results"]?.jsonArray.orEmpty().map { it.jsonObject }.mapNotNull { r ->
-            Company(
-                siren = r["siren"].str() ?: return@mapNotNull null,
-                name = r["nom_complet"].str().orEmpty(),
-                headcountRange = r["tranche_effectif_salarie"].str(),
-                naf = r["activite_principale"].str(),
-                createdOn = r["date_creation"].str(),
-            )
-        }
+        return res["results"]?.jsonArray.orEmpty().map { it.jsonObject }
     }
+
+    suspend fun search(query: String): List<Company> = records(query).mapNotNull { r ->
+        Company(
+            siren = r["siren"].str() ?: return@mapNotNull null,
+            name = r["nom_complet"].str().orEmpty(),
+            headcountRange = r["tranche_effectif_salarie"].str(),
+            naf = r["activite_principale"].str(),
+            createdOn = r["date_creation"].str(),
+        )
+    }
+
+    /**
+     * Companies that carry this name. The name is tried as written, then without its legal form and
+     * punctuation, then part by part: the search finds nothing for "Finary SAS" but finds "Finary".
+     */
+    suspend fun matches(name: String): List<Company> {
+        for (query in CompanyNames.registryQueries(name)) {
+            val found = runCatching { search(query) }.getOrDefault(emptyList()).filter { CompanyNames.sameCompany(it.name, query) }
+            if (found.isNotEmpty()) return found
+        }
+        return emptyList()
+    }
+
+    /** Legal officers of a company, as published by the registry. Natural persons only. */
+    suspend fun officers(siren: String): List<Officer> =
+        records(siren).firstOrNull { it["siren"].str() == siren }?.let { Registry.officers(it) }.orEmpty()
+
+    fun pageUrl(siren: String): String = "https://annuaire-entreprises.data.gouv.fr/entreprise/$siren"
 
     /** Exact lookup: the search endpoint accepts a SIREN as query. */
     suspend fun bySiren(siren: String): Company? = search(siren).firstOrNull { it.siren == siren }

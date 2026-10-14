@@ -4,6 +4,7 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respond
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
@@ -22,6 +23,7 @@ import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.scoring.Scoring
 import lab.doppio.bloom.data.db.AccountRow
+import lab.doppio.bloom.data.db.OfficerRow
 import lab.doppio.bloom.data.discovery.DiscoveryReport
 import org.slf4j.LoggerFactory
 
@@ -34,9 +36,17 @@ import org.slf4j.LoggerFactory
     val fullName: String, val role: String, val email: String? = null, val linkedinUrl: String? = null,
     /** Lancer la séquence tout de suite si un email est connu (ou trouvé). */
     val enroll: Boolean = true,
+    /** True when the person was picked among the legal officers published by the company registry. */
+    val fromRegistry: Boolean = false,
 )
 @Serializable data class NewContactResult(val contactId: Long, val enrolled: Boolean, val message: String)
 @Serializable data class ExcludeRequest(val reason: String)
+@Serializable data class BlockRequest(val name: String, val reason: String? = null)
+@Serializable data class BookContact(val contact: Contact, /** "sequence", "email" (email known, no sequence) or "no-email". */ val status: String)
+@Serializable data class BookEntry(
+    val accountId: Long, val name: String, val score: Int, val source: String, val offer: Offer, val why: String,
+    val contacts: List<BookContact>, val officers: List<OfficerRow>, val searches: List<PeopleSearch>,
+)
 @Serializable data class ImportReport(val created: Int, val updated: Int, val contacts: Int, val errors: List<String>)
 
 private val log = LoggerFactory.getLogger("DiscoveryRoutes")
@@ -56,6 +66,8 @@ suspend fun enrollContact(ctx: AppContext, contact: Contact): Boolean {
     return true
 }
 
+@Serializable data class DismissDemand(val key: String)
+
 @Serializable
 data class LastDiscovery(
     val ranAt: String? = null,
@@ -63,6 +75,27 @@ data class LastDiscovery(
     val bySource: Map<String, Int> = emptyMap(),
     val notes: List<String> = emptyList(),
 )
+
+/** Accounts above the display threshold, or that already have a contact, with the people known for each. */
+private suspend fun book(ctx: AppContext): List<BookEntry> {
+    val repo = ctx.repo
+    val contacts = repo.contactsByAccount()
+    val officers = repo.officersByAccount()
+    val enrolled = repo.activeEnrollments().map { it.contactId }.toSet()
+    return repo.accountsByScore(500).filter { it.score >= 45 || it.account.id in contacts }.take(150).map { row ->
+        val id = row.account.id
+        val offer = repo.dossier(id)?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
+        val persona = Targeting.personaFor(offer)
+        val known = contacts[id].orEmpty()
+        val knownNames = known.map { CompanyNames.normalize(it.fullName) }.toSet()
+        BookEntry(
+            accountId = id, name = row.account.name, score = row.score, source = row.account.source, offer = offer, why = persona.why,
+            contacts = known.map { c -> BookContact(c, if (c.id in enrolled) "sequence" else if (c.email != null) "email" else "no-email") },
+            officers = officers[id].orEmpty().filter { CompanyNames.normalize(it.fullName) !in knownNames },
+            searches = persona.roles.map { PeopleSearch(it, Targeting.linkedinSearchUrl(it, row.account.name)) },
+        )
+    }
+}
 
 private val lenientJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
@@ -121,7 +154,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
             persona = Targeting.personaFromRole(req.role),
             email = req.email?.trim()?.takeIf { it.contains('@') },
             linkedinUrl = req.linkedinUrl?.trim()?.takeIf { it.startsWith("https://") },
-            dataSource = "saisie manuelle (profil public LinkedIn ou site de l'entreprise)",
+            dataSource = if (req.fromRegistry) "Annuaire des entreprises (dirigeant publié au registre)" else "saisie manuelle (profil public LinkedIn ou site de l'entreprise)",
         )
         val id = repo.addContact(contact)
         val saved = contact.copy(id = id)
@@ -150,12 +183,59 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
         call.respond(HttpStatusCode.Accepted, NewContactResult(id, false, "Contact ajouté, recherche de l'email en cours"))
     }
 
+    /** Requests published on marketplaces, to answer on the platform. Never turned into email sequences. */
+    get("/demands") { call.respond(repo.openDemands()) }
+
+    post("/demands/dismiss") {
+        if (!repo.dismissDemand(call.receive<DismissDemand>().key)) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Demande introuvable"))
+        call.respond(HttpStatusCode.OK, mapOf("status" to "écartée"))
+    }
+
+    /** Blacklist an account: it leaves every list, its sequences stop, and discovery never brings it back. */
     post("/accounts/{id}/exclude") {
         val id = call.parameters["id"]!!.toLong()
-        val reason = runCatching { call.receive<ExcludeRequest>().reason }.getOrDefault("écarté à la main")
+        val reason = runCatching { call.receive<ExcludeRequest>().reason }.getOrDefault("").ifBlank { "écarté à la main" }
         repo.excludeAccount(id, reason)
         repo.logEvent("ACCOUNT_EXCLUDED", id)
         call.respond(HttpStatusCode.OK, mapOf("status" to "écarté"))
+    }
+
+    post("/accounts/{id}/restore") {
+        val id = call.parameters["id"]!!.toLong()
+        repo.restoreAccount(id)
+        repo.logEvent("ACCOUNT_RESTORED", id)
+        call.respond(HttpStatusCode.OK, mapOf("status" to "réintégré"))
+    }
+
+    get("/blacklist") { call.respond(repo.blacklist()) }
+
+    /** Block a company by name, before or after discovery found it. */
+    post("/blacklist") {
+        val req = call.receive<BlockRequest>()
+        require(CompanyNames.normalize(req.name).isNotEmpty()) { "Nom obligatoire" }
+        val accountId = repo.blockName(req.name, req.reason?.trim()?.takeIf { it.isNotEmpty() })
+        if (accountId != null) repo.logEvent("ACCOUNT_EXCLUDED", accountId)
+        call.respond(HttpStatusCode.Created, mapOf("status" to "ajouté"))
+    }
+
+    post("/blacklist/{id}/remove") {
+        repo.unblockName(call.parameters["id"]!!.toLong())
+        call.respond(HttpStatusCode.OK, mapOf("status" to "retiré"))
+    }
+
+    /**
+     * The contact book: for each account worth writing to, the people already chosen, the legal officers
+     * published by the company registry, and the searches to find the right role.
+     */
+    get("/book") { call.respond(book(ctx)) }
+
+    get("/book.csv") {
+        val lines = listOf("entreprise;nom;role;email;linkedin;statut;source") + book(ctx).flatMap { e ->
+            e.contacts.map { c -> listOf(e.name, c.contact.fullName, c.contact.role, c.contact.email.orEmpty(), c.contact.linkedinUrl.orEmpty(), "contact", c.contact.dataSource) } +
+                e.officers.map { o -> listOf(e.name, o.fullName, o.role, "", "", "suggestion", o.sourceUrl) }
+        }.map { cells -> cells.joinToString(";") { "\"" + it.replace("\"", "\"\"") + "\"" } }
+        call.response.headers.append("Content-Disposition", "attachment; filename=\"carnet-bloom.csv\"")
+        call.respondText("\uFEFF" + lines.joinToString("\r\n"), io.ktor.http.ContentType.Text.CSV)
     }
 
     /**

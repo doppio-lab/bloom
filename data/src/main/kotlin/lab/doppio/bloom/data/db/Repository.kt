@@ -35,6 +35,7 @@ import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.or
@@ -53,6 +54,26 @@ private val json = Json { ignoreUnknownKeys = true; encodeDefaults = true }
 private val stringList = ListSerializer(String.serializer())
 private fun List<String>.encode() = json.encodeToString(stringList, this)
 private fun String.decodeList(): List<String> = json.decodeFromString(stringList, this)
+
+/** A request published by a buyer on a marketplace: answered on the platform, never by email. */
+@Serializable
+data class Demand(
+    val key: String,
+    val source: String,
+    val title: String,
+    val url: String,
+    val budget: String? = null,
+    val categories: List<String> = emptyList(),
+    val publishedAt: String? = null,
+)
+
+/** One line of the blacklist: an excluded account (accountId set) or a name blocked before any account exists. */
+@Serializable
+data class Blocked(val id: Long, val accountId: AccountId? = null, val name: String, val reason: String? = null, val since: String? = null)
+
+/** A person published as legal officer by the company registry. */
+@Serializable
+data class OfficerRow(val fullName: String, val role: String, val sourceUrl: String)
 
 @Serializable
 data class Dossier(
@@ -125,8 +146,81 @@ class Repository {
         }
     }
 
+    /**
+     * Puts an account on the blacklist. It disappears from every list, its running sequences stop and
+     * its drafts waiting for review are rejected. Discovery keeps finding it by name and leaves it excluded.
+     */
     suspend fun excludeAccount(id: AccountId, reason: String) = dbQuery {
-        Accounts.update({ Accounts.id eq id }) { it[excludedReason] = reason }
+        Accounts.update({ Accounts.id eq id }) { it[excludedReason] = reason; it[excludedAt] = Instant.now() }
+        val contactIds = Contacts.selectAll().where { Contacts.accountId eq id }.map { it[Contacts.id] }
+        if (contactIds.isNotEmpty()) {
+            val open = Enrollments.selectAll()
+                .where { (Enrollments.contactId inList contactIds) and (Enrollments.status inList listOf(EnrollmentStatus.ACTIVE.name, EnrollmentStatus.PAUSED.name)) }
+                .map { it[Enrollments.id] }
+            if (open.isNotEmpty()) {
+                Enrollments.update({ Enrollments.id inList open }) { it[status] = EnrollmentStatus.STOPPED_MANUAL.name }
+                Drafts.update({ (Drafts.enrollmentId inList open) and (Drafts.status inList listOf(DraftStatus.PENDING_REVIEW.name, DraftStatus.APPROVED.name)) }) {
+                    it[status] = DraftStatus.REJECTED.name
+                }
+            }
+        }
+    }
+
+    /** Takes an account off the blacklist, and its name with it so discovery stops excluding it. Stopped sequences are not restarted. */
+    suspend fun restoreAccount(id: AccountId) = dbQuery {
+        Accounts.update({ Accounts.id eq id }) { it[excludedReason] = null; it[excludedAt] = null }
+        val slug = Accounts.selectAll().where { Accounts.id eq id }.firstOrNull()?.get(Accounts.slug)
+        if (slug != null) Blocklist.deleteWhere { Blocklist.slug eq slug }
+    }
+
+    /** Blocks a name for discovery and excludes the account that already carries it. Returns that account, if any. */
+    suspend fun blockName(name: String, reason: String?): AccountId? {
+        val slug = CompanyNames.normalize(name)
+        require(slug.isNotEmpty()) { "Nom vide" }
+        dbQuery { Blocklist.insertIgnore { it[this.name] = name.trim(); it[this.slug] = slug; it[this.reason] = reason } }
+        val existing = dbQuery { Accounts.selectAll().where { (Accounts.slug eq slug) and Accounts.excludedReason.isNull() }.firstOrNull()?.get(Accounts.id) }
+        if (existing != null) excludeAccount(existing, reason ?: "liste noire")
+        return existing
+    }
+
+    suspend fun unblockName(id: Long) = dbQuery { Blocklist.deleteWhere { Blocklist.id eq id } }
+
+    suspend fun blockedNames(): Set<String> = dbQuery { Blocklist.selectAll().map { it[Blocklist.name] }.toSet() }
+
+    suspend fun blacklist(): List<Blocked> = dbQuery {
+        val accounts = Accounts.selectAll().where { Accounts.excludedReason.isNotNull() }.orderBy(Accounts.excludedAt, SortOrder.DESC_NULLS_LAST).map {
+            Blocked(it[Accounts.id], it[Accounts.id], it[Accounts.name], it[Accounts.excludedReason], it[Accounts.excludedAt]?.toString())
+        }
+        val excludedSlugs = Accounts.selectAll().where { Accounts.excludedReason.isNotNull() }.map { it[Accounts.slug] }.toSet()
+        // A blocked name that already shows as an excluded account is listed once, as the account
+        val names = Blocklist.selectAll().orderBy(Blocklist.createdAt, SortOrder.DESC).filter { it[Blocklist.slug] !in excludedSlugs }.map {
+            Blocked(it[Blocklist.id], null, it[Blocklist.name], it[Blocklist.reason], it[Blocklist.createdAt].toString())
+        }
+        accounts + names
+    }
+
+    // --- Dirigeants publiés par l'annuaire des entreprises ---------------------------------------
+
+    suspend fun saveOfficers(accountId: AccountId, officers: List<OfficerRow>) = dbQuery {
+        officers.forEach { o ->
+            Officers.insertIgnore { it[this.accountId] = accountId; it[fullName] = o.fullName; it[role] = o.role; it[sourceUrl] = o.sourceUrl }
+        }
+        Accounts.update({ Accounts.id eq accountId }) { it[officersCheckedAt] = Instant.now() }
+    }
+
+    suspend fun officersByAccount(): Map<AccountId, List<OfficerRow>> = dbQuery {
+        Officers.selectAll().groupBy({ it[Officers.accountId] }) { OfficerRow(it[Officers.fullName], it[Officers.role], it[Officers.sourceUrl]) }
+    }
+
+    /** Accounts with a SIREN whose officers were never read, best score first. */
+    suspend fun accountsWithoutOfficers(limit: Int): List<Pair<AccountId, String>> = dbQuery {
+        Accounts.selectAll()
+            .where { Accounts.siren.isNotNull() and Accounts.officersCheckedAt.isNull() and Accounts.excludedReason.isNull() }
+            .orderBy(Accounts.score, SortOrder.DESC).limit(limit).map { it[Accounts.id] to it[Accounts.siren]!! }
+    }
+
+    suspend fun contactsByAccount(): Map<AccountId, List<Contact>> = dbQuery {
+        Contacts.selectAll().orderBy(Contacts.createdAt, SortOrder.ASC).map { it.toContact() }.groupBy { it.accountId }
     }
 
     suspend fun wasSeen(key: String, withinDays: Long = 30): Boolean = dbQuery {
@@ -136,6 +230,32 @@ class Repository {
 
     suspend fun markSeen(key: String, kept: Boolean, reason: String? = null) = dbQuery {
         DiscoverySeen.upsert { it[this.key] = key; it[this.kept] = kept; it[this.reason] = reason; it[checkedAt] = Instant.now() }
+    }
+
+    /** Saves a demand the first time it is seen. True when it is new. */
+    suspend fun saveDemand(d: Demand): Boolean = dbQuery {
+        Demands.insertIgnore {
+            it[key] = d.key; it[origin] = d.source; it[title] = d.title; it[url] = d.url; it[budget] = d.budget
+            it[categories] = d.categories.encode(); it[publishedAt] = d.publishedAt?.let(Instant::parse)
+        }.insertedCount > 0
+    }
+
+    suspend fun openDemands(limit: Int = 30): List<Demand> = dbQuery {
+        Demands.selectAll().where { Demands.dismissedAt.isNull() }.orderBy(Demands.publishedAt, SortOrder.DESC_NULLS_LAST).limit(limit).map {
+            Demand(it[Demands.key], it[Demands.origin], it[Demands.title], it[Demands.url], it[Demands.budget],
+                it[Demands.categories].decodeList(), it[Demands.publishedAt]?.toString())
+        }
+    }
+
+    /** True when the demand exists. */
+    suspend fun dismissDemand(key: String): Boolean = dbQuery {
+        Demands.update({ Demands.key eq key }) { it[dismissedAt] = Instant.now() } > 0
+    }
+
+    /** Demands are only useful while the buyer is choosing: drop them after 90 days. */
+    suspend fun purgeOldDemands(now: Instant = Instant.now()): Int = dbQuery {
+        val limit = now.minus(90, ChronoUnit.DAYS)
+        Demands.deleteWhere { Demands.createdAt.less(limit) }
     }
 
     /** Job board remembered for an account. Null: never looked. A null ref inside: looked, none found. */
@@ -241,6 +361,12 @@ class Repository {
         Contacts.deleteWhere {
             (Contacts.createdAt.less(limit)) and (Contacts.lastInboundAt.isNull() or Contacts.lastInboundAt.less(limit))
         }
+    }
+
+    /** RGPD : officer names read from the registry more than 3 years ago are deleted, like contacts. */
+    suspend fun purgeStaleOfficers(now: Instant = Instant.now()): Int = dbQuery {
+        val limit = now.minus(3 * 365L, ChronoUnit.DAYS)
+        Officers.deleteWhere { Officers.fetchedAt.less(limit) }
     }
 
     // --- Faits, signaux, dossiers --------------------------------------------------------------

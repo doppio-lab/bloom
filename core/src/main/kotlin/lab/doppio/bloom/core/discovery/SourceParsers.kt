@@ -8,14 +8,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
-import org.w3c.dom.Element
-import java.io.StringReader
 import java.time.Instant
 import java.time.OffsetDateTime
-import java.time.ZonedDateTime
-import java.time.format.DateTimeFormatter
-import javax.xml.XMLConstants
-import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Pure parsers for the public sources read by discovery. No I/O here: each function takes the raw
@@ -123,25 +117,7 @@ object Press {
     private val raises = Regex("^(.{2,40}?)\\s+(?:lève|boucle|sécurise|réalise)\\b.{0,60}?$amount", RegexOption.IGNORE_CASE)
     private val colonThenRaises = Regex("^(.{2,40}?)\\s*:\\s.*?\\blève\\b.{0,40}?$amount", RegexOption.IGNORE_CASE)
 
-    fun parseFeed(xml: String): List<PressItem> {
-        val factory = DocumentBuilderFactory.newInstance().apply {
-            // The feed is untrusted input: no DTD, no external entity
-            setFeature("http://apache.org/xml/features/disallow-doctype-decl", true)
-            setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true)
-            isExpandEntityReferences = false
-        }
-        val doc = factory.newDocumentBuilder().parse(org.xml.sax.InputSource(StringReader(xml)))
-        val items = doc.getElementsByTagName("item")
-        return (0 until items.length).mapNotNull { i ->
-            val item = items.item(i) as? Element ?: return@mapNotNull null
-            fun child(tag: String) = item.getElementsByTagName(tag).item(0)?.textContent?.trim()?.takeIf { it.isNotEmpty() }
-            PressItem(
-                title = child("title") ?: return@mapNotNull null,
-                link = child("link") ?: return@mapNotNull null,
-                publishedAt = child("pubDate")?.let { runCatching { ZonedDateTime.parse(it, DateTimeFormatter.RFC_1123_DATE_TIME).toInstant() }.getOrNull() },
-            )
-        }
-    }
+    fun parseFeed(xml: String): List<PressItem> = Rss.items(xml).map { PressItem(it.title, it.link, it.publishedAt) }
 
     /** Company and amount when the headline announces a funding round, null otherwise. Deterministic: headline only. */
     fun funding(title: String): FundingHeadline? {
@@ -184,7 +160,7 @@ object GitHub {
 
 // --- Job boards: Greenhouse, Lever, Ashby -----------------------------------------------------------
 
-enum class BoardProvider { GREENHOUSE, LEVER, ASHBY }
+enum class BoardProvider { GREENHOUSE, LEVER, ASHBY, SMARTRECRUITERS }
 
 data class BoardRef(val provider: BoardProvider, val token: String)
 
@@ -202,6 +178,7 @@ object JobBoards {
         BoardProvider.GREENHOUSE to Regex("(?:boards|job-boards)(?:\\.eu)?\\.greenhouse\\.io/(?:embed/job_board\\?for=)?([A-Za-z0-9_-]+)"),
         BoardProvider.LEVER to Regex("jobs(?:\\.eu)?\\.lever\\.co/([A-Za-z0-9_-]+)"),
         BoardProvider.ASHBY to Regex("jobs\\.ashbyhq\\.com/([A-Za-z0-9_.%-]+)"),
+        BoardProvider.SMARTRECRUITERS to Regex("(?:jobs|careers)\\.smartrecruiters\\.com/([A-Za-z0-9_-]+)"),
     )
 
     /** Finds a link to a hosted job board in the HTML of a company page. */
@@ -213,6 +190,7 @@ object JobBoards {
         BoardProvider.GREENHOUSE -> "https://boards-api.greenhouse.io/v1/boards/${ref.token}/jobs"
         BoardProvider.LEVER -> "https://api.lever.co/v0/postings/${ref.token}?mode=json"
         BoardProvider.ASHBY -> "https://api.ashbyhq.com/posting-api/job-board/${ref.token}"
+        BoardProvider.SMARTRECRUITERS -> "https://api.smartrecruiters.com/v1/companies/${ref.token}/postings?limit=100"
     }
 
     fun parse(provider: BoardProvider, body: JsonElement): List<Posting> = when (provider) {
@@ -244,7 +222,46 @@ object JobBoards {
                 dateIsFirstPublication = false,
             )
         }
+        BoardProvider.SMARTRECRUITERS -> (body.obj()?.get("content") as? JsonArray).orEmpty().mapNotNull { it.obj() }.mapNotNull { j ->
+            val id = j["id"].text() ?: return@mapNotNull null
+            val company = j["company"].obj()?.get("identifier").text() ?: return@mapNotNull null
+            Posting(
+                title = j["name"].text() ?: return@mapNotNull null,
+                url = "https://jobs.smartrecruiters.com/$company/$id",
+                publishedAt = instant(j["releasedDate"].text()),
+                location = j["location"].obj()?.get("fullLocation").text(),
+                // The release date moves when a posting is published again
+                dateIsFirstPublication = false,
+            )
+        }
     }
+}
+
+// --- Company registry: legal officers -----------------------------------------------------------------
+
+data class Officer(val fullName: String, val role: String)
+
+object Registry {
+    /** People who run the company. Board members, supervisory boards and auditors are listed too, and are left out. */
+    private val executive = Regex("(?i)pr[ée]sident|directeur g[ée]n[ée]ral|g[ée]rant|dirigeant")
+    private val notExecutive = Regex("(?i)commissaire|conseil de surveillance")
+
+    /**
+     * Natural persons who run the company, from a record of the company registry. The date of birth the
+     * registry publishes is not kept: it is not needed to write to someone.
+     */
+    fun officers(company: JsonObject): List<Officer> = (company["dirigeants"] as? JsonArray).orEmpty().mapNotNull { it.obj() }.mapNotNull { d ->
+        if (d["type_dirigeant"].text() != "personne physique") return@mapNotNull null
+        val role = d["qualite"].text()?.takeIf { executive.containsMatchIn(it) && !notExecutive.containsMatchIn(it) } ?: return@mapNotNull null
+        val first = d["prenoms"].text()?.split(' ', ',')?.firstOrNull { it.isNotBlank() } ?: return@mapNotNull null
+        // "SOUAL (DELEVALLEE)": the name in brackets is a birth name, the first one is the name in use
+        val last = d["nom"].text()?.substringBefore('(')?.trim()?.takeIf { it.isNotEmpty() } ?: return@mapNotNull null
+        Officer("${capitalise(first)} ${capitalise(last)}", role)
+    }.distinct()
+
+    /** The registry writes names in capitals: "JEAN-PIERRE" becomes "Jean-Pierre". */
+    private fun capitalise(name: String): String =
+        name.lowercase().split(' ').joinToString(" ") { word -> word.split('-').joinToString("-") { it.replaceFirstChar(Char::uppercase) } }
 }
 
 /** Rules shared by every source of job postings (France Travail, hosted job boards). */

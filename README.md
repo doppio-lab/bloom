@@ -13,8 +13,8 @@ référence client hors sujet. Les LLM cherchent et rédigent ; le code score, v
 
 | Étape | Qui | Comment |
 |---|---|---|
-| Découverte | code | chaque nuit, sept sources publiques (voir « Sources de découverte ») ; ESN, cabinets et éditeurs étrangers écartés |
-| Bonne personne | humain + Dropcontact | recherche LinkedIn préparée selon l'offre, email vérifié trouvé à partir du nom |
+| Découverte | code | chaque nuit, neuf sources publiques (voir « Sources de découverte ») ; ESN, cabinets et éditeurs étrangers écartés |
+| Bonne personne | code + humain + Dropcontact | carnet de contacts : dirigeants publiés à l'annuaire des entreprises, recherche LinkedIn préparée selon l'offre, email vérifié trouvé à partir du nom |
 | Collecte de faits | code | App Store (Lookup + avis RSS), France Travail (offres), annuaire des entreprises |
 | Exploration du site | agent Koog outillé | lit 6 pages max, ne garde que des citations vérifiées mot pour mot |
 | Dossier | agent Koog, sortie structurée | résumé, hypothèses reliées aux faits, angle, offre, raisons de ne pas contacter |
@@ -213,12 +213,13 @@ contact inscrit un vendredi ou un week-end n'aura donc son brouillon que le lund
 | `DB_USER`, `DB_PASSWORD` | `bloom`, `bloom` | identifiants PostgreSQL |
 | `PUBLIC_BASE_URL` | `http://localhost:8080` | base des liens de désinscription |
 | `FT_CLIENT_ID`, `FT_CLIENT_SECRET` | vides | API Offres d'emploi France Travail ; sans elles, la source « offres d'emploi » est coupée et le dashboard le signale |
-| `DISCOVERY_SOURCES` | `bodacc,boamp,github,jobboards` | sources ajoutées à la découverte ; ajouter `press` pour les flux de presse |
+| `DISCOVERY_SOURCES` | `bodacc,boamp,ted,codeur,press,github,jobboards` | sources ajoutées à la découverte |
 | `BODACC_MIN_CAPITAL` | `100000` | capital minimal, en euros, pour étudier une annonce BODACC |
+| `CODEUR_MIN_BUDGET` | `1000` | bas de la tranche de budget, en euros, pour garder un projet Codeur |
 | `GITHUB_TOKEN` | vide | jeton sans permission : 30 recherches GitHub par minute au lieu de 10 |
 | `DROPCONTACT_API_KEY` | vide | recherche d'email par Dropcontact ; sans elle, saisie manuelle |
-| `DISCOVERY_APPS_PER_RUN` | `120` | apps analysées par découverte |
-| `DISCOVERY_EXCLUDE` | vide | entreprises à ne jamais prospecter, séparées par des virgules |
+| `DISCOVERY_APPS_PER_RUN` | `400` | apps du classement analysées par découverte (environ 5 secondes chacune) |
+| `DISCOVERY_EXCLUDE` | vide | entreprises à ne jamais prospecter, séparées par des virgules ; s'ajoute à la liste noire du dashboard |
 | `SMTP_HOST`, `SMTP_PORT`, `IMAP_HOST` | Gmail | serveurs d'envoi et de relève |
 | `MAILBOXES` | vide | boîtes d'envoi, `adresse:mot-de-passe-d-application:Nom affiché`, séparées par des virgules |
 | `MAX_PER_MAILBOX_PER_DAY` | `25` | plafond d'envoi par boîte et par jour |
@@ -257,6 +258,19 @@ Ne mettre `DRY_RUN=false` qu'une fois le domaine d'envoi configuré (SPF, DKIM, 
 semaines, `MAILBOXES` rempli avec de vrais mots de passe d'application, et `PUBLIC_BASE_URL` pointant vers une
 URL joignable depuis Internet (les liens de désinscription en dépendent).
 
+## Liste noire et carnet de contacts
+
+- **Liste noire** (vue Prospects). Le bouton « Liste noire » d'un prospect ou d'un compte classé l'écarte pour de
+  bon : il sort de toutes les listes, ses séquences en cours s'arrêtent, ses brouillons en attente sont rejetés,
+  et la découverte ne le recrée pas. Un nom peut aussi être ajouté à la main avant que la découverte ne le trouve.
+  « Réintégrer » le retire de la liste sans relancer les séquences arrêtées.
+- **Carnet** (vue Carnet). Pour chaque entreprise au-dessus de 45 ou qui a déjà un contact : les contacts choisis
+  et leur état, les dirigeants publiés par l'Annuaire des entreprises (présidents, directeurs généraux, gérants ;
+  ni administrateurs ni commissaires aux comptes), et les recherches LinkedIn à ouvrir. « Ajouter au carnet »
+  transforme un dirigeant en contact sans lancer de séquence. Export CSV par `GET /api/book.csv`.
+  Le registre ne donne que des mandataires sociaux : le responsable technique reste à trouver à la main.
+  La date de naissance publiée par le registre n'est pas conservée.
+
 ## Sources de découverte
 
 Chaque source est publique, lue sans contourner de conditions d'utilisation, et chaque fait garde le lien de
@@ -264,13 +278,15 @@ l'annonce, de l'offre ou de l'avis dont il vient. Tout est déterministe : aucun
 
 | Source | Ce qu'elle repère | Signal | Activation |
 |---|---|---|---|
-| Classements App Store France | app française dont les avis se dégradent ou qui n'est plus mise à jour | note en baisse, plaintes, app à l'abandon | toujours active |
+| Classements App Store France (apps gratuites et apps aux meilleurs revenus, 21 catégories) | app française dont les avis se dégradent ou qui n'est plus mise à jour | note en baisse, plaintes, app à l'abandon | toujours active |
 | Offres d'emploi France Travail | entreprise qui recrute un développeur mobile | recrutement mobile, KMP, recrutement bloqué | `FT_CLIENT_ID` et `FT_CLIENT_SECRET` |
 | BODACC | augmentation de capital publiée aux annonces légales | levée de fonds | `bodacc` |
 | BOAMP | appel d'offres public ouvert qui demande une application mobile | marché public | `boamp` |
+| TED | marché public européen passé en France pour une application mobile | marché public | `ted` |
+| Codeur.com | projet mobile publié par une entreprise, budget d'au moins `CODEUR_MIN_BUDGET` | aucun : liste « Demandes à répondre » | `codeur` |
 | GitHub | organisation française qui publie du code Kotlin Multiplatform | code KMP public | `github` |
-| Pages carrières (Greenhouse, Lever, Ashby) | offre mobile d'un compte déjà connu, avec sa date de publication | recrutement mobile, KMP, recrutement bloqué | `jobboards` |
-| Presse (FrenchWeb, Maddyness) | titre qui annonce une levée de fonds | levée de fonds | `press`, coupée par défaut |
+| Pages carrières (Greenhouse, Lever, Ashby, SmartRecruiters) | offre mobile d'un compte déjà connu, avec sa date de publication | recrutement mobile, KMP, recrutement bloqué | `jobboards` |
+| Presse (FrenchWeb, Maddyness, JDN, L'Usine Digitale, Siècle Digital) | titre qui annonce une levée de fonds | levée de fonds | `press` |
 
 Identifiants France Travail : créer un compte sur [francetravail.io](https://francetravail.io), déclarer une
 application, y ajouter l'API « Offres d'emploi v2 », puis copier l'identifiant et la clé dans `FT_CLIENT_ID` et
@@ -281,8 +297,15 @@ Limites à connaître :
 - BODACC donne le capital après l'augmentation, pas le montant levé. Les petites structures sont écartées
   (capital sous `BODACC_MIN_CAPITAL`, moins de 10 salariés, ni secteur couvert ni app sur l'App Store).
 - Les pages carrières ne trouvent pas de nouvelles entreprises : elles enrichissent les comptes dont le site
-  renvoie vers l'un des trois services. Ashby ne donne pas l'ancienneté d'une offre.
+  renvoie vers l'un des quatre services. Ashby et SmartRecruiters ne donnent pas l'ancienneté d'une offre.
+- Presse : seuls le titre et le lien de l'article sont repris. Les conditions de réutilisation des flux n'ont pas
+  été vérifiées ; retirer `press` de `DISCOVERY_SOURCES` en cas de doute.
 - GitHub sert à repérer des organisations. Aucun contact n'est créé à partir d'un compte GitHub.
+- Codeur ne nomme pas l'entreprise et interdit de la contacter hors de la plateforme : ces projets ne deviennent
+  jamais des comptes ni des séquences d'emails. Le flux est relu toutes les 30 minutes, car il ne garde que les
+  derniers projets. Seuls le titre, la tranche de budget, les catégories et le lien sont conservés.
+- LinkedIn : aucun accès conforme à ses offres (pas d'API de lecture, lecture automatique interdite par ses
+  conditions). France Travail agrège déjà une centaine de sites partenaires, dont Indeed, HelloWork et l'APEC.
 - Presse : seuls le titre et le lien sont repris. Les conditions de réutilisation des deux flux sont à
   vérifier avant d'activer la source.
 

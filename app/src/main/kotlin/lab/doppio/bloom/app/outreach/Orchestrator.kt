@@ -199,6 +199,8 @@ class Orchestrator(
 
     suspend fun nightly(now: ZonedDateTime = ZonedDateTime.now(zone)) {
         val today = now.toLocalDate()
+        // Every tick: the Codeur feed only keeps the latest projects, a nightly read would miss most of them
+        runCatching { discovery.pollDemands() }.onFailure { log.warn("Lecture de Codeur en échec", it) }
         // 2h-4h : découverte de nouvelles entreprises (offres d'emploi, classements App Store)
         if (now.hour in 2..3 && lastDiscovery != today) {
             lastDiscovery = today
@@ -217,7 +219,9 @@ class Orchestrator(
         if (now.dayOfMonth == 1 && now.hour == 4 && lastPurge != today) {
             lastPurge = today
             val purged = repo.purgeStaleContacts()
-            repo.logEvent("GDPR_PURGE", payload = """{"contacts":$purged}""")
+            val officers = repo.purgeStaleOfficers()
+            val demands = repo.purgeOldDemands()
+            repo.logEvent("GDPR_PURGE", payload = """{"contacts":$purged,"officers":$officers,"demands":$demands}""")
         }
     }
 }
