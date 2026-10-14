@@ -23,4 +23,10 @@ object TestDatabase {
         ) { rs -> if (rs.next()) rs.getString(1) else null }
         if (tables != null) exec("TRUNCATE $tables RESTART IDENTITY CASCADE")
     }
+
+    /** What a second instance would get: tries the advisory lock from another session. */
+    fun otherSessionGetsInstanceLock(): Boolean =
+        java.sql.DriverManager.getConnection(container.jdbcUrl, container.username, container.password).use { conn ->
+            conn.createStatement().use { st -> st.executeQuery("SELECT pg_try_advisory_lock(${0x626c6f6f6dL})").use { it.next() && it.getBoolean(1) } }
+        }
 }

@@ -192,7 +192,19 @@ contact inscrit un vendredi ou un week-end n'aura donc son brouillon que le lund
 | planification | 10 min | prépare les brouillons dus (agent rédacteur) |
 | envoi | 2 min | envoie les emails approuvés, mar-jeu 8h30-11h30 (journalisés si `DRY_RUN=true`) |
 | relève | 5 min | lit les réponses en IMAP (désactivée si `DRY_RUN=true`) |
-| nuit | vérifiée toutes les 30 min | découverte (2h-4h), recherche (5h-6h), note du coach (lundi 7h), purge RGPD (le 1er à 4h) |
+| tâches | vérifiées toutes les 30 min | découverte (chaque nuit entre 2h et 5h, puis recherche), recherche (une fois par jour, dès 5h si la découverte ne l'a pas lancée), note du coach (une fois par semaine, dès le lundi 7h), purge RGPD (une fois par mois, dès le 1er à 4h) |
+
+Garanties :
+
+- Une seule instance fait tourner ces boucles (verrou Postgres). Une deuxième instance sert le dashboard
+  et attend que la première s'arrête.
+- Les tâches retiennent leur dernière exécution en base (`job_runs`) : un redémarrage ne les relance pas
+  et ne les oublie pas.
+- Un email est réservé avant l'envoi SMTP : il ne peut pas partir deux fois. S'il est interrompu par un
+  redémarrage, il passe en `FAILED` et n'est jamais renvoyé tout seul. Un refus SMTP le remet en file
+  15 puis 30 minutes plus tard, puis le passe en `FAILED`, sans bloquer les autres emails.
+- Une réponse n'est marquée lue dans la boîte qu'une fois traitée. Les rebonds arrêtent la séquence et
+  passent l'adresse en opposition.
 
 ### Variables d'environnement
 

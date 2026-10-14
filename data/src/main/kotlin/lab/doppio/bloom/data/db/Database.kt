@@ -15,7 +15,27 @@ import org.jetbrains.exposed.sql.transactions.transaction
 data class DbConfig(val url: String, val user: String, val password: String, val maxPool: Int = 8)
 
 object Db {
+    private var config: DbConfig? = null
+    private var lockConnection: java.sql.Connection? = null
+
+    /**
+     * Only one instance may run the background loops, or emails would leave twice. Holds a Postgres
+     * advisory lock on a connection of its own for the life of the process. False while another holds it.
+     */
+    @Synchronized
+    fun tryHoldSingleInstanceLock(): Boolean {
+        if (lockConnection?.isValid(2) == true) return true
+        val c = config ?: error("Db.connect first")
+        val conn = java.sql.DriverManager.getConnection(c.url, c.user, c.password)
+        val held = conn.createStatement().use { st -> st.executeQuery("SELECT pg_try_advisory_lock($SINGLE_INSTANCE_LOCK)").use { it.next() && it.getBoolean(1) } }
+        if (held) lockConnection = conn else conn.close()
+        return held
+    }
+
+    private const val SINGLE_INSTANCE_LOCK = 0x626c6f6f6dL // "bloom"
+
     fun connect(config: DbConfig): Database {
+        this.config = config
         val ds = HikariDataSource(
             HikariConfig().apply {
                 jdbcUrl = config.url
@@ -80,6 +100,15 @@ object Demands : Table("demands") {
     val dismissedAt = timestamp("dismissed_at").nullable()
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(key)
+}
+
+object JobRuns : Table("job_runs") {
+    val name = text("name")
+    val period = date("period")
+    val startedAt = timestamp("started_at").defaultExpression(CurrentTimestamp)
+    val finishedAt = timestamp("finished_at").nullable()
+    val error = text("error").nullable()
+    override val primaryKey = PrimaryKey(name)
 }
 
 object Blocklist : Table("blocklist") {

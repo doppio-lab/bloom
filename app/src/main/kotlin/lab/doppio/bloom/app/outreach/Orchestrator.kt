@@ -47,12 +47,22 @@ class Orchestrator(
     private val policy: SendingPolicy,
     private val discovery: lab.doppio.bloom.data.discovery.DiscoveryService,
     private val nightlyResearchBudget: Int = 25,
+    private val instanceLock: () -> Boolean = { lab.doppio.bloom.data.db.Db.tryHoldSingleInstanceLock() },
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val zone = ZoneId.of(policy.timezone)
 
+    /** Long jobs (discovery, research, coach) run here so they never hold up each other or the loops. */
+    private var jobs: CoroutineScope? = null
+
     fun start(scope: CoroutineScope) {
+        jobs = scope
         scope.launch {
+            // Une seule instance fait tourner les boucles : sinon chaque email partirait deux fois
+            while (!runCatching { instanceLock() }.getOrDefault(false)) {
+                log.warn("Une autre instance de Bloom tient les boucles de fond : nouvel essai dans 30 s")
+                delay(30_000)
+            }
             // Avant toute boucle : un brouillon resté SENDING date d'avant le redémarrage
             val interrupted = repo.reconcileInterruptedSends()
             if (interrupted > 0) log.warn("$interrupted email(s) interrompu(s) pendant l'envoi, passés en FAILED : vérifier la boîte d'envoi")
@@ -212,16 +222,14 @@ class Orchestrator(
         repo.logEvent("REPLY_RECEIVED", accountId, contact?.id, payload = """{"intent":"${result.intent}"}""")
     }
 
-    private var lastNightly: java.time.LocalDate? = null
-    private var lastDiscovery: java.time.LocalDate? = null
+    private val discoveryFlag = java.util.concurrent.atomic.AtomicBoolean(false)
 
-    @Volatile var discoveryRunning: Boolean = false
-        private set
+    val discoveryRunning: Boolean get() = discoveryFlag.get()
 
+    /** Null when a run is already going on (night run or "Chercher maintenant"). */
     suspend fun runDiscovery(): lab.doppio.bloom.data.discovery.DiscoveryReport? {
-        if (discoveryRunning) return null
-        discoveryRunning = true
-        return try { discovery.run() } finally { discoveryRunning = false }
+        if (!discoveryFlag.compareAndSet(false, true)) return null
+        return try { discovery.run() } finally { discoveryFlag.set(false) }
     }
 
     /**
@@ -237,34 +245,56 @@ class Orchestrator(
             runCatching { research.research(row.account.id) }.onFailure { log.warn("Recherche échouée : ${row.account.name}", it) }
         }
     }
-    private var lastCoach: java.time.LocalDate? = null
-    private var lastPurge: java.time.LocalDate? = null
-
+    /**
+     * Tâches périodiques, réservées en base pour leur période : un redémarrage ne les relance pas et ne les
+     * oublie pas. Chacune tourne à part, une découverte longue ne fait plus sauter la recherche ni la purge.
+     *  - découverte : chaque nuit entre 2h et 5h, suivie de la recherche ;
+     *  - recherche (agent IA) : une fois par jour, à partir de 5h si la découverte ne l'a pas lancée ;
+     *  - note du coach : une fois par semaine, à partir du lundi 7h ;
+     *  - purge RGPD : une fois par mois, à partir du 1er à 4h.
+     */
     suspend fun nightly(now: ZonedDateTime = ZonedDateTime.now(zone)) {
         val today = now.toLocalDate()
         // Every tick: the Codeur feed only keeps the latest projects, a nightly read would miss most of them
         runCatching { discovery.pollDemands() }.onFailure { log.warn("Lecture de Codeur en échec", it) }
-        // 2h-4h : découverte de nouvelles entreprises (offres d'emploi, classements App Store)
-        if (now.hour in 2..3 && lastDiscovery != today) {
-            lastDiscovery = today
+
+        if (now.hour in 2..4) job("discovery", today) {
             runDiscovery()
+            if (repo.claimJob("research", today)) runJob("research") { researchBatch() }
         }
-        // 5h-6h : recherche approfondie (agent IA) des comptes qui valent le coup, nouveaux d'abord
-        if (now.hour in 5..6 && lastNightly != today) {
-            lastNightly = today
-            researchBatch()
-        }
-        if (now.dayOfWeek == DayOfWeek.MONDAY && now.hour == 7 && lastCoach != today) {
-            lastCoach = today
+        if (now.hour >= 5) job("research", today) { researchBatch() }
+
+        val monday = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        if (today != monday || now.hour >= 7) job("coach", monday) {
             val memo = coach.weeklyMemo()
             repo.logEvent("WEEKLY_MEMO", payload = kotlinx.serialization.json.JsonPrimitive(memo).toString())
         }
-        if (now.dayOfMonth == 1 && now.hour == 4 && lastPurge != today) {
-            lastPurge = today
+
+        val firstOfMonth = today.withDayOfMonth(1)
+        if (today != firstOfMonth || now.hour >= 4) job("gdpr-purge", firstOfMonth) {
             val purged = repo.purgeStaleContacts()
             val officers = repo.purgeStaleOfficers()
             val demands = repo.purgeOldDemands()
             repo.logEvent("GDPR_PURGE", payload = """{"contacts":$purged,"officers":$officers,"demands":$demands}""")
+        }
+    }
+
+    /** Claims the job for its period, then runs it apart from the loops. */
+    private suspend fun job(name: String, period: java.time.LocalDate, block: suspend () -> Unit) {
+        if (!repo.claimJob(name, period)) return
+        val scope = jobs
+        if (scope == null) runJob(name, block) else scope.launch { runJob(name, block) }
+    }
+
+    private suspend fun runJob(name: String, block: suspend () -> Unit) {
+        try {
+            block()
+            repo.finishJob(name)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            log.error("Tâche $name en échec", e)
+            repo.finishJob(name, e.message ?: e.javaClass.simpleName)
         }
     }
 }

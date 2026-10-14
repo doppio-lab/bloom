@@ -649,6 +649,25 @@ class Repository {
         }
     }
 
+    // --- Tâches planifiées -----------------------------------------------------------------------
+
+    /**
+     * Claims a job for a period (a day, the Monday of a week, the 1st of a month). True only for the first
+     * caller of that period, across restarts and instances.
+     */
+    suspend fun claimJob(name: String, period: LocalDate, now: Instant = Instant.now()): Boolean = dbQuery {
+        JobRuns.upsert(
+            onUpdate = { it[JobRuns.period] = period; it[JobRuns.startedAt] = now; it[JobRuns.finishedAt] = null; it[JobRuns.error] = null },
+            where = { JobRuns.period less period },
+        ) {
+            it[this.name] = name; it[this.period] = period; it[startedAt] = now
+        }.insertedCount > 0
+    }
+
+    suspend fun finishJob(name: String, error: String? = null, now: Instant = Instant.now()) = dbQuery {
+        JobRuns.update({ JobRuns.name eq name }) { it[finishedAt] = now; it[this.error] = error?.take(500) }
+    }
+
     // --- Journal et observabilité ---------------------------------------------------------------
 
     suspend fun logEvent(type: String, accountId: AccountId? = null, contactId: ContactId? = null, draftId: Long? = null, payload: String = "{}") = dbQuery {
