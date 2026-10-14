@@ -77,6 +77,9 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
      * Envoie un email texte brut (meilleure délivrabilité que du HTML en prospection, et pas de pixel de suivi).
      * Renvoie le Message-ID, qui sert à rattacher les réponses à l'inscription.
      */
+    /** Chosen before the send and stored with the draft, so a reply can always be matched to it. */
+    fun newMessageId(mailbox: Mailbox): String = "<${UUID.randomUUID()}@${mailbox.address.substringAfter('@')}>"
+
     suspend fun send(
         mailbox: Mailbox,
         to: String,
@@ -85,9 +88,8 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
         contactId: Long,
         language: String,
         inReplyTo: String?,
+        messageId: String,
     ): String = withContext(Dispatchers.IO) {
-        val domain = mailbox.address.substringAfter('@')
-        val messageId = "<${UUID.randomUUID()}@$domain>"
         val unsubscribeUrl = "${config.publicBaseUrl}/u/${tokens.tokenFor(contactId)}"
         val fullBody = body + footer(contactId, language)
 

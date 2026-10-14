@@ -192,6 +192,9 @@ object Drafts : Table("drafts") {
     val sentAt = timestamp("sent_at").nullable()
     val messageId = text("message_id").nullable()
     val mailbox = text("mailbox").nullable()
+    val sendAttempts = integer("send_attempts").default(0)
+    val nextAttemptAt = timestamp("next_attempt_at").nullable()
+    val lastError = text("last_error").nullable()
     override val primaryKey = PrimaryKey(id)
 }
 

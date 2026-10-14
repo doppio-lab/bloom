@@ -1,5 +1,6 @@
 package lab.doppio.bloom.app.outreach
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -51,15 +52,26 @@ class Orchestrator(
     private val zone = ZoneId.of(policy.timezone)
 
     fun start(scope: CoroutineScope) {
-        scope.loop("planification", 10.minutes) { planDrafts() }
-        scope.loop("envoi", 2.minutes) { sendApproved() }
-        scope.loop("relève", 5.minutes) { processReplies() }
-        scope.loop("nuit", 30.minutes) { nightly() }
+        scope.launch {
+            // Avant toute boucle : un brouillon resté SENDING date d'avant le redémarrage
+            val interrupted = repo.reconcileInterruptedSends()
+            if (interrupted > 0) log.warn("$interrupted email(s) interrompu(s) pendant l'envoi, passés en FAILED : vérifier la boîte d'envoi")
+            loop("planification", 10.minutes) { planDrafts() }
+            loop("envoi", 2.minutes) { sendApproved() }
+            loop("relève", 5.minutes) { processReplies() }
+            loop("nuit", 30.minutes) { nightly() }
+        }
     }
 
     private fun CoroutineScope.loop(name: String, every: kotlin.time.Duration, block: suspend () -> Unit) = launch {
         while (isActive) {
-            runCatching { block() }.onFailure { log.error("Boucle $name en échec", it) }
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.error("Boucle $name en échec", e)
+            }
             delay(every)
         }
     }
@@ -87,8 +99,7 @@ class Orchestrator(
     suspend fun sendApproved(now: Instant = Instant.now()) {
         if (!SequenceEngine.inWindow(now, policy)) return
         val startOfDay = now.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant()
-        val queue = repo.draftsByStatus(DraftStatus.APPROVED, Channel.EMAIL)
-        if (queue.isEmpty()) return
+        val draft = repo.nextToSend(now) ?: return
 
         // Une seule boîte disponible par passage : on respecte l'écart minimal entre deux envois.
         val mailbox = mail.mailboxes.firstOrNull { mb ->
@@ -96,30 +107,42 @@ class Orchestrator(
                 (repo.lastSentAt(mb.address)?.let { Duration.between(it, now).seconds >= policy.minSecondsBetweenSends } ?: true)
         } ?: return
 
-        val draft = queue.first()
-        val enrollment = repo.enrollment(draft.enrollmentId) ?: return
+        val enrollment = repo.enrollment(draft.enrollmentId) ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return }
         if (enrollment.status != EnrollmentStatus.ACTIVE) {
             repo.decideDraft(draft.id, DraftStatus.REJECTED); return
         }
-        val contact = repo.contact(enrollment.contactId) ?: return
+        val contact = repo.contact(enrollment.contactId) ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return }
         val to = contact.email ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return }
         if (repo.isSuppressed(to)) {
             repo.decideDraft(draft.id, DraftStatus.REJECTED)
             repo.setEnrollmentStatus(enrollment.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE)
             return
         }
+
+        // Réservé avant l'appel SMTP : après un crash, ce brouillon ne repart jamais tout seul.
+        val messageId = gateway.newMessageId(mailbox)
+        if (!repo.claimForSending(draft.id, messageId, mailbox.address)) return
         val thread = repo.threadMessageId(enrollment.id)
-        val messageId = gateway.send(
-            mailbox = mailbox,
-            to = to,
-            subject = draft.subject.orEmpty(),
-            body = MessageGuard.stripCitations(draft.body),
-            contactId = contact.id,
-            language = contact.language,
-            inReplyTo = thread,
-        )
-        repo.markSent(draft.id, messageId, mailbox.address)
-        repo.advance(enrollment.id, draft.stepIndex + 1, threadMessageId = thread ?: messageId)
+        try {
+            gateway.send(
+                mailbox = mailbox,
+                to = to,
+                subject = draft.subject.orEmpty(),
+                body = MessageGuard.stripCitations(draft.body),
+                contactId = contact.id,
+                language = contact.language,
+                inReplyTo = thread,
+                messageId = messageId,
+            )
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            val status = repo.recordSendFailure(draft.id, e.message ?: e.javaClass.simpleName, now)
+            log.warn("Envoi du brouillon ${draft.id} refusé, statut $status", e)
+            if (status == DraftStatus.FAILED) repo.logEvent("EMAIL_FAILED", contact.accountId, contact.id, draft.id)
+            return
+        }
+        repo.recordSent(draft, threadMessageId = thread ?: messageId, now = now)
         repo.logEvent("EMAIL_SENT", contact.accountId, contact.id, draft.id)
     }
 

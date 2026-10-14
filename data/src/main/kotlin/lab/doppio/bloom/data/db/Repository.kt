@@ -38,6 +38,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
 import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
@@ -474,7 +475,7 @@ class Repository {
     suspend fun hasOpenDraft(enrollmentId: Long, stepIndex: Int): Boolean = dbQuery {
         Drafts.selectAll().where {
             (Drafts.enrollmentId eq enrollmentId) and (Drafts.stepIndex eq stepIndex) and
-                (Drafts.status inList listOf(DraftStatus.PENDING_REVIEW.name, DraftStatus.APPROVED.name, DraftStatus.SENT.name, DraftStatus.TASK_DONE.name))
+                (Drafts.status inList listOf(DraftStatus.PENDING_REVIEW, DraftStatus.APPROVED, DraftStatus.SENDING, DraftStatus.SENT, DraftStatus.TASK_DONE, DraftStatus.FAILED).map { it.name })
         }.any()
     }
 
@@ -509,9 +510,64 @@ class Repository {
         }
     }
 
-    suspend fun markSent(id: Long, messageId: String, mailbox: String) = dbQuery {
-        Drafts.update({ Drafts.id eq id }) {
-            it[status] = DraftStatus.SENT.name; it[sentAt] = Instant.now(); it[this.messageId] = messageId; it[this.mailbox] = mailbox
+    // --- Envoi : réserver, envoyer, constater. Un brouillon réservé n'est jamais renvoyé. ------------
+
+    /** Oldest approved email whose retry delay has passed. */
+    suspend fun nextToSend(now: Instant = Instant.now()): Draft? = dbQuery {
+        Drafts.selectAll().where {
+            (Drafts.status eq DraftStatus.APPROVED.name) and (Drafts.channel eq Channel.EMAIL.name) and
+                (Drafts.nextAttemptAt.isNull() or Drafts.nextAttemptAt.lessEq(now))
+        }.orderBy(Drafts.createdAt).limit(1).firstOrNull()?.toDraft()
+    }
+
+    /**
+     * Claims an approved draft before SMTP is called, with the Message-ID it will carry. Committed on its own,
+     * so a crash during or after the send leaves it SENDING and it is never picked again.
+     * False when someone else changed it first (rejected meanwhile, or claimed by another instance).
+     */
+    suspend fun claimForSending(id: Long, messageId: String, mailbox: String): Boolean = dbQuery {
+        Drafts.update({ (Drafts.id eq id) and (Drafts.status eq DraftStatus.APPROVED.name) }) {
+            it[status] = DraftStatus.SENDING.name; it[this.messageId] = messageId; it[this.mailbox] = mailbox
+        } > 0
+    }
+
+    /** The send went through: the draft is sent and the sequence moves on, in one transaction. */
+    suspend fun recordSent(draft: Draft, threadMessageId: String, now: Instant = Instant.now()) = dbQuery {
+        Drafts.update({ (Drafts.id eq draft.id) and (Drafts.status eq DraftStatus.SENDING.name) }) {
+            it[status] = DraftStatus.SENT.name; it[sentAt] = now; it[nextAttemptAt] = null; it[lastError] = null
+        }
+        Enrollments.update({ Enrollments.id eq draft.enrollmentId }) {
+            it[nextStep] = draft.stepIndex + 1
+            it[lastActionAt] = now
+            it[this.threadMessageId] = threadMessageId
+        }
+    }
+
+    /**
+     * SMTP refused the message. It goes back to the queue after a growing delay (15, 30 min...) so the
+     * other emails keep going out, and becomes FAILED after [maxAttempts]. Returns the new status.
+     */
+    suspend fun recordSendFailure(id: Long, error: String, now: Instant = Instant.now(), maxAttempts: Int = 3): DraftStatus = dbQuery {
+        val attempts = (Drafts.selectAll().where { Drafts.id eq id }.firstOrNull()?.get(Drafts.sendAttempts) ?: 0) + 1
+        val next = if (attempts >= maxAttempts) DraftStatus.FAILED else DraftStatus.APPROVED
+        Drafts.update({ (Drafts.id eq id) and (Drafts.status eq DraftStatus.SENDING.name) }) {
+            it[status] = next.name
+            it[sendAttempts] = attempts
+            it[lastError] = error.take(500)
+            it[messageId] = null
+            it[nextAttemptAt] = if (next == DraftStatus.APPROVED) now.plus(15L * attempts, ChronoUnit.MINUTES) else null
+        }
+        next
+    }
+
+    /**
+     * At startup: drafts still SENDING were interrupted mid-send. Whether they left is unknown, so they are
+     * never sent again automatically: they become FAILED and a human checks the sent folder.
+     */
+    suspend fun reconcileInterruptedSends(): Int = dbQuery {
+        Drafts.update({ Drafts.status eq DraftStatus.SENDING.name }) {
+            it[status] = DraftStatus.FAILED.name
+            it[lastError] = "Interrompu pendant l'envoi : vérifier la boîte d'envoi avant de relancer"
         }
     }
 
