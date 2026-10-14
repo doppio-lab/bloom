@@ -20,5 +20,7 @@ dependencies {
     implementation(libs.jsoup)
     api(libs.coroutines.core)
     testImplementation(kotlin("test"))
-    testImplementation(libs.h2)
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.coroutines.test)
+    testRuntimeOnly(libs.logback)
 }

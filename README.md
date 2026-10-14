@@ -209,6 +209,7 @@ contact inscrit un vendredi ou un week-end n'aura donc son brouillon que le lund
 | `UNSUBSCRIBE_SECRET` | obligatoire | signe les liens de désinscription (HMAC) |
 | `DRY_RUN` | `true` | tant que c'est `true`, aucun email ne part et aucune boîte n'est relevée |
 | `PORT` | `8080` | port HTTP du serveur (option B ; en option A, changer le mapping dans `docker-compose.yml`) |
+| `LOG_LEVEL` | `INFO` | niveau des logs de Bloom (`DEBUG` pour le détail) |
 | `DATABASE_URL` | `jdbc:postgresql://localhost:5432/bloom` | URL JDBC, fixée par Compose en option A |
 | `DB_USER`, `DB_PASSWORD` | `bloom`, `bloom` | identifiants PostgreSQL |
 | `PUBLIC_BASE_URL` | `http://localhost:8080` | base des liens de désinscription |
@@ -229,8 +230,9 @@ contact inscrit un vendredi ou un week-end n'aura donc son brouillon que le lund
 ### Commandes utiles
 
 ```bash
-./gradlew build                    # compile tout et lance les tests
+./gradlew build                    # compile tout et lance les tests (Docker requis pour ceux de data)
 ./gradlew :core:test               # tests du domaine seulement
+./gradlew :data:test               # tests sur un vrai Postgres (Testcontainers)
 docker compose logs -f app         # logs du serveur (option A)
 docker compose exec db psql -U bloom bloom   # console SQL
 docker compose down                # arrêter, en gardant les données
@@ -250,7 +252,8 @@ docker compose down -v             # arrêter et effacer la base
 | Les agents échouent avec `ollama` | Ollama n'est pas lancé (`curl localhost:11434/api/version`) ou le modèle n'est pas téléchargé (`ollama list`) |
 | Les agents échouent avec `anthropic` ou `openai` | clé invalide ou sans crédit, ou nom de modèle inconnu du serveur |
 | Les agents sont très lents | normal en local ; vérifier avec `ollama ps` que le modèle tourne bien sur le GPU |
-| Logs illisibles | il n'y a pas de `logback.xml`, tout sort au niveau DEBUG ; filtrer avec `docker compose logs app \| grep -v DEBUG` |
+| Pas assez de détails dans les logs | les logs sont au niveau INFO ; `LOG_LEVEL=DEBUG` affiche aussi le détail de Bloom |
+| `Could not find a valid Docker environment` dans les tests | Docker n'est pas lancé, ou son socket n'est pas à `/var/run/docker.sock` (OrbStack, Colima) : `export DOCKER_HOST=$(docker context inspect --format '{{.Endpoints.docker.Host}}')` |
 
 ### Passer en envoi réel
 
@@ -321,7 +324,9 @@ Vélomoov;velomoov.fr;123456789;;MOBILITY_TRANSPORT;120;Recommandé par Julie;Cl
 ## État du code
 
 - Les quatre modules compilent (Kotlin 2.3.10, Koog 1.3.0, Ktor 3.3, Exposed 0.61) et les tests de `core`
-  passent (score, garde-fou, séquences, exclusions, noms d'entreprise, CSV).
+  passent (score, garde-fou, séquences, exclusions, noms d'entreprise, CSV). Les tests de `data` tournent sur
+  un vrai Postgres migré par Flyway (Testcontainers). La CI GitHub Actions lance `./gradlew build` et construit
+  l'image Docker sur chaque PR.
 - Vérifié en local : démarrage, migrations, authentification, `/api/overview`, création d'un compte. Les
   agents de recherche, de synthèse et de rédaction ont tourné de bout en bout sur un modèle local (Ollama, et le
   même modèle par l'API compatible OpenAI). Pas encore exercés : le fournisseur Anthropic avec une vraie clé, le
@@ -329,7 +334,7 @@ Vélomoov;velomoov.fr;123456789;;MOBILITY_TRANSPORT;120;Recommandé par Julie;Cl
 - Hypothèses à confirmer au premier lancement : le flux de classement App Store par genre
   (`itunes.apple.com/fr/rss/topfreeapplications/limit=200/genre=…/json`) et le champ `entreprise.url` des offres
   France Travail. Si l'un ne répond plus, la découverte continue avec l'autre source.
-- Non fait : page de détail d'un compte dans le dashboard, tests d'intégration (Testcontainers), Google Play.
+- Non fait : page de détail d'un compte dans le dashboard, tests de l'orchestrateur et des routes, Google Play.
 
 ## Garde-fous de conformité intégrés
 

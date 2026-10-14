@@ -1,0 +1,53 @@
+package lab.doppio.bloom.data
+
+import kotlinx.coroutines.test.runTest
+import lab.doppio.bloom.core.model.Account
+import lab.doppio.bloom.data.db.Demand
+import lab.doppio.bloom.data.db.Demands
+import lab.doppio.bloom.data.db.Repository
+import lab.doppio.bloom.data.db.dbQuery
+import org.jetbrains.exposed.sql.update
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+import kotlin.test.BeforeTest
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
+
+class RepositoryTest {
+    private val repo = Repository()
+
+    @BeforeTest
+    fun clean() = TestDatabase.reset()
+
+    @Test
+    fun `réintégrer un compte bloqué par son nom le retire aussi de la liste noire`() = runTest {
+        val id = repo.upsertAccount(Account(name = "Velomoov SAS"))
+        assertEquals(id, repo.blockName("Vélomoov", "concurrent"))
+        assertTrue(repo.blockedNames().isNotEmpty())
+
+        repo.restoreAccount(id)
+
+        assertTrue(repo.blockedNames().isEmpty())
+        assertTrue(repo.blacklist().isEmpty())
+    }
+
+    @Test
+    fun `écarter une demande inconnue est signalé`() = runTest {
+        repo.saveDemand(Demand("codeur:1", "codeur", "Appli iOS", "https://www.codeur.com/projects/1"))
+        assertTrue(repo.dismissDemand("codeur:1"))
+        assertFalse(repo.dismissDemand("codeur:404"))
+        assertTrue(repo.openDemands().isEmpty())
+    }
+
+    @Test
+    fun `les demandes de plus de 90 jours sont purgées`() = runTest {
+        repo.saveDemand(Demand("codeur:old", "codeur", "Ancienne", "https://www.codeur.com/projects/2"))
+        repo.saveDemand(Demand("codeur:new", "codeur", "Récente", "https://www.codeur.com/projects/3"))
+        dbQuery { Demands.update({ Demands.key eq "codeur:old" }) { it[createdAt] = Instant.now().minus(91, ChronoUnit.DAYS) } }
+
+        assertEquals(1, repo.purgeOldDemands())
+        assertEquals(listOf("codeur:new"), repo.openDemands().map { it.key })
+    }
+}
