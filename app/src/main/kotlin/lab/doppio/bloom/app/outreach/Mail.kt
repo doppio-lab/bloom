@@ -7,6 +7,7 @@ import jakarta.mail.Multipart
 import jakarta.mail.Part
 import jakarta.mail.Session
 import jakarta.mail.Transport
+import jakarta.mail.UIDFolder
 import jakarta.mail.internet.InternetAddress
 import jakarta.mail.internet.MimeMessage
 import jakarta.mail.search.FlagTerm
@@ -124,11 +125,19 @@ data class InboundMail(
     val inReplyTo: List<String>,
     val receivedAt: Instant,
     val isBounce: Boolean,
+    /** IMAP UID, to mark the message seen once it was processed. */
+    val uid: Long,
+    /** Identifies the message across passes: its Message-ID, or the mailbox UID when it has none. */
+    val key: String,
 )
 
-/** Relève IMAP des boîtes d'envoi. Les messages lus sont marqués vus, rien n'est supprimé. */
+/**
+ * Relève IMAP des boîtes d'envoi. Rien n'est supprimé. Un message n'est marqué vu qu'après traitement
+ * ([markSeen]) : s'il échoue, il sera relu à la passe suivante.
+ */
 class ImapPoller(private val config: MailConfig) {
     private val log = LoggerFactory.getLogger(javaClass)
+    private val messageIdPattern = Regex("<[^<>\\s@]+@[^<>\\s]+>")
 
     suspend fun poll(): List<InboundMail> = withContext(Dispatchers.IO) {
         if (config.dryRun) return@withContext emptyList()
@@ -137,26 +146,49 @@ class ImapPoller(private val config: MailConfig) {
         }
     }
 
-    private fun pollOne(mb: Mailbox): List<InboundMail> {
+    suspend fun markSeen(mailboxAddress: String, uids: List<Long>) = withContext(Dispatchers.IO) {
+        if (uids.isEmpty()) return@withContext
+        val mb = config.mailboxes.firstOrNull { it.address == mailboxAddress } ?: return@withContext
+        withInbox(mb, Folder.READ_WRITE) { inbox ->
+            (inbox as UIDFolder).getMessagesByUID(uids.toLongArray()).filterNotNull().forEach { it.setFlag(Flags.Flag.SEEN, true) }
+        }
+    }
+
+    private fun <T> withInbox(mb: Mailbox, mode: Int, block: (Folder) -> T): T {
         val session = Session.getInstance(Properties().apply { put("mail.store.protocol", "imaps") })
         val store = session.getStore("imaps")
         store.connect(config.imapHost, mb.address, mb.password)
         try {
             val inbox = store.getFolder("INBOX")
-            inbox.open(Folder.READ_WRITE)
-            val unseen = inbox.search(FlagTerm(Flags(Flags.Flag.SEEN), false))
-            return unseen.map { m ->
-                val from = (m.from?.firstOrNull() as? InternetAddress)?.address ?: m.from?.firstOrNull()?.toString().orEmpty()
-                val refs = (m.getHeader("In-Reply-To")?.toList().orEmpty() + m.getHeader("References")?.toList().orEmpty())
-                    .flatMap { it.split(Regex("\\s+")) }.filter { it.startsWith("<") }
-                val bounce = from.contains("mailer-daemon", true) || from.contains("postmaster", true) ||
-                    (m.contentType?.contains("report-type=delivery-status", true) == true)
-                m.setFlag(Flags.Flag.SEEN, true)
-                InboundMail(mb.address, from, m.subject, textOf(m), refs, m.receivedDate?.toInstant() ?: Instant.now(), bounce)
-            }.also { inbox.close(false) }
+            inbox.open(mode)
+            return block(inbox).also { inbox.close(false) }
         } finally {
             store.close()
         }
+    }
+
+    private fun pollOne(mb: Mailbox): List<InboundMail> = withInbox(mb, Folder.READ_ONLY) { inbox ->
+        val uidFolder = inbox as UIDFolder
+        inbox.search(FlagTerm(Flags(Flags.Flag.SEEN), false)).map { m ->
+            val from = (m.from?.firstOrNull() as? InternetAddress)?.address ?: m.from?.firstOrNull()?.toString().orEmpty()
+            val refs = (m.getHeader("In-Reply-To")?.toList().orEmpty() + m.getHeader("References")?.toList().orEmpty())
+                .flatMap { it.split(Regex("\\s+")) }.filter { it.startsWith("<") }
+            val bounce = from.contains("mailer-daemon", true) || from.contains("postmaster", true) ||
+                (m.contentType?.contains("report-type=delivery-status", true) == true)
+            // A bounce rarely has In-Reply-To: the Message-ID of the original sits in the returned headers
+            val bounceRefs = if (bounce) messageIdPattern.findAll(raw(m)).map { it.value }.toList() else emptyList()
+            val uid = uidFolder.getUID(m)
+            val key = m.getHeader("Message-ID")?.firstOrNull()?.trim() ?: "${mb.address}/${uidFolder.uidValidity}/$uid"
+            InboundMail(mb.address, from, m.subject, textOf(m), (refs + bounceRefs).distinct(),
+                m.receivedDate?.toInstant() ?: Instant.now(), bounce, uid, key)
+        }
+    }
+
+    /** The whole message as text, capped: enough for the headers of a returned message. */
+    private fun raw(m: Message): String {
+        val out = java.io.ByteArrayOutputStream()
+        runCatching { m.writeTo(out) }
+        return out.toString(Charsets.UTF_8).take(200_000)
     }
 
     private fun textOf(p: Part): String = when {

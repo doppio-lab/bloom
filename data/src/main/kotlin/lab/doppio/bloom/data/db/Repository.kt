@@ -594,13 +594,18 @@ class Repository {
 
     suspend fun saveReply(
         enrollmentId: Long?, from: String, subject: String?, body: String, intent: ReplyIntent,
-        confidence: Double, followUpOn: LocalDate?, summary: String, receivedAt: Instant,
+        confidence: Double, followUpOn: LocalDate?, summary: String, receivedAt: Instant, inboundKey: String? = null,
     ): Long = dbQuery {
         Replies.insert {
             it[this.enrollmentId] = enrollmentId; it[fromAddress] = from; it[this.subject] = subject; it[this.body] = body
             it[this.intent] = intent.name; it[this.confidence] = confidence; it[this.followUpOn] = followUpOn
-            it[this.summary] = summary; it[this.receivedAt] = receivedAt
+            it[this.summary] = summary; it[this.receivedAt] = receivedAt; it[this.inboundKey] = inboundKey
         } get Replies.id
+    }
+
+    /** True when this inbound email was already recorded (see [saveReply]'s inboundKey). */
+    suspend fun replyRecorded(inboundKey: String): Boolean = dbQuery {
+        Replies.selectAll().where { Replies.inboundKey eq inboundKey }.any()
     }
 
     suspend fun openReplies(): List<ReplyRow> = dbQuery {

@@ -2,6 +2,7 @@ package lab.doppio.bloom.data
 
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.Account
+import lab.doppio.bloom.core.model.ReplyIntent
 import lab.doppio.bloom.data.db.Demand
 import lab.doppio.bloom.data.db.Demands
 import lab.doppio.bloom.data.db.Repository
@@ -49,5 +50,15 @@ class RepositoryTest {
 
         assertEquals(1, repo.purgeOldDemands())
         assertEquals(listOf("codeur:new"), repo.openDemands().map { it.key })
+    }
+
+    @Test
+    fun `un email entrant n'est enregistré qu'une fois`() = runTest {
+        assertFalse(repo.replyRecorded("<r1@client.fr>"))
+        repo.saveReply(null, "alex@client.fr", "Re: Objet", "Merci", ReplyIntent.NOT_NOW, 0.9, null, "Plus tard", Instant.now(), "<r1@client.fr>")
+        assertTrue(repo.replyRecorded("<r1@client.fr>"))
+        kotlin.test.assertFails {
+            repo.saveReply(null, "alex@client.fr", "Re: Objet", "Merci", ReplyIntent.NOT_NOW, 0.9, null, "Plus tard", Instant.now(), "<r1@client.fr>")
+        }
     }
 }

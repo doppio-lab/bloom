@@ -210,6 +210,7 @@ object Replies : Table("replies") {
     val summary = text("summary")
     val receivedAt = timestamp("received_at")
     val handled = bool("handled").default(false)
+    val inboundKey = text("inbound_key").nullable()
     override val primaryKey = PrimaryKey(id)
 }
 

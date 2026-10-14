@@ -156,40 +156,60 @@ class Orchestrator(
         repo.logEvent("${draft.channel}_TASK_DONE", c?.accountId, c?.id, draftId)
     }
 
+    /**
+     * Each message is marked seen only once processed. One that fails stays unread and is retried at the
+     * next pass; one already recorded (marking it seen failed last time) is skipped.
+     */
     suspend fun processReplies() {
+        val processed = mutableMapOf<String, MutableList<Long>>()
         for (mail in poller.poll()) {
-            val enrollmentId = mail.inReplyTo.firstNotNullOfOrNull { repo.enrollmentByMessageId(it) }
-            val contact = repo.contactByEmail(mail.from)
-            val accountId = contact?.accountId
-            val result = if (mail.isBounce) {
-                ReplyClassifierAgent.Result(ReplyIntent.BOUNCE, 1.0, null, null, "Rebond : adresse invalide", null)
-            } else {
-                classifier.classify(mail.subject, mail.body, accountId)
+            try {
+                if (!repo.replyRecorded(mail.key)) processReply(mail)
+                processed.getOrPut(mail.mailbox) { mutableListOf() } += mail.uid
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                log.warn("Réponse non traitée, relue à la prochaine passe : ${mail.key}", e)
             }
-            repo.saveReply(enrollmentId, mail.from, mail.subject, mail.body, result.intent, result.confidence, result.followUpOn, result.summary, mail.receivedAt)
-            contact?.let { repo.markInbound(it.id) }
-
-            // Arrêt de toutes les séquences du contact, quelle que soit l'intention
-            val enrollments = contact?.let { repo.enrollmentsOfContact(it.id) }.orEmpty()
-                .filter { it.status == EnrollmentStatus.ACTIVE || it.status == EnrollmentStatus.PAUSED }
-            enrollments.forEach { repo.setEnrollmentStatus(it.id, SequenceEngine.onReply(result.intent)) }
-
-            when (result.intent) {
-                ReplyIntent.UNSUBSCRIBE -> {
-                    repo.suppress(mail.from, "réponse : ${result.summary}")
-                    repo.logEvent("UNSUBSCRIBED", accountId, contact?.id)
-                }
-                ReplyIntent.BOUNCE -> {
-                    contact?.email?.let { repo.suppress(it, "rebond") }
-                    repo.logEvent("BOUNCED", accountId, contact?.id)
-                }
-                ReplyIntent.INTERESTED, ReplyIntent.MEETING_REQUEST, ReplyIntent.REFERRAL -> {
-                    repo.logEvent("REPLY_POSITIVE", accountId, contact?.id)
-                }
-                else -> {}
-            }
-            repo.logEvent("REPLY_RECEIVED", accountId, contact?.id, payload = """{"intent":"${result.intent}"}""")
         }
+        processed.forEach { (mailbox, uids) ->
+            runCatching { poller.markSeen(mailbox, uids) }.onFailure { log.warn("Impossible de marquer lus les messages de $mailbox", it) }
+        }
+    }
+
+    private suspend fun processReply(mail: InboundMail) {
+        val enrollmentId = mail.inReplyTo.firstNotNullOfOrNull { repo.enrollmentByMessageId(it) }
+        val enrolled = enrollmentId?.let { repo.enrollment(it) }?.let { repo.contact(it.contactId) }
+        // Un rebond vient du serveur de messagerie : le contact est celui de l'email d'origine
+        val contact = if (mail.isBounce) enrolled else repo.contactByEmail(mail.from) ?: enrolled
+        val accountId = contact?.accountId
+        val result = if (mail.isBounce) {
+            ReplyClassifierAgent.Result(ReplyIntent.BOUNCE, 1.0, null, null, "Rebond : adresse invalide", null)
+        } else {
+            classifier.classify(mail.subject, mail.body, accountId)
+        }
+
+        // Arrêt de toutes les séquences du contact, quelle que soit l'intention
+        val enrollments = contact?.let { repo.enrollmentsOfContact(it.id) }.orEmpty()
+            .filter { it.status == EnrollmentStatus.ACTIVE || it.status == EnrollmentStatus.PAUSED }
+        enrollments.forEach { repo.setEnrollmentStatus(it.id, SequenceEngine.onReply(result.intent)) }
+        when (result.intent) {
+            ReplyIntent.UNSUBSCRIBE -> repo.suppress(mail.from, "réponse : ${result.summary}")
+            ReplyIntent.BOUNCE -> contact?.email?.let { repo.suppress(it, "rebond") }
+            else -> {}
+        }
+        if (!mail.isBounce) contact?.let { repo.markInbound(it.id) }
+
+        // Enregistrée en dernier : si une étape plus haut échoue, le message sera retraité en entier
+        repo.saveReply(enrollmentId, mail.from, mail.subject, mail.body, result.intent, result.confidence, result.followUpOn,
+            result.summary, mail.receivedAt, inboundKey = mail.key)
+        when (result.intent) {
+            ReplyIntent.UNSUBSCRIBE -> repo.logEvent("UNSUBSCRIBED", accountId, contact?.id)
+            ReplyIntent.BOUNCE -> repo.logEvent("BOUNCED", accountId, contact?.id)
+            ReplyIntent.INTERESTED, ReplyIntent.MEETING_REQUEST, ReplyIntent.REFERRAL -> repo.logEvent("REPLY_POSITIVE", accountId, contact?.id)
+            else -> {}
+        }
+        repo.logEvent("REPLY_RECEIVED", accountId, contact?.id, payload = """{"intent":"${result.intent}"}""")
     }
 
     private var lastNightly: java.time.LocalDate? = null
