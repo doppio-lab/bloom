@@ -72,18 +72,20 @@ class ResearchAgent(
         if (domain != null) {
             val siteTools = SiteResearchTools(account.id, domain, web)
             runCatching {
+                val tokens = TokenCounter()
                 val agent = AIAgent(
                     promptExecutor = llm.executor,
                     llmModel = llm.research,
                     systemPrompt = Prompts.researcher,
                     toolRegistry = ToolRegistry { tools(siteTools) },
                     maxIterations = 20,
+                    installFeatures = tokens.feature,
                 )
-                tracker.track("research-explore", account.id, llm.research) {
+                tracker.trackAgent("research-explore", account.id, llm.research, tokens) {
                     agent.run(
                         "Entreprise : ${account.name}, site https://$domain. " +
                             "Commence par la page d'accueil, puis cherche une page carrières et un blog tech.",
-                    ) to null
+                    )
                 }
             }.onFailure { log.warn("Exploration du site échouée pour ${account.name}", it) }
             repo.saveFacts(siteTools.recorded)
@@ -150,6 +152,7 @@ class ResearchAgent(
                 hypotheses = hypotheses,
                 angle = output.angle,
                 offer = offer ?: Offer.DISCOVERY,
+                noFit = offer == null,
             ),
         )
         if (offer == null) repo.logEvent("DOSSIER_NO_FIT", accountId = account.id)

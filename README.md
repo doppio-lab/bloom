@@ -213,6 +213,7 @@ Garanties :
 | `LLM_PROVIDER` | `anthropic` | `ollama`, `anthropic` ou `openai` (le `.env.example` choisit `ollama`) |
 | `LLM_MODEL` | selon le fournisseur | modèle principal ; obligatoire avec `openai` |
 | `LLM_MODEL_FAST` | selon le fournisseur | modèle du classifieur de réponses ; par défaut Haiku avec `anthropic`, sinon le modèle principal |
+| `LLM_DAILY_TOKEN_BUDGET` | vide | tokens autorisés par jour, tous agents confondus ; au-delà, les agents attendent le lendemain |
 | `LLM_CONTEXT_LENGTH` | `16384` | fenêtre de contexte demandée à Ollama |
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | adresse d'Ollama, fixée par Compose en option A |
 | `ANTHROPIC_API_KEY` | vide | obligatoire avec `anthropic` |

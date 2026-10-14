@@ -61,4 +61,13 @@ class RepositoryTest {
             repo.saveReply(null, "alex@client.fr", "Re: Objet", "Merci", ReplyIntent.NOT_NOW, 0.9, null, "Plus tard", Instant.now(), "<r1@client.fr>")
         }
     }
+
+    @Test
+    fun `les tokens du jour additionnent entrée et sortie de tous les agents`() = runTest {
+        val start = Instant.now().minusSeconds(5)
+        assertEquals(0, repo.tokensSince(start))
+        repo.logAgentRun("writer", null, "m", 1000, 200, 10, true, null)
+        repo.logAgentRun("research-explore", null, "m", 3000, 500, 10, false, "boom")
+        assertEquals(4700, repo.tokensSince(start))
+    }
 }

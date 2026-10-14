@@ -56,13 +56,15 @@ suspend fun enrollContact(ctx: AppContext, contact: Contact): Boolean {
     val email = contact.email ?: return false
     if (ctx.repo.isSuppressed(email)) return false
     if (ctx.repo.enrollmentsOfContact(contact.id).isNotEmpty()) return false
+    // The researcher found no offer that fits: no sequence starts on its own
+    if (ctx.repo.dossier(contact.accountId)?.noFit == true) return false
     val offer = ctx.repo.dossier(contact.accountId)?.offer
         ?: ctx.repo.accountsByScore(500).firstOrNull { it.account.id == contact.accountId }?.recommendedOffer
         ?: Offer.DISCOVERY
     val seq = ctx.repo.sequenceFor(offer) ?: ctx.repo.sequenceFor(Offer.DISCOVERY) ?: return false
     ctx.repo.enroll(contact.id, seq.id)
     ctx.repo.logEvent("ENROLLED", contact.accountId, contact.id)
-    ctx.orchestrator.planDrafts()
+    ctx.orchestrator.planSoon()
     return true
 }
 
@@ -121,7 +123,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
 
     /** Comptes qui valent le coup mais à qui il manque la personne à contacter. */
     get("/to-complete") {
-        val items = repo.accountsToComplete().map { row ->
+        val items = repo.accountsToComplete().filter { repo.dossier(it.account.id)?.noFit != true }.map { row ->
             val offer = repo.dossier(row.account.id)?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
             val persona = Targeting.personaFor(offer)
             ToComplete(

@@ -46,6 +46,7 @@ import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.insertIgnore
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
+import org.jetbrains.exposed.sql.sum
 import org.jetbrains.exposed.sql.upsert
 import java.time.Instant
 import java.time.LocalDate
@@ -82,7 +83,9 @@ data class Dossier(
     val summary: String,
     val hypotheses: List<String>,
     val angle: String,
+    /** The closest offer. When [noFit], the researcher found none that fits and this is only a fallback. */
     val offer: Offer,
+    val noFit: Boolean = false,
 )
 
 @Serializable
@@ -409,13 +412,13 @@ class Repository {
     suspend fun saveDossier(d: Dossier) = dbQuery {
         Dossiers.upsert {
             it[accountId] = d.accountId; it[summary] = d.summary; it[hypotheses] = d.hypotheses.encode()
-            it[angle] = d.angle; it[offer] = d.offer.name; it[updatedAt] = Instant.now()
+            it[angle] = d.angle; it[offer] = d.offer.name; it[noFit] = d.noFit; it[updatedAt] = Instant.now()
         }
     }
 
     suspend fun dossier(accountId: AccountId): Dossier? = dbQuery {
         Dossiers.selectAll().where { Dossiers.accountId eq accountId }.firstOrNull()?.let {
-            Dossier(accountId, it[Dossiers.summary], it[Dossiers.hypotheses].decodeList(), it[Dossiers.angle], Offer.valueOf(it[Dossiers.offer]))
+            Dossier(accountId, it[Dossiers.summary], it[Dossiers.hypotheses].decodeList(), it[Dossiers.angle], Offer.valueOf(it[Dossiers.offer]), it[Dossiers.noFit])
         }
     }
 
@@ -477,6 +480,12 @@ class Repository {
             (Drafts.enrollmentId eq enrollmentId) and (Drafts.stepIndex eq stepIndex) and
                 (Drafts.status inList listOf(DraftStatus.PENDING_REVIEW, DraftStatus.APPROVED, DraftStatus.SENDING, DraftStatus.SENT, DraftStatus.TASK_DONE, DraftStatus.FAILED).map { it.name })
         }.any()
+    }
+
+    suspend fun rejectedDrafts(enrollmentId: Long, stepIndex: Int): Int = dbQuery {
+        Drafts.selectAll().where {
+            (Drafts.enrollmentId eq enrollmentId) and (Drafts.stepIndex eq stepIndex) and (Drafts.status eq DraftStatus.REJECTED.name)
+        }.count().toInt()
     }
 
     suspend fun createDraft(d: Draft): Long = dbQuery {
@@ -696,6 +705,12 @@ class Repository {
     }
 
     data class AgentStats(val agent: String, val runs: Int, val failures: Int, val inputTokens: Long, val outputTokens: Long, val avgMs: Long)
+
+    /** Input plus output tokens of every agent run since [since]. */
+    suspend fun tokensSince(since: Instant): Long = dbQuery {
+        AgentRuns.select(AgentRuns.inputTokens.sum(), AgentRuns.outputTokens.sum()).where { AgentRuns.createdAt greaterEq since }.firstOrNull()
+            ?.let { (it[AgentRuns.inputTokens.sum()] ?: 0).toLong() + (it[AgentRuns.outputTokens.sum()] ?: 0).toLong() } ?: 0L
+    }
 
     suspend fun agentStats(since: Instant): List<AgentStats> = dbQuery {
         AgentRuns.selectAll().where { AgentRuns.createdAt greaterEq since }.toList()

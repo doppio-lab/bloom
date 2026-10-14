@@ -179,6 +179,7 @@ object Dossiers : Table("dossiers") {
     val hypotheses = text("hypotheses").default("[]")
     val angle = text("angle")
     val offer = text("offer")
+    val noFit = bool("no_fit").default(false)
     val updatedAt = timestamp("updated_at").defaultExpression(CurrentTimestamp)
     override val primaryKey = PrimaryKey(accountId)
 }

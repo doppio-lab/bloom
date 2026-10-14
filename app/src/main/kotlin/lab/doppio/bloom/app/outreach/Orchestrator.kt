@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import lab.doppio.bloom.agents.ReplyClassifierAgent
 import lab.doppio.bloom.agents.ResearchAgent
 import lab.doppio.bloom.agents.WeeklyCoachAgent
@@ -35,6 +36,8 @@ import kotlin.time.Duration.Companion.minutes
  *  - relève : classe les réponses, arrête les séquences, gère l'opposition ;
  *  - nuit : recherche et rescoring des comptes ; lundi : note du coach ; mensuel : purge RGPD.
  */
+private const val MAX_REJECTIONS_PER_STEP = 3
+
 class Orchestrator(
     private val repo: Repository,
     private val writer: WriterAgent,
@@ -55,6 +58,9 @@ class Orchestrator(
     /** Long jobs (discovery, research, coach) run here so they never hold up each other or the loops. */
     private var jobs: CoroutineScope? = null
 
+    /** True once this instance holds the loops' lock. */
+    @Volatile private var leader = false
+
     fun start(scope: CoroutineScope) {
         jobs = scope
         scope.launch {
@@ -63,6 +69,7 @@ class Orchestrator(
                 log.warn("Une autre instance de Bloom tient les boucles de fond : nouvel essai dans 30 s")
                 delay(30_000)
             }
+            leader = true
             // Avant toute boucle : un brouillon resté SENDING date d'avant le redémarrage
             val interrupted = repo.reconcileInterruptedSends()
             if (interrupted > 0) log.warn("$interrupted email(s) interrompu(s) pendant l'envoi, passés en FAILED : vérifier la boîte d'envoi")
@@ -86,7 +93,23 @@ class Orchestrator(
         }
     }
 
-    suspend fun planDrafts(now: Instant = Instant.now()) {
+    /** One planning pass at a time: two passes would ask the writer twice for the same step. */
+    private val planning = kotlinx.coroutines.sync.Mutex()
+
+    /** Writer failures per (enrollment, step): the next try waits 10 min, 20 min... up to a day. */
+    private val writerBackoff = java.util.concurrent.ConcurrentHashMap<Pair<Long, Int>, Pair<Int, Instant>>()
+
+    /** Plans right away, in the background: an HTTP request never waits for the writer. */
+    fun planSoon() {
+        if (!leader) return // another instance runs the loops and will plan within 10 minutes
+        jobs?.launch {
+            try { planDrafts() } catch (e: CancellationException) { throw e } catch (e: Exception) { log.error("Planification en échec", e) }
+        }
+    }
+
+    suspend fun planDrafts(now: Instant = Instant.now()) = planning.withLock { planDraftsLocked(now) }
+
+    private suspend fun planDraftsLocked(now: Instant) {
         val sequences = repo.sequences().associateBy { it.id }
         for (e in repo.activeEnrollments()) {
             val seq = sequences[e.sequenceId] ?: continue
@@ -97,8 +120,25 @@ class Orchestrator(
                         repo.setEnrollmentStatus(e.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE)
                         continue
                     }
-                    runCatching { writer.draft(e, seq, action.step) }
-                        .onFailure { log.warn("Brouillon impossible pour l'inscription ${e.id}", it) }
+                    // Trois brouillons rejetés pour la même étape : la séquence s'arrête au lieu d'en réécrire sans fin
+                    if (repo.rejectedDrafts(e.id, action.step.index) >= MAX_REJECTIONS_PER_STEP) {
+                        repo.setEnrollmentStatus(e.id, EnrollmentStatus.STOPPED_MANUAL)
+                        repo.logEvent("ENROLLMENT_STOPPED_REJECTIONS", contact.accountId, contact.id)
+                        continue
+                    }
+                    val key = e.id to action.step.index
+                    if (writerBackoff[key]?.second?.isAfter(now) == true) continue
+                    try {
+                        writer.draft(e, seq, action.step)
+                        writerBackoff.remove(key)
+                    } catch (ex: CancellationException) {
+                        throw ex
+                    } catch (ex: Exception) {
+                        val failures = (writerBackoff[key]?.first ?: 0) + 1
+                        val wait = minOf(10L shl (failures - 1).coerceAtMost(8), 24 * 60L)
+                        writerBackoff[key] = failures to now.plus(wait, ChronoUnit.MINUTES)
+                        log.warn("Brouillon impossible pour l'inscription ${e.id} ($failures échec(s), nouvel essai dans $wait min)", ex)
+                    }
                 }
                 is NextAction.Finish -> if (action.status != e.status) repo.setEnrollmentStatus(e.id, action.status)
                 is NextAction.WaitUntil -> {}

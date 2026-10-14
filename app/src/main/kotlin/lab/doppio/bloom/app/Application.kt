@@ -91,7 +91,7 @@ class AppContext {
             ),
         )
     }
-    private val tracker = RunTracker(repo)
+    private val tracker = RunTracker(repo, dailyTokenBudget = optionalEnv("LLM_DAILY_TOKEN_BUDGET")?.toLong() ?: 0)
     /** Portée des tâches de fond déclenchées depuis le dashboard (découverte, recherche). */
     val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val policy = SendingPolicy(maxPerMailboxPerDay = env("MAX_PER_MAILBOX_PER_DAY", "25").toInt())

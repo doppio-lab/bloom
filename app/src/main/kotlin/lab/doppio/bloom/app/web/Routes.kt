@@ -9,6 +9,7 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.app.AppContext
 import lab.doppio.bloom.core.guard.GuardInput
@@ -47,6 +48,15 @@ import java.time.temporal.ChronoUnit
 @Serializable data class NewAccount(val account: Account, val contacts: List<Contact> = emptyList(), val researchNow: Boolean = true)
 @Serializable data class EnrollRequest(val offer: Offer? = null)
 @Serializable data class DecisionRequest(val subject: String? = null, val body: String? = null)
+
+private val researchLog = org.slf4j.LoggerFactory.getLogger("Research")
+
+/** The research agent takes minutes: it never runs inside an HTTP request. */
+private fun launchResearch(ctx: AppContext, accountId: Long) {
+    ctx.background.launch {
+        runCatching { ctx.research.research(accountId) }.onFailure { researchLog.warn("Recherche échouée pour le compte $accountId", it) }
+    }
+}
 
 fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     val repo = ctx.repo
@@ -89,8 +99,9 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
         val req = call.receive<NewAccount>()
         val id = repo.upsertAccount(req.account)
         req.contacts.forEach { repo.addContact(it.copy(accountId = id)) }
-        val score = if (req.researchNow) ctx.research.research(id) else null
-        call.respond(HttpStatusCode.Created, mapOf("id" to id.toString(), "score" to (score?.total?.toString() ?: "")))
+        // The research takes minutes: it runs in the background, the dossier appears when it is done
+        if (req.researchNow) launchResearch(ctx, id)
+        call.respond(HttpStatusCode.Created, mapOf("id" to id.toString(), "research" to if (req.researchNow) "lancée" else "non demandée"))
     }
 
     get("/accounts/{id}") {
@@ -100,7 +111,10 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     }
 
     post("/accounts/{id}/research") {
-        call.respond(ctx.research.research(call.parameters["id"]!!.toLong()))
+        val id = call.parameters["id"]!!.toLong()
+        repo.account(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+        launchResearch(ctx, id)
+        call.respond(HttpStatusCode.Accepted, mapOf("status" to "lancée"))
     }
 
     post("/contacts") {
@@ -111,11 +125,14 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     post("/contacts/{id}/enroll") {
         val contact = repo.contact(call.parameters["id"]!!.toLong()) ?: return@post call.respond(HttpStatusCode.NotFound)
         require(contact.email == null || !repo.isSuppressed(contact.email!!)) { "Ce contact s'est opposé à la prospection" }
-        val offer = call.receive<EnrollRequest>().offer ?: repo.dossier(contact.accountId)?.offer ?: Offer.DISCOVERY
+        val dossier = repo.dossier(contact.accountId)
+        val requested = call.receive<EnrollRequest>().offer
+        require(requested != null || dossier?.noFit != true) { "Le dossier conclut qu'aucune offre ne convient : choisir l'offre explicitement" }
+        val offer = requested ?: dossier?.offer ?: Offer.DISCOVERY
         val seq = repo.sequenceFor(offer) ?: repo.sequenceFor(Offer.DISCOVERY)!!
         val id = repo.enroll(contact.id, seq.id)
         repo.logEvent("ENROLLED", contact.accountId, contact.id)
-        ctx.orchestrator.planDrafts()
+        ctx.orchestrator.planSoon()
         call.respond(HttpStatusCode.Created, mapOf("enrollmentId" to id))
     }
 

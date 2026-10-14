@@ -116,15 +116,17 @@ class MetricsTools(private val repo: Repository) : ToolSet {
 
 class WeeklyCoachAgent(private val llm: Llm, private val repo: Repository, private val tracker: RunTracker) {
     suspend fun weeklyMemo(): String {
+        val tokens = TokenCounter()
         val agent = AIAgent(
             promptExecutor = llm.executor,
             llmModel = llm.writer,
             systemPrompt = Prompts.coach,
             toolRegistry = ToolRegistry { tools(MetricsTools(repo)) },
             maxIterations = 15,
+            installFeatures = tokens.feature,
         )
-        return tracker.track("weekly-coach", null, llm.writer) {
-            agent.run("Prépare la note du lundi ${LocalDate.now()}.") to null
+        return tracker.trackAgent("weekly-coach", null, llm.writer, tokens) {
+            agent.run("Prépare la note du lundi ${LocalDate.now()}.")
         }
     }
 }
