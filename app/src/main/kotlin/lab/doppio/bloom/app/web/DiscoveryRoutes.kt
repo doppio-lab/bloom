@@ -116,7 +116,8 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
 
     /** What the last discovery run found, per source, and what failed or is switched off. */
     get("/discovery/last") {
-        val (payload, at) = repo.lastEvent("DISCOVERY_RUN") ?: return@get call.respond(LastDiscovery())
+        // Before any finished run, the line still says whether one is in progress
+        val (payload, at) = repo.lastEvent("DISCOVERY_RUN") ?: return@get call.respond(LastDiscovery(running = ctx.orchestrator.discoveryRunning))
         val report = runCatching { lenientJson.decodeFromString(DiscoveryReport.serializer(), payload) }.getOrDefault(DiscoveryReport())
         call.respond(LastDiscovery(at.toString(), ctx.orchestrator.discoveryRunning, report.bySource, report.notes))
     }
@@ -167,7 +168,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
         }
         val finder = ctx.dropcontact
         if (finder == null) {
-            return@post call.respond(HttpStatusCode.Created, NewContactResult(id, false, "Contact ajouté. Ajoute son email pour lancer la séquence."))
+            return@post call.respond(HttpStatusCode.Created, NewContactResult(id, false, "Contact ajouté. Ajoutez son email pour lancer la séquence."))
         }
         // Recherche d'email en tâche de fond : Dropcontact répond en une à trois minutes
         ctx.background.launch {

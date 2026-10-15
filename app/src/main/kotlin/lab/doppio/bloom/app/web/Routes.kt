@@ -30,6 +30,9 @@ import lab.doppio.bloom.data.db.ReplyRow
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
+/** Answer to a decision on a draft that is no longer waiting for review (decided elsewhere, blacklisted, sent). */
+private const val NOT_PENDING = "ce brouillon n'est plus à valider"
+
 @Serializable data class Kpis(
     val sent: Int, val replies: Int, val positive: Int, val meetings: Int, val unsubscribed: Int, val bounced: Int,
     val replyRate: Double, val positiveRate: Double, val unsubscribeRate: Double, val bounceRate: Double,
@@ -79,7 +82,7 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
                     pendingReview = repo.draftsByStatus(DraftStatus.PENDING_REVIEW).size,
                     approvedEmails = repo.draftsByStatus(DraftStatus.APPROVED, Channel.EMAIL).size,
                     tasks = repo.draftsByStatus(DraftStatus.APPROVED).count { it.channel != Channel.EMAIL },
-                    openReplies = repo.openReplies().size,
+                    openReplies = repo.countOpenReplies().toInt(),
                     toComplete = repo.accountsToComplete().size,
                     discoveredThisWeek = repo.countEvents("ACCOUNT_DISCOVERED", Instant.now().minus(7, ChronoUnit.DAYS)),
                 ),
@@ -152,6 +155,8 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
         val id = call.parameters["id"]!!.toLong()
         val req = runCatching { call.receive<DecisionRequest>() }.getOrDefault(DecisionRequest())
         val draft = repo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+        // A draft already decided elsewhere (other user, blacklist, sent) is never approved again
+        if (draft.status != DraftStatus.PENDING_REVIEW) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to NOT_PENDING))
         val e = repo.enrollment(draft.enrollmentId)!!
         val c = repo.contact(e.contactId)!!
         val a = repo.account(c.accountId)!!
@@ -173,13 +178,20 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
 
     post("/drafts/{id}/reject") {
         val id = call.parameters["id"]!!.toLong()
+        val draft = repo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+        if (draft.status != DraftStatus.PENDING_REVIEW) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to NOT_PENDING))
         repo.decideDraft(id, DraftStatus.REJECTED)
         repo.logEvent("DRAFT_REJECTED", draftId = id)
         call.respond(HttpStatusCode.OK, mapOf("status" to "REJECTED"))
     }
 
     post("/drafts/{id}/done") {
-        ctx.orchestrator.completeTask(call.parameters["id"]!!.toLong())
+        val id = call.parameters["id"]!!.toLong()
+        val draft = repo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+        if (draft.status != DraftStatus.APPROVED || draft.channel == Channel.EMAIL) {
+            return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "cette tâche n'est plus à faire"))
+        }
+        ctx.orchestrator.completeTask(id)
         call.respond(HttpStatusCode.OK, mapOf("status" to "TASK_DONE"))
     }
 

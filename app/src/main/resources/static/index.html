@@ -1,3 +1,7 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Doppio Bloom</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -29,7 +33,7 @@ try { const t = localStorage.getItem("bloom-theme"); if (t === "light" || t === 
   --src-demand: #FFDCC8; --on-src-demand: #351E12; /* coral-warm, on-tertiary-container */
   --elev-1: 0 1px 2px rgba(0,0,0,.06);
   --elev-2: 0 4px 12px -2px rgba(0,0,0,.10);
-  --focus-halo: 0 0 0 3px rgba(0,0,0,.18);
+  --focus-halo: 0 0 0 3px color-mix(in srgb, var(--primary) 18%, transparent);
 
   --radius-xs: 2px; --radius-s: 4px; --radius-m: 6px;
   --ease-luxury: cubic-bezier(0.16, 1, 0.3, 1);
@@ -79,7 +83,6 @@ try { const t = localStorage.getItem("bloom-theme"); if (t === "light" || t === 
   --src-demand: #F5A882; --on-src-demand: #351E12; /* coral-light, Nightfall on-tertiary */
   --elev-1: 0 1px 2px rgba(255,255,255,.06);
   --elev-2: 0 4px 12px -2px rgba(255,255,255,.08);
-  --focus-halo: 0 0 0 3px rgba(255,255,255,.22);
   color-scheme: dark;
 } }
 :root[data-theme="dark"] {
@@ -101,15 +104,17 @@ try { const t = localStorage.getItem("bloom-theme"); if (t === "light" || t === 
   --src-demand: #F5A882; --on-src-demand: #351E12; /* coral-light, Nightfall on-tertiary */
   --elev-1: 0 1px 2px rgba(255,255,255,.06);
   --elev-2: 0 4px 12px -2px rgba(255,255,255,.08);
-  --focus-halo: 0 0 0 3px rgba(255,255,255,.22);
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body {
-  background: var(--bg); color: var(--ink);
+  margin: 0; background: var(--bg); color: var(--ink);
+  transition: background var(--dur-standard) var(--ease-reveal), color var(--dur-standard) var(--ease-reveal);
   font: 400 15px/22px var(--f-body); letter-spacing: .25px;
   font-feature-settings: "ss01", "kern"; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
 }
+a { color: inherit; }
+a:hover { color: var(--muted); }
 ::selection { background: var(--primary); color: var(--on-primary); }
 :focus-visible { outline: 2px solid var(--champagne); outline-offset: 3px; }
 @media (prefers-reduced-motion: reduce) {
@@ -138,7 +143,7 @@ nav.tabs .count { font: 500 11px var(--f-mono); letter-spacing: 0; background: v
 .kpi .label { font: 500 11px/1.5 var(--f-body); text-transform: uppercase; letter-spacing: .15em; color: var(--muted); }
 .kpi .value { font: 300 40px/48px var(--f-display); font-variant-numeric: lining-nums tabular-nums; }
 .kpi .sub { font-size: 13px; line-height: 18px; color: var(--muted); }
-.kpi.bad .value { font-weight: 500; } .kpi.bad .label::before { content: "◆ "; color: var(--ink); } .kpi.ok .value { color: var(--ink); }
+.kpi.bad .value { font-weight: 500; } .kpi.bad .label::before { content: "\25C6  "; color: var(--ink); } .kpi.ok .value { color: var(--ink); }
 
 h2 { font: 400 24px/32px var(--f-display); text-transform: uppercase; letter-spacing: -0.01em; margin: 0; text-wrap: balance; }
 .section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
@@ -173,7 +178,8 @@ h2 { font: 400 24px/32px var(--f-display); text-transform: uppercase; letter-spa
 .btn.primary:hover:not(:disabled) { background: var(--fg-2); border-color: var(--fg-2); color: var(--on-primary); }
 .btn.ghost { border-color: transparent; color: var(--muted); }
 .btn:disabled { background: var(--surface-container-high); border-color: transparent; color: var(--outline); cursor: not-allowed; }
-textarea, input[type=text] { width: 100%; font: inherit; color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-xs); padding: 10px 12px; }
+/* Fields are outlined in --outline, not --line: the boundary of a control needs 3:1 against the page (WCAG 1.4.11). */
+textarea, input[type=text] { width: 100%; font: 400 14px/20px var(--f-body); color: var(--ink); background: var(--surface); border: 1px solid var(--outline); border-radius: var(--radius-xs); padding: 10px 12px; }
 textarea:focus, input[type=text]:focus { outline: none; border-color: var(--primary); box-shadow: var(--focus-halo); }
 textarea { min-height: 160px; resize: vertical; }
 .empty { color: var(--muted); font-size: 14px; padding: 16px; border: 1px dashed var(--line); border-radius: var(--r); }
@@ -191,14 +197,14 @@ tr:last-child td { border-bottom: 0; }
 .score { display: grid; grid-template-columns: 2.2em 1fr; align-items: center; gap: 8px; min-width: 120px; font: 500 14px var(--f-mono); font-variant-numeric: tabular-nums; }
 .bar { height: 6px; background: var(--sunken); border-radius: var(--radius-xs); overflow: hidden; display: flex; }
 .bar i { display: block; height: 100%; }
-.bar .fit { background: var(--seg-fit); } .bar .int { background: var(--seg-int); } .bar .warm { background: var(--seg-warm); }
+.fit { background: var(--seg-fit); } .int { background: var(--seg-int); } .warm { background: var(--seg-warm); }
 .tier { font: 500 10px/1.6 var(--f-body); letter-spacing: .14em; text-transform: uppercase; padding: 1px 6px; border-radius: var(--radius-xs); border: 1px solid transparent; }
 .tier.ACT_NOW { background: var(--primary); color: var(--on-primary); }
 .tier.NURTURE { background: var(--accent-soft); color: var(--on-primary-container); }
 .tier.WATCH { background: transparent; color: var(--muted); border-color: var(--line); }
 .reasons { color: var(--muted); font-size: 13px; line-height: 18px; }
 .legend { display: flex; gap: 16px; font-size: 12px; color: var(--muted); flex-wrap: wrap; }
-.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 0; margin-right: 6px; vertical-align: -1px; }
+.legend i { display: inline-block; width: 10px; height: 10px; margin-right: 6px; vertical-align: -1px; }
 
 .funnel { display: grid; gap: 8px; }
 .stage { display: grid; grid-template-columns: 9em minmax(0, 1fr) 7em; gap: 12px; align-items: center; font-size: 14px; }
@@ -220,27 +226,23 @@ tr:last-child td { border-bottom: 0; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
 .src-chip { font: 500 10px/1.6 var(--f-body); letter-spacing: .14em; text-transform: uppercase; padding: 2px 8px; border-radius: var(--radius-xs); background: var(--info-container); color: var(--on-info-container); }
 .roles { display: flex; gap: 8px; flex-wrap: wrap; }
-.roles a { font-size: 13px; color: var(--ink); text-decoration: none; border-bottom: 1px solid var(--outline); }
 .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
 .form-grid label { display: grid; gap: 6px; font: 500 11px/1.5 var(--f-body); letter-spacing: .14em; text-transform: uppercase; color: var(--fg-2); }
-.form-grid label input { font: 400 14px/20px var(--f-body); letter-spacing: 0; text-transform: none; }
 .mini-score { display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 8px; align-items: center; font: 500 14px var(--f-mono); max-width: 260px; }
-.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--inverse-surface); color: var(--inverse-on-surface); padding: 10px 16px; border-radius: var(--r); font-size: 13px; box-shadow: var(--elev-2); }
 .note { font-size: 13px; line-height: 18px; color: var(--muted); }
 @media (prefers-reduced-motion: no-preference) { .fact.flash { transition: background var(--dur-standard) var(--ease-luxury); } }
 
-/* Second version of the dashboard (design: bloom-app.css): one header line, a single work queue, three views. */
+/* Second version of the dashboard (design: bloom-app.css): one header line, a single work queue, five views. */
 header.top { align-items: center; gap: 8px 16px; min-width: 0; border-bottom: 1px solid var(--line); }
 .top .tabs { flex: 1; min-width: 0; border-bottom: 0; margin-bottom: -1px; scrollbar-width: none; }
 /* Five tabs on one line beside the status and the theme switch: tighter than the base tab. On a narrow
    screen the tabs scroll sideways inside the header, the page itself never does. */
 .top .tabs button { padding-inline: 10px; }
-/* The date left the header to make room for the fifth tab: the status pill and the theme switch stay. */
-.top .meta > span:not(.pill) { display: none; }
 
-/* Theme switch: three joined segments, Auto follows the system. Same tokens as .chip. */
+/* Theme switch: three joined segments, Auto follows the system. Same tokens as .chip.
+   Outlined in --outline, not --line: the boundary of a control needs 3:1 against the page (WCAG 1.4.11). */
 .theme { display: inline-flex; }
-.theme button { all: unset; cursor: pointer; position: relative; font: 500 11px/1.5 var(--f-body); letter-spacing: .14em; text-transform: uppercase; padding: 4px 10px; border: 1px solid var(--line); color: var(--fg-2); transition: border-color var(--dur-micro) var(--ease-reveal), color var(--dur-micro) var(--ease-reveal); }
+.theme button { all: unset; cursor: pointer; position: relative; font: 500 11px/1.5 var(--f-body); letter-spacing: .14em; text-transform: uppercase; padding: 4px 10px; border: 1px solid var(--outline); color: var(--fg-2); transition: border-color var(--dur-micro) var(--ease-reveal), color var(--dur-micro) var(--ease-reveal); }
 .theme button + button { margin-left: -1px; }
 .theme button:first-child { border-radius: var(--radius-xs) 0 0 var(--radius-xs); }
 .theme button:last-child { border-radius: 0 var(--radius-xs) var(--radius-xs) 0; }
@@ -253,8 +255,8 @@ header.top { align-items: center; gap: 8px 16px; min-width: 0; border-bottom: 1p
 .hero p { margin: 0; color: var(--fg-2); font: 400 21px/1.6 var(--f-display); }
 
 .filters { display: flex; gap: 8px; flex-wrap: wrap; }
-.chip { all: unset; cursor: pointer; font: 500 11px/1.5 var(--f-body); letter-spacing: .14em; text-transform: uppercase; padding: 6px 12px; border-radius: var(--radius-xs); border: 1px solid var(--line); color: var(--fg-2); transition: border-color var(--dur-micro) var(--ease-reveal), color var(--dur-micro) var(--ease-reveal); }
-.chip:hover { border-color: var(--outline); color: var(--ink); }
+.chip { all: unset; cursor: pointer; font: 500 11px/1.5 var(--f-body); letter-spacing: .14em; text-transform: uppercase; padding: 6px 12px; border-radius: var(--radius-xs); border: 1px solid var(--outline); color: var(--fg-2); transition: border-color var(--dur-micro) var(--ease-reveal), color var(--dur-micro) var(--ease-reveal); }
+.chip:hover { border-color: var(--ink); color: var(--ink); }
 .chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: var(--on-primary); }
 .chip:focus-visible { outline: 2px solid var(--champagne); outline-offset: 3px; }
 
@@ -349,21 +351,58 @@ header.top { align-items: center; gap: 8px 16px; min-width: 0; border-bottom: 1p
 .rows div { display: grid; grid-template-columns: 8.5em minmax(0, 1fr); gap: 12px; }
 .rows b { font: 500 12px/20px var(--f-mono); color: var(--muted); }
 @media (max-width: 480px) { .rows div { grid-template-columns: minmax(0, 1fr); gap: 0; } .step { gap: 12px; } }
+
+/* Banner: the server does not answer, or the session expired. Under the header, above every view.
+   No status color: an outline and a thick ink rule on the left, like a blocked draft. */
+.banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 12px 16px; background: var(--surface-container-low); border: 1px solid var(--outline); border-left: 3px solid var(--primary); border-radius: var(--r); font-size: 14px; line-height: 20px; }
+.banner span { flex: 1 1 320px; min-width: 0; color: var(--fg-2); }
+.banner b { font-weight: 500; color: var(--ink); }
+
+/* Inline confirmation before an action that spreads (Liste noire): it replaces the actions of the card or row. */
+.confirm { align-items: center; }
+.confirm span { flex: 1 1 100%; font-size: 13px; line-height: 18px; color: var(--fg-2); }
+
+/* Toast: what an action did, at the bottom of the screen. A removal carries "Annuler" for 5 seconds;
+   an error carries "Fermer" and stays until it is closed. Inverse surface, no status color. */
+.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); z-index: 10; display: flex; align-items: center; gap: 16px; max-width: calc(100vw - 32px); background: var(--inverse-surface); color: var(--inverse-on-surface); padding: 10px 16px; border-radius: var(--r); font-size: 13px; line-height: 18px; box-shadow: var(--elev-2); }
+.toast button { all: unset; cursor: pointer; flex: none; font: 500 11px/1.5 var(--f-body); letter-spacing: .14em; text-transform: uppercase; border-bottom: 1px solid currentColor; }
+.toast button:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+
+/* Search field of a list (ranked accounts, Carnet, Liste noire when it is long): filters the rows as you type. */
+.search { max-width: 320px; }
+
+/* Sortable column: the header is a button, the arrow gives the order. Ranked accounts sort by score by default. */
+.sort { all: unset; cursor: pointer; font: inherit; letter-spacing: inherit; text-transform: inherit; color: inherit; }
+.sort:hover { color: var(--ink); }
+.sort:focus-visible { outline: 2px solid var(--champagne); outline-offset: 3px; }
+th[aria-sort="ascending"], th[aria-sort="descending"] { color: var(--ink); }
+th[aria-sort="ascending"] .sort::after { content: " \2191"; }
+th[aria-sort="descending"] .sort::after { content: " \2193"; }
+
+/* Keyboard shortcuts named in a note. */
+kbd { font: 500 11px/16px var(--f-mono); padding: 0 5px; border: 1px solid var(--outline); border-radius: var(--radius-xs); color: var(--ink); }
+
+/* Citation chip: a hit area about 24 px tall, invisible, so the text around it does not move. */
+.cite { position: relative; }
+.cite::after { content: ""; position: absolute; inset: -5px -4px; }
+
+/* Tabs scroll sideways on a narrow screen: while more tabs hide on the right (.more), the edge fades out.
+   The gradient is an alpha mask, not a color. */
+.top .tabs.more { mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent); }
 </style>
 
 <div class="wrap">
   <header class="top">
     <div class="brand">doppio<span>.</span> bloom</div>
     <nav class="tabs" role="tablist">
-      <button role="tab" id="tab-today" aria-selected="true" data-tab="today">À faire<span class="count" id="c-today">0</span></button>
-      <button role="tab" id="tab-prospects" aria-selected="false" data-tab="prospects">Prospects<span class="count" id="c-prospects">0</span></button>
-      <button role="tab" id="tab-book" aria-selected="false" data-tab="book">Carnet<span class="count" id="c-book">0</span></button>
-      <button role="tab" id="tab-results" aria-selected="false" data-tab="results">Résultats</button>
-      <button role="tab" id="tab-method" aria-selected="false" data-tab="method">Méthode</button>
+      <button role="tab" id="tab-today" aria-selected="true" tabindex="0" aria-controls="view-today" data-tab="today">À faire<span class="count" id="c-today" hidden></span></button>
+      <button role="tab" id="tab-prospects" aria-selected="false" tabindex="-1" aria-controls="view-prospects" data-tab="prospects">Prospects<span class="count" id="c-prospects" hidden></span></button>
+      <button role="tab" id="tab-book" aria-selected="false" tabindex="-1" aria-controls="view-book" data-tab="book">Carnet<span class="count" id="c-book" hidden></span></button>
+      <button role="tab" id="tab-results" aria-selected="false" tabindex="-1" aria-controls="view-results" data-tab="results">Résultats</button>
+      <button role="tab" id="tab-method" aria-selected="false" tabindex="-1" aria-controls="view-method" data-tab="method">Méthode</button>
     </nav>
     <div class="meta">
-      <span id="mode" class="pill demo">Données d'exemple</span>
-      <span id="today"></span>
+      <span id="mode" class="pill" hidden></span>
       <div class="theme" role="group" aria-label="Thème">
         <button aria-pressed="true" data-theme-set="auto">Auto</button>
         <button aria-pressed="false" data-theme-set="light">Clair</button>
@@ -372,22 +411,25 @@ header.top { align-items: center; gap: 8px 16px; min-width: 0; border-bottom: 1p
     </div>
   </header>
 
-  <main id="view-today" class="stack">
+  <div class="banner" id="banner" role="alert" hidden><span id="banner-text"></span><button class="btn" id="banner-action"></button></div>
+
+  <main>
+  <section id="view-today" class="stack" role="tabpanel" aria-labelledby="tab-today">
     <div class="hero">
-      <h1 id="headline"></h1>
-      <p id="subline"></p>
+      <h1 id="headline" tabindex="-1">Chargement…</h1>
+      <p id="subline" hidden></p>
     </div>
-    <div class="filters" id="filters" role="group" aria-label="Filtrer la file">
+    <div class="filters" id="filters" role="group" aria-label="Filtrer la file" hidden>
       <button class="chip" aria-pressed="true" data-filter="all"></button>
       <button class="chip" aria-pressed="false" data-filter="drafts"></button>
       <button class="chip" aria-pressed="false" data-filter="replies"></button>
       <button class="chip" aria-pressed="false" data-filter="tasks"></button>
     </div>
     <div class="done" id="all-done" hidden>
-      <b id="done-title"></b><span>Trouvés cette nuit. Il manque la personne à qui écrire.</span>
+      <b id="done-title"></b><span>Il manque la personne à qui écrire.</span>
       <button class="link" data-tab="prospects">Compléter les prospects →</button>
     </div>
-    <div class="focus" id="focus">
+    <div class="focus" id="focus" hidden>
       <div class="queue">
         <section class="group" data-kind="drafts">
           <div class="section-head"><h2>Emails à valider</h2><p>Rien ne part sans vous.</p></div>
@@ -404,52 +446,57 @@ header.top { align-items: center; gap: 8px 16px; min-width: 0; border-bottom: 1p
       </div>
       <aside class="aside" id="aside" aria-label="30 derniers jours"></aside>
     </div>
-  </main>
+  </section>
 
-  <main id="view-prospects" class="stack" hidden>
+  <section id="view-prospects" class="stack" role="tabpanel" aria-labelledby="tab-prospects" hidden>
     <div class="hero">
-      <h1 id="new-headline"></h1>
-      <p>Trouvés cette nuit. Il manque la personne à contacter.</p>
+      <h1 id="new-headline" tabindex="-1">Chargement…</h1>
+      <p>Trouvés par la recherche ou importés. Il manque la personne à contacter.</p>
     </div>
     <div class="toolbar">
       <button class="btn" data-act="run-discovery" data-id="0">Chercher maintenant</button>
       <label class="btn file-btn">Importer ma liste (CSV)<input type="file" id="csv" accept=".csv,text/csv"></label>
     </div>
+    <p class="note" id="import-report" hidden></p>
     <div class="runline" id="runline" hidden></div>
     <div id="newlist" class="stack"></div>
     <div class="section-head" id="demands-head" hidden><h2>Demandes à répondre</h2><p>Publiées par des entreprises. On répond sur la plateforme, pas par email.</p></div>
     <div id="demands" class="stack"></div>
     <div class="section-head"><h2>Comptes classés</h2>
-      <div class="legend"><span><i style="background:var(--seg-fit)"></i>adéquation (40)</span><span><i style="background:var(--seg-int)"></i>intention (50)</span><span><i style="background:var(--seg-warm)"></i>lien chaud (10)</span></div>
+      <div class="legend"><span><i class="fit"></i>adéquation (40)</span><span><i class="int"></i>intention (50)</span><span><i class="warm"></i>lien chaud (10)</span></div>
     </div>
+    <div class="toolbar"><input type="text" class="search" data-search="accounts" placeholder="Rechercher un compte" aria-label="Rechercher un compte" autocomplete="off"></div>
     <div class="table-wrap"><table>
-      <thead><tr><th>Compte</th><th>Score</th><th>Offre suggérée</th><th>Pourquoi</th><th>Mis à jour</th><th></th></tr></thead>
+      <thead><tr><th aria-sort="none" data-col="name"><button class="sort" data-sort="name">Compte</button></th><th aria-sort="descending" data-col="score"><button class="sort" data-sort="score">Score</button></th><th>Offre suggérée</th><th>Pourquoi</th><th aria-sort="none" data-col="date"><button class="sort" data-sort="date">Mis à jour</button></th><th></th></tr></thead>
       <tbody id="accounts"></tbody>
     </table></div>
-    <p class="note">Score sur 100, calculé sans IA : adéquation, signaux récents, lien chaud. Au-dessus de 65, on écrit cette semaine.</p>
+    <p class="note">Score sur 100, calculé sans IA : adéquation, signaux récents, lien chaud. Au-dessus de 65, on écrit cette semaine. Seuls les 50 comptes les mieux notés sont affichés.</p>
     <div class="section-head"><h2>Liste noire</h2><p>Jamais prospectées : ni recherche, ni séquence, ni email.</p></div>
     <div class="card">
-      <form class="form-grid" id="block-form" onsubmit="return false">
-        <label for="block-name">Entreprise<input type="text" id="block-name" placeholder="Nom de l'entreprise" autocomplete="off"></label>
-        <label for="block-reason">Raison (optionnel)<input type="text" id="block-reason" placeholder="Client actuel, concurrent, hors cible"></label>
+      <form class="stack" id="block-form">
+        <div class="form-grid">
+          <label for="block-name">Entreprise<input type="text" id="block-name" placeholder="Nom de l'entreprise" autocomplete="off"></label>
+          <label for="block-reason">Raison (optionnel)<input type="text" id="block-reason" placeholder="Client actuel, concurrent, hors cible"></label>
+        </div>
+        <div class="actions"><button class="btn" type="submit" data-act="block-name" data-id="0">Ajouter à la liste noire</button></div>
       </form>
-      <div class="actions"><button class="btn" data-act="block-name" data-id="0">Ajouter à la liste noire</button></div>
+      <input type="text" class="search" id="blacklist-search" data-search="blacklist" placeholder="Rechercher dans la liste noire" aria-label="Rechercher dans la liste noire" autocomplete="off" hidden>
       <div class="people" id="blacklist"></div>
     </div>
     <p class="note">Mettre un prospect en liste noire arrête ses séquences en cours et rejette ses brouillons en attente. Le réintégrer ne les relance pas.</p>
-  </main>
+  </section>
 
-  <main id="view-book" class="stack" hidden>
+  <section id="view-book" class="stack" role="tabpanel" aria-labelledby="tab-book" hidden>
     <div class="hero">
-      <h1 id="book-headline"></h1>
+      <h1 id="book-headline" tabindex="-1">Chargement…</h1>
       <p>Les personnes à qui écrire, entreprise par entreprise.</p>
     </div>
-    <div class="toolbar"><a class="btn" id="book-export" href="/api/book.csv">Exporter le carnet (CSV)</a></div>
-    <div id="book" class="stack"></div>
+    <div class="toolbar"><input type="text" class="search" data-search="book" placeholder="Rechercher une entreprise ou une personne" aria-label="Rechercher dans le carnet" autocomplete="off"><a class="btn" id="book-export" href="/api/book.csv">Exporter le carnet (CSV)</a></div>
+    <div id="book-list" class="stack"></div>
     <p class="note">Les dirigeants viennent de l'Annuaire des entreprises (registre public). Ce sont des mandataires sociaux : pour un directeur technique ou un responsable mobile, la recherche LinkedIn reste à faire à la main. Personne n'est contacté tant que vous ne l'avez pas ajouté.</p>
-  </main>
+  </section>
 
-  <main id="view-results" class="stack" hidden>
+  <section id="view-results" class="stack" role="tabpanel" aria-labelledby="tab-results" hidden>
     <div class="hero"><h1>Résultats sur 30 jours.</h1></div>
     <section class="kpis" id="kpis" aria-label="Indicateurs sur 30 jours"></section>
     <div class="cols">
@@ -472,9 +519,9 @@ header.top { align-items: center; gap: 8px 16px; min-width: 0; border-bottom: 1p
         <tbody id="agents"></tbody>
       </table></div>
     </details>
-  </main>
+  </section>
 
-  <main id="view-method" class="stack" hidden>
+  <section id="view-method" class="stack" role="tabpanel" aria-labelledby="tab-method" hidden>
     <div class="hero">
       <h1>Du signal au contrat signé.</h1>
       <p>Le pipeline en onze étapes. Pour chacune : ce qui se passe, qui le fait, et ce que cela donne sur Vélomoov, une app de vélo fictive.</p>
@@ -488,7 +535,7 @@ header.top { align-items: center; gap: 8px 16px; min-width: 0; border-bottom: 1p
           <li class="step">
             <span class="num">1</span>
             <div class="step-body">
-              <div class="step-head"><h3>Trouver les entreprises</h3><span class="actor auto">Automatique</span><span class="when">chaque nuit, vers 5 h</span></div>
+              <div class="step-head"><h3>Trouver les entreprises</h3><span class="actor auto">Automatique</span><span class="when">chaque nuit, entre 2 h et 5 h</span></div>
               <p>Bloom lit des sources publiques, sans IA, puis écarte les ESN, les cabinets de recrutement et les agences.</p>
               <ul>
                 <li>Les classements App Store France de 12 catégories : 120 apps examinées par nuit. Seules restent celles d'un éditeur français dont les avis se dégradent ou qui n'est plus mise à jour.</li>
@@ -551,7 +598,7 @@ header.top { align-items: center; gap: 8px 16px; min-width: 0; border-bottom: 1p
             <span class="num">6</span>
             <div class="step-body">
               <div class="step-head"><h3>Rédiger</h3><span class="actor ai">Agent IA</span><span class="actor auto">Garde-fou</span></div>
-              <p>L'agent part du constat sur leur app, jamais d'une présentation de Doppio Lab. Le premier email doit citer au moins un fait sourcé, et chaque chiffre du corps du message doit figurer dans un fait cité. Le garde-fou bloque aussi le jargon (« accompagner », « leader ») et tout lien dans le corps du premier email. L'agent corrige, deux fois au maximum.</p>
+              <p>L'agent part du constat sur leur app, jamais d'une présentation de Doppio Lab. Le premier email doit citer au moins un fait sourcé, et chaque chiffre du corps du message doit figurer dans un fait cité. Le garde-fou bloque aussi le jargon (« accompagner », « leader ») et tout lien dans le corps du premier email (seul le lien de désinscription du pied de message reste). L'agent corrige, deux fois au maximum.</p>
               <div class="ex">
                 <span class="eyebrow">Brouillon, première version refusée</span>
                 <div class="guard"><div class="v BLOCK">« 40 % de vos utilisateurs » : chiffre absent des faits cités</div><div class="v BLOCK">« Nous accompagnons » : expression interdite</div></div>
@@ -644,9 +691,10 @@ On fait des audits de 2 jours à prix fixe. Ça vaut un échange de 15 minutes ?
         </ul>
       </section>
     </div>
+  </section>
   </main>
 </div>
-<div class="toast" id="toast" hidden></div>
+<div class="toast" id="toast" role="status" hidden><span id="toast-text"></span><button id="toast-action" hidden></button></div>
 
 <script>
 const OFFERS = { DISCOVERY: "Audit 2 jours", FORFAIT: "Forfait", REGIE: "Régie", TRAINING_KMP: "Formation KMP", TRAINING_ANTHROPIC: "Formation Anthropic" };
@@ -657,7 +705,7 @@ const INTENTS = {
   NOT_INTERESTED: ["Pas intéressé", "neg"], UNSUBSCRIBE: ["Opposition", "neg"], BOUNCE: ["Rebond", "neg"]
 };
 
-/* Données d'exemple : entreprises fictives, utilisées quand le serveur n'est pas joignable. */
+/* Données d'exemple : entreprises fictives, affichées seulement avec ?demo=1 (jamais à la suite d'une erreur). */
 const DEMO = {
   overview: {
     periodDays: 30, dryRun: true,
@@ -670,15 +718,15 @@ const DEMO = {
     ],
     bySignal: [
       { label: "Plaintes qualité (avis)", sent: 18, positive: 3 }, { label: "Recrutement bloqué", sent: 14, positive: 1 },
-      { label: "Recrutement KMP", sent: 9, positive: 1 }, { label: "Levée de fonds", sent: 12, positive: 0 }, { label: "Lien chaud", sent: 4, positive: 2 }
+      { label: "Levée de fonds", sent: 12, positive: 0 }, { label: "Recrutement KMP", sent: 9, positive: 1 }, { label: "Lien chaud", sent: 4, positive: 2 }
     ],
     accounts: [
-      { account: { name: "Vélomoov", domain: "velomoov.example", sector: "MOBILITY_TRANSPORT" }, score: 78, fit: 40, intent: 38, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+20 plaintes qualité", "+14 note en baisse", "+12 app mobile en production"], refreshedAt: "2026-10-10" },
-      { account: { name: "Banque Ardoise", domain: "ardoise.example", sector: "BANK_INSURANCE" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile", "+8 secteur avec référence"], refreshedAt: "2026-10-10" },
-      { account: { name: "Studio Polka", domain: "polka.example", sector: "MUSIC_MEDIA" }, score: 66, fit: 30, intent: 26, warm: 10, recommendedOffer: "TRAINING_KMP", reasons: ["+18 offre qui cite Kotlin Multiplatform", "+10 lien chaud : ex-collègue Music Work"], refreshedAt: "2026-10-09" },
-      { account: { name: "Trackr Logistique", domain: "trackr.example", sector: "LOGISTICS" }, score: 58, fit: 38, intent: 20, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 levée de fonds", "+5 nouvelle app annoncée"], refreshedAt: "2026-10-08" },
-      { account: { name: "Pharmacie Lumen", domain: "lumen.example", sector: "HEALTH" }, score: 47, fit: 24, intent: 23, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+10 aucune version depuis 211 jours", "+13 note en baisse"], refreshedAt: "2026-10-07" },
-      { account: { name: "Nomad Assurances", domain: "nomad.example", sector: "BANK_INSURANCE" }, score: 39, fit: 33, intent: 6, warm: 0, recommendedOffer: "TRAINING_ANTHROPIC", reasons: ["+6 équipe qui recrute sur les LLM"], refreshedAt: "2026-10-05" }
+      { account: { id: 1, name: "Vélomoov", domain: "velomoov.example", sector: "MOBILITY_TRANSPORT" }, score: 78, fit: 40, intent: 38, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+20 plaintes qualité", "+14 note en baisse", "+12 app mobile en production"], refreshedAt: "2026-10-10" },
+      { account: { id: 11, name: "Banque Ardoise", domain: "ardoise.example", sector: "BANK_INSURANCE" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile", "+8 secteur avec référence"], refreshedAt: "2026-10-10" },
+      { account: { id: 3, name: "Studio Polka", domain: "polka.example", sector: "MUSIC_MEDIA" }, score: 66, fit: 30, intent: 26, warm: 10, recommendedOffer: "TRAINING_KMP", reasons: ["+18 offre qui cite Kotlin Multiplatform", "+10 lien chaud : ex-collègue Music Work"], refreshedAt: "2026-10-09" },
+      { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", sector: "LOGISTICS" }, score: 58, fit: 38, intent: 20, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 levée de fonds", "+5 nouvelle app annoncée"], refreshedAt: "2026-10-08" },
+      { account: { id: 14, name: "Pharmacie Lumen", domain: "lumen.example", sector: "HEALTH" }, score: 47, fit: 24, intent: 23, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+10 aucune version depuis 211 jours", "+13 note en baisse"], refreshedAt: "2026-10-07" },
+      { account: { id: 15, name: "Nomad Assurances", domain: "nomad.example", sector: "BANK_INSURANCE" }, score: 39, fit: 33, intent: 6, warm: 0, recommendedOffer: "TRAINING_ANTHROPIC", reasons: ["+6 équipe qui recrute sur les LLM"], refreshedAt: "2026-10-05" }
     ],
     agents: [
       { agent: "research-explore", runs: 41, failures: 2, inputTokens: 612000, outputTokens: 48000, avgMs: 38200 },
@@ -724,10 +772,10 @@ const DEMO = {
       searches: [{ role: "Engineering Manager", url: "https://www.linkedin.com/search/results/people/?keywords=Engineering%20Manager%20Banque%20Ardoise" }] },
     { accountId: 3, name: "Studio Polka", score: 66, source: "GitHub", offer: "TRAINING_KMP", why: "celui qui fait monter l'équipe en compétence",
       contacts: [{ contact: { fullName: "Inès Caron", role: "Lead Android", email: "ines@polka.example", dataSource: "import de la liste Doppio" }, status: "email" }],
-      officers: [], searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head%20of%20Mobile%20Studio%20Polka" }] },
+      officers: [], searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head%20of%20Mobile%20Studio%20Polka" }, { role: "Lead Android", url: "https://www.linkedin.com/search/results/people/?keywords=Lead%20Android%20Studio%20Polka" }] },
     { accountId: 12, name: "Trackr Logistique", score: 53, source: "BODACC", offer: "FORFAIT", why: "celui qui arbitre le budget du nouveau produit",
       contacts: [], officers: [{ fullName: "Marc Aubert", role: "Président de SAS", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
-      searches: [{ role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20Trackr%20Logistique" }] }
+      searches: [{ role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20Trackr%20Logistique" }, { role: "CPO", url: "https://www.linkedin.com/search/results/people/?keywords=CPO%20Trackr%20Logistique" }] }
   ],
   toComplete: [
     { row: { account: { id: 11, name: "Banque Ardoise", domain: "ardoise.example", source: "offres d'emploi" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile"] },
@@ -748,65 +796,144 @@ const DEMO = {
     { draft: { id: 202, channel: "LINKEDIN", body: "Bonjour Paul, suite à mon email sur la cadence de release de Pharmacie Lumen, je me connecte ici sans relance commerciale." }, contactName: "Paul Riviere", accountName: "Pharmacie Lumen", linkedinUrl: "https://www.linkedin.com/" }
   ],
   replies: [
-    { id: 1, from: "claire.morel@velomoov.example", intent: "MEETING_REQUEST", summary: "Propose un appel jeudi ou vendredi matin, confirme des tickets paiement depuis la 5.2.", receivedAt: "2026-10-09T09:12:00Z" },
-    { id: 2, from: "t.lambert@trackr.example", intent: "NOT_NOW", summary: "Budget 2027 bouclé en janvier, recontacter début janvier.", followUpOn: "2027-01-06", receivedAt: "2026-10-08T15:40:00Z" },
-    { id: 3, from: "dsi@nomad.example", intent: "UNSUBSCRIBE", summary: "Demande à ne plus être contacté. Ajouté à la liste d'opposition.", receivedAt: "2026-10-07T08:02:00Z" }
+    { id: 1, from: "claire.morel@velomoov.example", accountName: "Vélomoov", subject: "crash au paiement depuis la 5.2", intent: "MEETING_REQUEST", summary: "Propose un appel jeudi ou vendredi matin, confirme des tickets paiement depuis la 5.2.", receivedAt: "2026-10-09T09:12:00Z" },
+    { id: 2, from: "t.lambert@trackr.example", accountName: "Trackr Logistique", intent: "NOT_NOW", summary: "Budget 2027 bouclé en janvier, recontacter début janvier.", followUpOn: "2027-01-06", receivedAt: "2026-10-08T15:40:00Z" },
+    { id: 3, from: "dsi@nomad.example", accountName: "Nomad Assurances", intent: "UNSUBSCRIBE", summary: "Demande à ne plus être contacté. Ajouté à la liste d'opposition.", receivedAt: "2026-10-07T08:02:00Z" }
   ]
 };
 
-let state = { demo: true, overview: null, drafts: [], tasks: [], replies: [], toComplete: [] };
+// Example data only on demand (?demo=1): an error must never pass fictional drafts off as real ones.
+const DEMO_MODE = new URLSearchParams(location.search).has("demo");
+const UNDO_MS = 5000;
+
+let state = { loaded: false, demo: false, filter: "all", sort: { key: "score", dir: "descending" }, q: { accounts: "", book: "", blacklist: "" }, overview: null, drafts: [], tasks: [], replies: [], toComplete: [], demands: [], book: [], blacklist: [], lastRun: null };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const pct = (x, d = 1) => (x * 100).toFixed(d).replace(".", ",") + " %";
 const num = (n) => new Intl.NumberFormat("fr-FR").format(n);
 const eur = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+const noCites = (text) => String(text ?? "").replace(/\s*\[F:[^\]]+\]/g, "");
+// Searches ignore case and accents: "velomoov" finds "Vélomoov"
+const norm = (s) => String(s ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+const matches = (query, ...fields) => !query.trim() || fields.some((f) => norm(f).includes(norm(query.trim())));
+const NO_MATCH = "Aucun résultat.";
 
-function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2200); }
+/** Only http and https addresses become links: javascript:, data: and the like come back null. */
+function safeUrl(u) {
+  if (!u) return null;
+  try { const x = new URL(u, location.href); return x.protocol === "http:" || x.protocol === "https:" ? x.href : null; } catch (_) { return null; }
+}
+/** A link opened in a new tab. Without a safe address, a button disappears and an inline link stays plain text. */
+function extLink(url, label, cls) {
+  const u = safeUrl(url);
+  if (!u) return cls ? "" : label;
+  return `<a${cls ? ` class="${cls}"` : ""} href="${esc(u)}" target="_blank" rel="noopener">${label}</a>`;
+}
 
-async function api(path, opts) {
-  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
-  if (!r.ok) { const e = new Error(r.status); e.body = await r.json().catch(() => null); throw e; }
+function hideToast() { clearTimeout(toast.timer); $("#toast").hidden = true; toast.onAction = null; }
+/** Feedback of an action. An error stays until "Fermer"; a removal carries "Annuler" for 5 seconds. */
+function toast(msg, opt = {}) {
+  clearTimeout(toast.timer);
+  const box = $("#toast"), btn = $("#toast-action");
+  box.setAttribute("role", opt.error ? "alert" : "status");
+  $("#toast-text").textContent = msg;
+  btn.textContent = opt.action || "Fermer";
+  btn.hidden = !opt.action && !opt.error;
+  toast.onAction = opt.onAction || null;
+  box.hidden = false;
+  if (!opt.error) toast.timer = setTimeout(hideToast, opt.action ? UNDO_MS : 3000);
+}
+
+/** The reason the server gives, in a sentence: guard violations, {error} or {status}, or a generic message. */
+function errorText(err, fallback = "Action impossible, réessayez.") {
+  if (err?.status === 401) return "Session expirée. Rechargez la page pour vous reconnecter.";
+  if (Array.isArray(err?.body)) return err.body.map((g) => String(g).replace(/^\[\w+\]\s*/, "")).join(" · ");
+  const s = err?.body?.error || err?.body?.status;
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) + "." : fallback;
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
+  if (!r.ok) { const e = new Error(String(r.status)); e.status = r.status; e.body = await r.json().catch(() => null); throw e; }
   return r.json().catch(() => ({}));
 }
 
+/** Banner under the header: the server does not answer, or the session expired. */
+function setBanner(kind) {
+  const b = $("#banner");
+  b.hidden = !kind;
+  if (!kind) return;
+  b.dataset.kind = kind;
+  $("#banner-text").innerHTML = kind === "expired"
+    ? "<b>Session expirée.</b> Rechargez la page pour vous reconnecter."
+    : "<b>Le serveur ne répond pas.</b> " + (state.loaded ? "Les données affichées datent du dernier chargement réussi." : "Rien n'est affiché tant qu'il ne répond pas.");
+  $("#banner-action").textContent = kind === "expired" ? "Recharger" : "Réessayer";
+}
+
 async function load() {
+  if (DEMO_MODE) {
+    Object.assign(state, { loaded: true, demo: true, overview: structuredClone(DEMO.overview), drafts: structuredClone(DEMO.drafts), tasks: structuredClone(DEMO.tasks), replies: structuredClone(DEMO.replies), toComplete: structuredClone(DEMO.toComplete), lastRun: DEMO.lastRun, demands: structuredClone(DEMO.demands), book: structuredClone(DEMO.book), blacklist: structuredClone(DEMO.blacklist) });
+    render();
+    return;
+  }
   try {
     const [overview, drafts, approved, replies, toComplete, lastRun, demands, book, blacklist] = await Promise.all([
       api("/api/overview"), api("/api/drafts?status=PENDING_REVIEW"), api("/api/drafts?status=APPROVED"), api("/api/replies"), api("/api/to-complete"),
       api("/api/discovery/last").catch(() => null), api("/api/demands").catch(() => []),
       api("/api/book").catch(() => []), api("/api/blacklist").catch(() => [])
     ]);
-    state = { demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete, lastRun, demands, book, blacklist };
+    Object.assign(state, { loaded: true, demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete, lastRun, demands, book, blacklist });
   } catch (e) {
-    state = { demo: true, overview: DEMO.overview, drafts: structuredClone(DEMO.drafts), tasks: structuredClone(DEMO.tasks), replies: structuredClone(DEMO.replies), toComplete: structuredClone(DEMO.toComplete), lastRun: DEMO.lastRun, demands: structuredClone(DEMO.demands), book: structuredClone(DEMO.book), blacklist: structuredClone(DEMO.blacklist) };
+    setBanner(e.status === 401 ? "expired" : "error");
+    return;
   }
+  setBanner(null);
   render();
+  watchRun();
 }
 
-const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+/** Reloads everything, unless something is being typed, confirmed or can still be undone. */
+function refresh() {
+  if (state.demo || pending.size || document.querySelector("[data-edit]:not([hidden]), .confirm")) return;
+  if ([...document.querySelectorAll("#newlist input, #block-form input")].some((i) => i.value !== i.defaultValue)) return;
+  load();
+}
+
+/** While a discovery run is in progress, its line is read again every minute; the lists follow when it ends. */
+function watchRun() {
+  clearTimeout(watchRun.timer);
+  if (state.demo || !state.lastRun?.running) return;
+  watchRun.timer = setTimeout(async () => {
+    try { state.lastRun = await api("/api/discovery/last"); } catch (_) { watchRun(); return; }
+    renderRun();
+    if (state.lastRun?.running) watchRun(); else refresh();
+  }, 60000);
+}
 
 function render() {
-  const o = state.overview;
-  const mode = $("#mode");
+  renderHeader(); renderDrafts(); renderReplies(); renderTasks(); renderRun(); renderDemands(); renderNewList();
+  renderAccounts(); renderBlacklist(); renderBook(); renderResults(); renderCounts();
+}
+
+function renderHeader() {
+  const o = state.overview, k = o.kpis, mode = $("#mode");
+  mode.hidden = false;
   mode.className = "pill " + (state.demo ? "demo" : o.dryRun ? "dry" : "live");
   mode.textContent = state.demo ? "Données d'exemple" : o.dryRun ? "Mode test : aucun envoi" : "Envois actifs";
-  $("#today").textContent = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
-
-  const k = o.kpis;
-  const tiles = [
-    ["Emails envoyés", num(k.sent), `${o.periodDays} jours`],
-    ["Taux de réponse", pct(k.replyRate), `${k.replies} réponses`],
-    ["Réponses positives", pct(k.positiveRate), `${k.positive} prospects`, k.sent > 30 && k.positiveRate < 0.02],
-    ["Rendez-vous", num(k.meetings), "objectif : 2 par semaine"]
-  ];
-  $("#kpis").innerHTML = tiles.map(([l, v, s, bad]) => `<div class="kpi ${bad ? "bad" : "ok"}"><span class="label">${l}</span><span class="value">${v}</span><span class="sub">${s}</span></div>`).join("");
   $("#aside").innerHTML = `<span class="eyebrow">${o.periodDays} derniers jours</span>
     <div class="stat"><b>${num(k.sent)}</b><span>${k.sent > 1 ? "emails envoyés" : "email envoyé"}</span></div>
     <div class="stat"><b>${pct(k.replyRate)}</b><span>de réponse, ${plural(k.replies, "réponse", "réponses")}</span></div>
     <div class="stat"><b>${num(k.meetings)}</b><span>rendez-vous, objectif 2 par semaine</span></div>
-    <button class="link" data-tab="results">Voir les résultats →</button>`;
+    <button class="link" data-tab="results">Voir les résultats →</button>
+    <p class="note">Au clavier : <kbd>j</kbd> et <kbd>k</kbd> pour passer d'une carte à l'autre, <kbd>a</kbd> pour approuver, <kbd>e</kbd> pour modifier.</p>`;
+}
 
-  // The queue: one headline, one count per kind, empty groups hidden
+const setCount = (sel, n) => { const c = $(sel); c.textContent = n; c.hidden = !n; };
+
+/** Headlines, counts, filters and empty groups. Cheap, so it runs after every action instead of a full render. */
+function renderCounts() {
+  if (!state.loaded) return;
   const counts = { drafts: state.drafts.length, replies: state.replies.length, tasks: state.tasks.length };
   const total = counts.drafts + counts.replies + counts.tasks;
   $("#headline").textContent = total ? `${plural(total, "action", "actions")} aujourd'hui.` : "Rien à faire aujourd'hui.";
@@ -815,9 +942,10 @@ function render() {
     counts.replies && plural(counts.replies, "réponse", "réponses"),
     counts.tasks && plural(counts.tasks, "note LinkedIn", "notes LinkedIn")
   ].filter(Boolean);
+  $("#subline").hidden = false;
   $("#subline").textContent = total ? parts.join(", ") + "." : "Les prochains brouillons arrivent la veille de leur créneau d'envoi.";
   const labels = { all: `Tout · ${total}`, drafts: `Emails · ${counts.drafts}`, replies: `Réponses · ${counts.replies}`, tasks: `LinkedIn · ${counts.tasks}` };
-  if (!state.filter || (state.filter !== "all" && !counts[state.filter])) state.filter = "all";
+  if (state.filter !== "all" && !counts[state.filter]) state.filter = "all";
   document.querySelectorAll("#filters .chip").forEach((c) => {
     c.textContent = labels[c.dataset.filter];
     c.setAttribute("aria-pressed", c.dataset.filter === state.filter);
@@ -831,11 +959,11 @@ function render() {
   $("#focus").hidden = total === 0;
   $("#all-done").hidden = total > 0 || !waiting;
   $("#done-title").textContent = waiting > 1 ? `${waiting} nouveaux prospects attendent un contact.` : "1 nouveau prospect attend un contact.";
-
-  $("#c-today").textContent = total;
-  $("#c-prospects").textContent = waiting;
   $("#new-headline").textContent = waiting ? `${plural(waiting, "prospect", "prospects")} à compléter.` : "Aucun prospect à compléter.";
-  renderDrafts(); renderReplies(); renderTasks(); renderNew(); renderAccounts(); renderBlacklist(); renderBook(); renderPipeline(); renderHealth();
+  $("#demands-head").hidden = !state.demands.length;
+  const people = state.book.reduce((n, e) => n + e.contacts.length, 0);
+  $("#book-headline").textContent = state.book.length ? `${plural(state.book.length, "entreprise", "entreprises")}, ${plural(people, "contact", "contacts")}.` : "Carnet vide.";
+  setCount("#c-today", total); setCount("#c-prospects", waiting); setCount("#c-book", people);
 }
 
 function bodyWithCites(text) {
@@ -843,21 +971,27 @@ function bodyWithCites(text) {
 }
 
 function factList(facts) {
-  return `<div class="facts">${(facts || []).map((f) => `<div class="fact" data-fid="${f.id}"><code>${f.id.slice(0, 4)}</code><span>${esc(f.statement)} · <a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener">source</a></span></div>`).join("")}</div>`;
+  return `<div class="facts">${(facts || []).map((f) => `<div class="fact" data-fid="${esc(f.id)}" tabindex="-1"><code>${esc(String(f.id).slice(0, 4))}</code><span>${esc(f.statement)} · ${extLink(f.sourceUrl, "source")}</span></div>`).join("")}</div>`;
+}
+
+function guardHtml(report) {
+  if (!report || !report.length) return "";
+  return `<div class="guard">${report.map((g) => `<div class="v ${g.startsWith("[BLOCK]") ? "BLOCK" : "WARN"}">${esc(g.replace(/^\[\w+\]\s*/, ""))}</div>`).join("")}</div>`;
 }
 
 function renderDrafts() {
   $("#drafts").innerHTML = state.drafts.map(({ draft: d, contactName, contactRole, accountName, facts }) => {
     const blocked = (d.guardReport || []).some((g) => g.startsWith("[BLOCK]"));
     const n = (facts || []).length;
-    return `<article class="card ${blocked ? "blocked" : ""}" id="d-${d.id}">
-      ${d.guardReport && d.guardReport.length ? `<div class="guard">${d.guardReport.map((g) => `<div class="v ${g.startsWith("[BLOCK]") ? "BLOCK" : "WARN"}">${esc(g.replace(/^\[\w+\]\s*/, ""))}</div>`).join("")}</div>` : ""}
-      <div class="who"><span><strong>${esc(contactName)}</strong>, ${esc(contactRole)} · ${esc(accountName)}</span><span class="chan">${d.channel} · étape ${d.stepIndex + 1}</span></div>
+    return `<article class="card ${blocked ? "blocked" : ""}" id="d-${d.id}" tabindex="-1">
+      ${guardHtml(d.guardReport)}
+      <div class="who"><span><strong>${esc(contactName)}</strong>, ${esc(contactRole)} · ${esc(accountName)}</span><span class="chan">${esc(d.channel)} · étape ${d.stepIndex + 1}</span></div>
       ${d.subject ? `<div class="subject" data-view>${esc(d.subject)}</div>` : ""}
       <div class="body" data-view>${bodyWithCites(d.body)}</div>
       <div data-edit hidden class="stack">
         ${d.subject != null ? `<input type="text" id="s-${d.id}" value="${esc(d.subject)}" aria-label="Objet">` : ""}
-        <textarea id="b-${d.id}" aria-label="Message">${esc(d.body)}</textarea>
+        <textarea id="b-${d.id}" aria-label="Message" aria-describedby="k-${d.id}">${esc(d.body)}</textarea>
+        <span class="note" id="k-${d.id}">Cmd ou Ctrl + Entrée pour approuver, Échap pour fermer.</span>
       </div>
       <details class="sources">
         <summary>${n ? plural(n, "source", "sources") + " et raison du message" : "Raison du message"}</summary>
@@ -874,22 +1008,30 @@ function renderDrafts() {
   }).join("");
 }
 
+// No ?, & or % in the address: they would add headers (cc, body) to the reply
+const EMAIL = /^[^\s@<>"?&%]+@[^\s@<>"?&%]+$/;
+
 function renderReplies() {
   $("#replies").innerHTML = state.replies.map((r) => {
     const [label, tone] = INTENTS[r.intent] || [r.intent, "neu"];
-    return `<article class="card"><div class="who"><span><strong>${esc(r.from)}</strong></span><span class="intent ${tone}">${label}</span></div>
+    // No reply button for an opposition, a refusal or a bounce: those people must not be written to again
+    const mail = tone !== "neg" && EMAIL.test(r.from) ? `mailto:${encodeURIComponent(r.from)}${r.subject ? "?subject=" + encodeURIComponent("Re: " + r.subject.replace(/^re:\s*/i, "")) : ""}` : null;
+    return `<article class="card" id="r-${r.id}" tabindex="-1"><div class="who"><span><strong>${esc(r.from)}</strong>${r.accountName ? " · " + esc(r.accountName) : ""}</span><span class="intent ${tone}">${esc(label)}</span></div>
       <div>${esc(r.summary)}</div>${r.followUpOn ? `<div class="note">Relance prévue le ${new Date(r.followUpOn).toLocaleDateString("fr-FR")}</div>` : ""}
-      <div class="actions"><button class="btn" data-act="handled" data-id="${r.id}">Traité</button></div></article>`;
+      <div class="actions">${mail ? `<a class="btn primary" href="${esc(mail)}">Répondre</a>` : ""}<button class="btn" data-act="handled" data-id="${r.id}">Traité</button></div></article>`;
   }).join("");
 }
 
 function renderTasks() {
-  $("#tasks").innerHTML = state.tasks.map(({ draft: d, contactName, accountName, linkedinUrl }) => `<article class="card">
-      <div class="who"><span><strong>${esc(contactName)}</strong> · ${esc(accountName)}</span><span class="chan">NOTE · ${d.body.length}/300</span></div>
-      <div class="body">${esc(d.body.replace(/\s*\[F:[^\]]+\]/g, ""))}</div>
+  $("#tasks").innerHTML = state.tasks.map(({ draft: d, contactName, accountName, linkedinUrl }) => {
+    const text = noCites(d.body);
+    return `<article class="card" id="t-${d.id}" tabindex="-1">
+      <div class="who"><span><strong>${esc(contactName)}</strong> · ${esc(accountName)}</span><span class="chan">NOTE · ${text.length}/300</span></div>
+      <div class="body">${esc(text)}</div>
       <div class="actions"><button class="btn primary" data-act="copy" data-id="${d.id}">Copier la note</button>
-      ${linkedinUrl ? `<a class="btn" href="${esc(linkedinUrl)}" target="_blank" rel="noopener">Ouvrir le profil</a>` : ""}
-      <button class="btn ghost" data-act="done" data-id="${d.id}">Fait</button></div></article>`).join("");
+      ${extLink(linkedinUrl, "Ouvrir le profil", "btn")}
+      <button class="btn ghost" data-act="done" data-id="${d.id}">Fait</button></div></article>`;
+  }).join("");
 }
 
 const FACT_KINDS = {
@@ -914,21 +1056,23 @@ function renderRun() {
 
 /** Requests published on a marketplace: no named company, so no email. One action: answer on the platform. */
 function renderDemands() {
-  const list = state.demands || [];
-  $("#demands-head").hidden = !list.length;
-  $("#demands").innerHTML = list.map((d) => `<article class="card">
+  $("#demands").innerHTML = state.demands.map((d) => {
+    const detail = [(d.categories || []).join(", "), d.publishedAt && "publié le " + new Date(d.publishedAt).toLocaleDateString("fr-FR")].filter(Boolean).join(" · ");
+    return `<article class="card">
       <div class="who"><span><strong>${esc(d.title)}</strong></span><span class="src-chip"${familyAttr(d.source)}>${esc(d.source)}</span></div>
-      <div class="trigger"><span class="eyebrow">Budget : ${esc(d.budget || "non précisé")}</span><span>${esc((d.categories || []).join(", "))}${d.publishedAt ? " · publié le " + new Date(d.publishedAt).toLocaleDateString("fr-FR") : ""}</span></div>
-      <div class="actions"><a class="btn primary" href="${esc(d.url)}" target="_blank" rel="noopener">Répondre sur ${esc(d.source)}</a>
-      <button class="btn ghost" data-act="dismiss-demand" data-key="${esc(d.key)}">Écarter</button></div></article>`).join("");
+      <div class="trigger"><span class="eyebrow">Budget : ${esc(d.budget || "non précisé")}</span><span>${esc(detail)}</span></div>
+      <div class="actions">${extLink(d.url, `Répondre sur ${esc(d.source)}`, "btn primary")}
+      <button class="btn ghost" data-act="dismiss-demand" data-key="${esc(d.key)}">Écarter</button></div></article>`;
+  }).join("");
 }
 
-function renderNew() {
-  renderRun();
-  renderDemands();
+function renderNewList() {
   const box = $("#newlist");
-  if (!state.toComplete.length) { box.innerHTML = `<div class="empty">La recherche tourne chaque nuit à 2h. Lance-la maintenant ou importe ta liste.</div>`; return; }
-  box.innerHTML = state.toComplete.map(({ row: r, offer, roles, why, searches, facts }) => {
+  if (!state.toComplete.length) { box.innerHTML = `<div class="empty">La recherche tourne chaque nuit entre 2 h et 5 h. Lancez-la maintenant ou importez votre liste.</div>`; return; }
+  box.innerHTML = state.toComplete.map(prospectCard).join("");
+}
+
+function prospectCard({ row: r, offer, roles, why, searches, facts }) {
     const id = r.account.id;
     const fit = r.fit ?? 0, intent = r.intent ?? 0, warm = r.warm ?? 0;
     // The first fact is the one behind the account's signal (the server sorts them): it explains why the prospect is here
@@ -937,41 +1081,55 @@ function renderNew() {
     return `<article class="card" id="n-${id}">
       <div class="who"><span><strong>${esc(r.account.name)}</strong>${r.account.domain ? " · " + esc(r.account.domain) : ""}</span><span class="src-chip"${familyAttr(r.account.source)}>${esc(r.account.source || "manuel")}</span></div>
       <div class="mini-score"><span>${r.score}</span><div class="bar"><i class="fit" style="width:${fit}%"></i><i class="int" style="width:${intent}%"></i><i class="warm" style="width:${warm}%"></i></div></div>
-      ${trigger ? `<div class="trigger"><span class="eyebrow">${FACT_KINDS[trigger.kind] || "Source"}</span><span>${esc(trigger.statement)} · <a href="${esc(trigger.sourceUrl)}" target="_blank" rel="noopener">source</a></span></div>` : ""}
-      <div><strong>${OFFERS[offer] || offer}</strong> · à contacter : ${esc(roles.join(", "))}, ${esc(why)}</div>
+      ${trigger ? `<div class="trigger"><span class="eyebrow">${esc(FACT_KINDS[trigger.kind] || "Source")}</span><span>${esc(trigger.statement)} · ${extLink(trigger.sourceUrl, "source")}</span></div>` : ""}
+      <div><strong>${esc(OFFERS[offer] || offer)}</strong> · à contacter : ${esc(roles.join(", "))}, ${esc(why)}</div>
       ${n ? `<details class="sources"><summary>${n > 1 ? "Autres sources" : "Autre source"}</summary>${factList(others)}</details>` : ""}
-      <div class="roles">${searches.map((q) => `<a class="btn" href="${esc(q.url)}" target="_blank" rel="noopener">Chercher « ${esc(q.role)} » sur LinkedIn</a>`).join("")}</div>
-      <form class="form-grid" data-form="${id}" onsubmit="return false">
-        <label for="fn-${id}">Nom<input type="text" id="fn-${id}" placeholder="Claire Morel" autocomplete="off"></label>
-        <label for="ro-${id}">Rôle<input type="text" id="ro-${id}" list="roles-${id}" placeholder="${esc(roles[0])}"><datalist id="roles-${id}">${roles.map((x) => `<option value="${esc(x)}">`).join("")}</datalist></label>
-        <label for="em-${id}">Email (optionnel)<input type="text" id="em-${id}" inputmode="email" placeholder="claire@entreprise.fr"></label>
-        <label for="li-${id}">Profil LinkedIn (optionnel)<input type="text" id="li-${id}" placeholder="https://www.linkedin.com/in/..."></label>
+      <div class="roles">${searches.map((q) => extLink(q.url, `Chercher « ${esc(q.role)} » sur LinkedIn`, "btn")).join("")}</div>
+      <form class="stack">
+        <div class="form-grid">
+          <label for="fn-${id}">Nom<input type="text" id="fn-${id}" placeholder="Claire Morel" autocomplete="off"></label>
+          <label for="ro-${id}">Rôle<input type="text" id="ro-${id}" list="roles-${id}" value="${esc(roles[0] || "")}" placeholder="${esc(roles[0] || "")}"><datalist id="roles-${id}">${roles.map((x) => `<option value="${esc(x)}">`).join("")}</datalist></label>
+          <label for="em-${id}">Email (optionnel)<input type="text" id="em-${id}" inputmode="email" placeholder="claire@entreprise.fr"></label>
+          <label for="li-${id}">Profil LinkedIn (optionnel)<input type="text" id="li-${id}" placeholder="https://www.linkedin.com/in/..."></label>
+        </div>
+        <div class="actions">
+          <button class="btn primary" type="submit" data-act="add-contact" data-id="${id}">Ajouter et lancer la séquence</button>
+          <button class="btn ghost" type="button" data-act="exclude" data-id="${id}" data-name="${esc(r.account.name)}">Liste noire</button>
+        </div>
       </form>
-      <div class="actions">
-        <button class="btn primary" data-act="add-contact" data-id="${id}">Ajouter et lancer la séquence</button>
-        <button class="btn ghost" data-act="exclude" data-id="${id}">Liste noire</button>
-      </div>
     </article>`;
-  }).join("");
 }
 
 function tier(score) { return score >= 65 ? ["ACT_NOW", "agir"] : score >= 45 ? ["NURTURE", "suivre"] : ["WATCH", "veille"]; }
+const SORTS = {
+  name: (a, b) => a.account.name.localeCompare(b.account.name, "fr"),
+  score: (a, b) => a.score - b.score,
+  date: (a, b) => String(a.refreshedAt || "").localeCompare(String(b.refreshedAt || ""))
+};
 function renderAccounts() {
-  $("#accounts").innerHTML = state.overview.accounts.map((r) => {
+  const { key, dir } = state.sort;
+  document.querySelectorAll("th[data-col]").forEach((th) => th.setAttribute("aria-sort", th.dataset.col === key ? dir : "none"));
+  const rows = state.overview.accounts.filter((r) => matches(state.q.accounts, r.account.name, r.account.domain))
+    .sort((a, b) => (dir === "ascending" ? 1 : -1) * SORTS[key](a, b));
+  if (!rows.length && state.overview.accounts.length) { $("#accounts").innerHTML = `<tr><td colspan="6" class="reasons">${NO_MATCH}</td></tr>`; return; }
+  $("#accounts").innerHTML = rows.map((r) => {
     const fit = r.fit ?? Math.min(40, r.score), warm = r.warm ?? 0, intent = r.intent ?? Math.max(0, r.score - fit - warm);
     const [t, tl] = tier(r.score);
-    return `<tr><td><strong>${esc(r.account.name)}</strong><br><span class="reasons">${esc(r.account.domain)}</span></td>
+    return `<tr id="a-${r.account.id}"><td><strong>${esc(r.account.name)}</strong><br><span class="reasons">${esc(r.account.domain)}</span></td>
       <td><div class="score"><span>${r.score}</span><div class="bar" title="adéquation ${fit}, intention ${intent}, lien chaud ${warm}"><i class="fit" style="width:${fit}%"></i><i class="int" style="width:${intent}%"></i><i class="warm" style="width:${warm}%"></i></div></div><span class="tier ${t}">${tl}</span></td>
-      <td>${OFFERS[r.recommendedOffer] || "aucune"}</td>
-      <td class="reasons">${r.reasons.slice(0, 3).map(esc).join("<br>")}</td>
+      <td>${esc(OFFERS[r.recommendedOffer] || "aucune")}</td>
+      <td class="reasons">${r.reasons.slice(0, 3).map(esc).join(" · ")}</td>
       <td class="reasons">${r.refreshedAt ? new Date(r.refreshedAt).toLocaleDateString("fr-FR") : "jamais"}</td>
-      <td><button class="btn ghost" data-act="exclude" data-id="${r.account.id}">Liste noire</button></td></tr>`;
+      <td><div class="actions"><button class="btn ghost" data-act="exclude" data-id="${r.account.id}" data-name="${esc(r.account.name)}">Liste noire</button></div></td></tr>`;
   }).join("");
 }
 
 /** Companies never prospected: excluded accounts (accountId set) and names blocked by hand share one list. */
 function renderBlacklist() {
-  const list = state.blacklist || [];
+  const field = $("#blacklist-search");
+  field.hidden = state.blacklist.length <= 8 && !field.value;
+  const list = state.blacklist.filter((b) => matches(state.q.blacklist, b.name, b.reason));
+  if (state.blacklist.length && !list.length) { $("#blacklist").innerHTML = `<div class="person"><span class="note">${NO_MATCH}</span></div>`; return; }
   $("#blacklist").innerHTML = list.map((b) => {
     const detail = [b.reason, b.since && "depuis le " + new Date(b.since).toLocaleDateString("fr-FR")].filter(Boolean).join(" · ");
     return `<div class="person"><span><strong>${esc(b.name)}</strong>${detail ? `<br><small>${esc(detail)}</small>` : ""}</span>
@@ -983,52 +1141,348 @@ const CONTACT_STATUS = { sequence: "Séquence en cours", email: "Email connu", "
 
 /** Contact book: per company, the people already chosen, then the legal officers the company registry publishes. */
 function renderBook() {
-  const list = state.book || [];
-  const people = list.reduce((n, e) => n + e.contacts.length, 0);
-  $("#c-book").textContent = people;
-  $("#book-headline").textContent = list.length ? `${plural(list.length, "entreprise", "entreprises")}, ${plural(people, "contact", "contacts")}.` : "Carnet vide.";
-  $("#book-export").hidden = !list.length || state.demo;
-  if (!list.length) { $("#book").innerHTML = `<div class="empty">Le carnet se remplit avec les prospects au-dessus de 45 et les contacts que vous ajoutez.</div>`; return; }
-  $("#book").innerHTML = list.map((e) => `<article class="card">
+  const list = state.book;
+  // With ?demo=1 the page shows fictional companies: the export would download the real book
+  $("#book-export").hidden = state.demo;
+  if (!list.length) { $("#book-list").innerHTML = `<div class="empty">Le carnet se remplit avec les prospects au-dessus de 45 et les contacts que vous ajoutez.</div>`; return; }
+  const shown = list.filter((e) => matches(state.q.book, e.name, ...e.contacts.map((c) => c.contact.fullName), ...e.officers.map((o) => o.fullName)));
+  if (!shown.length) { $("#book-list").innerHTML = `<div class="empty">${NO_MATCH}</div>`; return; }
+  $("#book-list").innerHTML = shown.map((e) => `<article class="card">
       <div class="who"><span><strong>${esc(e.name)}</strong> · score ${e.score}</span><span class="src-chip"${familyAttr(e.source)}>${esc(e.source || "manuel")}</span></div>
-      <div><strong>${OFFERS[e.offer] || e.offer}</strong> · à contacter : ${esc(e.why)}</div>
+      <div><strong>${esc(OFFERS[e.offer] || e.offer)}</strong> · à contacter : ${esc(e.why)}</div>
       ${e.contacts.length ? `<div class="people"><span class="eyebrow">Contacts choisis</span>${e.contacts.map(({ contact: c, status }) => `<div class="person"><span><strong>${esc(c.fullName)}</strong> · ${esc(c.role)}<br><small>${esc([c.email, c.dataSource].filter(Boolean).join(" · "))}</small></span><span class="pill">${CONTACT_STATUS[status] || ""}</span></div>`).join("")}</div>` : ""}
-      ${e.officers.length ? `<div class="people"><span class="eyebrow">Dirigeants publiés au registre</span>${e.officers.map((o, i) => `<div class="person"><span><strong>${esc(o.fullName)}</strong> · ${esc(o.role)} · <a href="${esc(o.sourceUrl)}" target="_blank" rel="noopener">source</a></span><button class="btn" data-act="add-officer" data-id="${e.accountId}" data-i="${i}">Ajouter au carnet</button></div>`).join("")}</div>` : ""}
-      <div class="roles">${e.searches.map((q) => `<a class="btn" href="${esc(q.url)}" target="_blank" rel="noopener">Chercher « ${esc(q.role)} » sur LinkedIn</a>`).join("")}</div>
+      ${e.officers.length ? `<div class="people"><span class="eyebrow">Dirigeants publiés au registre</span>${e.officers.map((o, i) => `<div class="person"><span><strong>${esc(o.fullName)}</strong> · ${esc(o.role)} · ${extLink(o.sourceUrl, "source")}</span><button class="btn" data-act="add-officer" data-id="${e.accountId}" data-i="${i}">Ajouter au carnet</button></div>`).join("")}</div>` : ""}
+      <div class="roles">${e.searches.map((q) => extLink(q.url, `Chercher « ${esc(q.role)} » sur LinkedIn`, "btn")).join("")}</div>
     </article>`).join("");
 }
 
-function renderPipeline() {
-  const p = state.overview.pipeline.filter((s) => s.stage !== "LOST");
+function renderResults() {
+  const o = state.overview, k = o.kpis;
+  const tiles = [
+    ["Emails envoyés", num(k.sent), `${o.periodDays} jours`],
+    ["Taux de réponse", pct(k.replyRate), `${k.replies} réponses`],
+    ["Réponses positives", pct(k.positiveRate), `${k.positive} prospects`, k.sent > 30 && k.positiveRate < 0.02],
+    ["Rendez-vous", num(k.meetings), "objectif : 2 par semaine"]
+  ];
+  $("#kpis").innerHTML = tiles.map(([l, v, s, bad]) => `<div class="kpi ${bad ? "bad" : "ok"}"><span class="label">${l}</span><span class="value">${v}</span><span class="sub">${s}</span></div>`).join("");
+
+  const p = o.pipeline.filter((s) => s.stage !== "LOST");
   const max = Math.max(1, ...p.map((s) => s.count));
   $("#funnel").innerHTML = p.map((s) => `<div class="stage"><span>${STAGES[s.stage]}</span><div class="track"><div class="fill" style="width:${(s.count / max) * 100}%">${s.count}</div></div><span class="amt">${s.amountEur ? eur(s.amountEur) : ""}</span></div>`).join("");
-  const open = state.overview.pipeline.filter((s) => ["DISCOVERY_SOLD", "PROPOSAL"].includes(s.stage)).reduce((a, s) => a + s.amountEur, 0);
+  const open = o.pipeline.filter((s) => ["DISCOVERY_SOLD", "PROPOSAL"].includes(s.stage)).reduce((a, s) => a + s.amountEur, 0);
   $("#pipe-total").textContent = `${eur(open)} en cours`;
-  const bs = state.overview.bySignal || [];
+  const bs = [...(o.bySignal || [])].sort((a, b) => b.sent - a.sent);
   const m2 = Math.max(1, ...bs.map((s) => s.sent));
   $("#bysignal").innerHTML = bs.length ? bs.map((s) => `<div class="stage"><span>${esc(s.label)}</span><div class="track"><div class="fill" style="width:${(s.sent / m2) * 100}%">${s.sent}</div></div><span class="amt">${s.positive} pos.</span></div>`).join("")
     : `<div class="empty">Pas encore assez d'envois pour comparer les signaux.</div>`;
-}
 
-function renderHealth() {
-  const k = state.overview.kpis;
+  // Spam complaints are not measured: Bloom receives no complaint feedback, so it shows no figure
   const gauges = [
     ["Désinscriptions", k.unsubscribeRate, 0.02, "Seuil 2 %. Au-delà, le ciblage ou le message est en cause."],
     ["Rebonds", k.bounceRate, 0.02, "Seuil 2 %. Au-delà, vérifier les adresses avant envoi."],
-    ["Plaintes spam (estimées)", 0, 0.003, "Seuil 0,3 % exigé par Gmail. Viser 0,1 %."],
+    ["Plaintes spam", null, 0.003, "Bloom ne reçoit pas encore les signalements de spam. Seuil 0,3 % exigé par Gmail."],
     ["Réponses positives", k.positiveRate, 0.02, "Repère bas 2 %. En dessous, revoir signaux et angle.", true]
   ];
   $("#gauges").innerHTML = gauges.map(([l, v, lim, note, higherIsBetter]) => {
-    const scale = Math.max(lim * 2.5, v * 1.2, 0.0001);
-    const bad = higherIsBetter ? v < lim : v > lim;
-    return `<div class="card gauge"><div class="row"><span>${l}</span><b style="color:var(${bad ? "--bad" : "--ink"});font-weight:${bad ? 500 : 400}">${pct(v)}</b></div>
-      <div class="track"><i style="width:${Math.min(100, (v / scale) * 100)}%;background:var(${bad ? "--bad" : "--good"})"></i><span class="limit" style="left:${(lim / scale) * 100}%"></span></div>
+    const scale = Math.max(lim * 2.5, (v || 0) * 1.2, 0.0001);
+    const bad = v != null && (higherIsBetter ? v < lim : v > lim);
+    return `<div class="card gauge"><div class="row"><span>${l}</span><b style="color:var(${bad ? "--bad" : "--ink"});font-weight:${bad ? 500 : 400}">${v == null ? "non mesuré" : pct(v)}</b></div>
+      <div class="track"><i style="width:${Math.min(100, ((v || 0) / scale) * 100)}%;background:var(${bad ? "--bad" : "--good"})"></i><span class="limit" style="left:${(lim / scale) * 100}%"></span></div>
       <small>${note}</small></div>`;
   }).join("");
-  $("#agents").innerHTML = state.overview.agents.map((a) => `<tr><td>${esc(a.agent)}</td><td>${num(a.runs)}</td><td style="color:var(${a.failures ? "--warn" : "--muted"});font-weight:${a.failures ? 500 : 400}">${a.failures}</td><td>${num(a.inputTokens)}</td><td>${num(a.outputTokens)}</td><td>${(a.avgMs / 1000).toFixed(1).replace(".", ",")} s</td></tr>`).join("");
+  $("#agents").innerHTML = o.agents.map((a) => `<tr><td>${esc(a.agent)}</td><td>${num(a.runs)}</td><td style="color:var(${a.failures ? "--warn" : "--muted"});font-weight:${a.failures ? 500 : 400}">${a.failures}</td><td>${num(a.inputTokens)}</td><td>${num(a.outputTokens)}</td><td>${(a.avgMs / 1000).toFixed(1).replace(".", ",")} s</td></tr>`).join("");
+}
+
+/**
+ * After an action that spreads (blacklist, restore, import, new contact), reads the lists again.
+ * Cards the server no longer returns leave the screen and new prospects are added at the end;
+ * a draft being edited or a form being filled is never redrawn.
+ */
+async function syncLists() {
+  if (state.demo) return;
+  let fresh;
+  try {
+    const [overview, drafts, approved, toComplete, book, blacklist] = await Promise.all([
+      api("/api/overview"), api("/api/drafts?status=PENDING_REVIEW"), api("/api/drafts?status=APPROVED"),
+      api("/api/to-complete"), api("/api/book"), api("/api/blacklist")
+    ]);
+    fresh = { overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), toComplete, book, blacklist };
+  } catch (_) { return; }
+  const prune = (list, ids, idOf, prefix) => {
+    state[list] = state[list].filter((x) => { const keep = ids.has(idOf(x)); if (!keep) $(prefix + idOf(x))?.remove(); return keep; });
+  };
+  prune("drafts", new Set(fresh.drafts.map((d) => d.draft.id)), (d) => d.draft.id, "#d-");
+  prune("tasks", new Set(fresh.tasks.map((d) => d.draft.id)), (d) => d.draft.id, "#t-");
+  prune("toComplete", new Set(fresh.toComplete.map((x) => x.row.account.id)), (x) => x.row.account.id, "#n-");
+  const known = new Set(state.toComplete.map((x) => x.row.account.id));
+  const added = fresh.toComplete.filter((x) => !known.has(x.row.account.id));
+  if (!state.toComplete.length) { state.toComplete = added; renderNewList(); }
+  else if (added.length) { state.toComplete.push(...added); $("#newlist").insertAdjacentHTML("beforeend", added.map(prospectCard).join("")); }
+  Object.assign(state, { overview: fresh.overview, book: fresh.book, blacklist: fresh.blacklist });
+  renderAccounts(); renderBook(); renderBlacklist(); renderCounts();
+}
+
+/* ---- Actions. Each one touches only its own card, so edits and forms elsewhere on the page survive. */
+
+const pending = new Map();
+const neighbour = (el) => el?.nextElementSibling || el?.previousElementSibling;
+/** After a card leaves, focus goes to the next card's first action, or to the headline of the view. */
+function focusAfter(next) {
+  const target = next?.querySelector(".actions .btn:not([hidden])") || next?.querySelector(".btn:not([hidden])");
+  (target || document.querySelector("[role=tabpanel]:not([hidden]) h1"))?.focus();
+}
+
+/** Takes a card out now, for an action that is already done on the server or needs no server. */
+function dropCard(el, list, match) {
+  const next = neighbour(el);
+  state[list] = state[list].filter((x) => !match(x));
+  el?.remove();
+  if (list === "toComplete" && !state.toComplete.length) renderNewList();
+  renderCounts();
+  focusAfter(next);
+}
+
+/** Takes a card out now and tells the server after 5 seconds, unless "Annuler" puts it back. */
+function removeLater(el, { list, match, send, message }) {
+  const parent = el.parentNode, after = el.nextSibling, next = neighbour(el);
+  const index = state[list].findIndex(match), item = state[list][index];
+  state[list].splice(index, 1);
+  el.remove(); renderCounts(); focusAfter(next);
+  const key = {};
+  const putBack = () => {
+    state[list].splice(Math.min(index, state[list].length), 0, item);
+    parent.insertBefore(el, after && after.parentNode === parent ? after : null);
+    renderCounts();
+    el.querySelector(".actions .btn:not([hidden])")?.focus();
+  };
+  const fire = (keepalive) => {
+    pending.delete(key);
+    if (state.demo) return;
+    send(keepalive).catch((err) => {
+      // 409: the draft or reply was already decided elsewhere, so it stays out of the queue
+      if (err.status !== 409) putBack();
+      toast(errorText(err), { error: true });
+    });
+  };
+  const timer = setTimeout(() => fire(false), UNDO_MS);
+  pending.set(key, { timer, fire });
+  toast(message, { action: "Annuler", onAction: () => { clearTimeout(timer); pending.delete(key); putBack(); toast("Annulé."); } });
+}
+// A removal still waiting for its 5 seconds is sent when the page closes
+window.addEventListener("pagehide", () => { for (const p of [...pending.values()]) { clearTimeout(p.timer); p.fire(true); } });
+
+/** One request at a time per card: the button is disabled and the card marked busy until the server answers. */
+async function busy(btn, fn) {
+  const card = btn.closest(".card, tr, .person") || btn;
+  if (card.getAttribute("aria-busy") === "true") return;
+  card.setAttribute("aria-busy", "true"); btn.disabled = true;
+  try { await fn(); } finally { card.removeAttribute("aria-busy"); btn.disabled = false; }
+}
+
+const isEditing = (card) => !card.querySelector("[data-edit]").hidden;
+const draftOf = (id) => state.drafts.find((x) => x.draft.id === id)?.draft;
+
+/** Opens or closes the edit mode of a draft. Closing discards the edit, the text goes back to the stored draft. */
+function toggleEdit(id, open) {
+  const card = $("#d-" + id), editing = isEditing(card);
+  if (open !== undefined && open === editing) return;
+  const d = draftOf(id), body = card.querySelector(`#b-${id}`), subject = card.querySelector(`#s-${id}`);
+  if (editing) { body.value = d.body; if (subject) subject.value = d.subject ?? ""; }
+  card.querySelector("[data-edit]").hidden = editing;
+  card.querySelectorAll("[data-view]").forEach((v) => (v.hidden = !editing));
+  const eb = card.querySelector('[data-act="edit"]');
+  eb.textContent = editing ? eb.dataset.label : "Annuler";
+  // A blocked draft shows "Corriger" first; "Approuver" only appears once it is being edited
+  if (eb.dataset.label === "Corriger") { card.querySelector('[data-act="approve"]').hidden = editing; eb.classList.toggle("primary", editing); }
+  if (editing) eb.focus(); else body.focus();
+}
+
+/** The guard refused an edited draft: its reasons replace the old ones on the card and stay there. */
+function showGuard(card, report) {
+  card.querySelector(".guard")?.remove();
+  card.insertAdjacentHTML("afterbegin", guardHtml(report));
+  card.classList.toggle("blocked", report.some((g) => g.startsWith("[BLOCK]")));
+  const d = draftOf(Number(card.id.slice(2))); if (d) d.guardReport = report;
+  card.querySelector("textarea")?.focus();
+}
+
+async function approve(id) {
+  const card = $("#d-" + id), editing = isEditing(card);
+  const payload = editing ? { subject: card.querySelector(`#s-${id}`)?.value, body: card.querySelector(`#b-${id}`).value } : {};
+  try {
+    if (!state.demo) await api(`/api/drafts/${id}/approve`, { method: "POST", body: JSON.stringify(payload) });
+    else if (editing && /accompagn|leader|\u2014/i.test(payload.body)) throw Object.assign(new Error(), { status: 422, body: ["[BLOCK] vocabulaire : le message contient encore une expression interdite"] });
+  } catch (err) {
+    if (err.status === 422 && Array.isArray(err.body)) { showGuard(card, err.body); toast("Le garde-fou refuse cette version. Corrigez-la puis approuvez."); return; }
+    if (err.status === 409) { dropCard(card, "drafts", (d) => d.draft.id === id); toast(errorText(err), { error: true }); return; }
+    throw err;
+  }
+  dropCard(card, "drafts", (d) => d.draft.id === id);
+  toast("Approuvé, envoi au prochain créneau.");
+}
+
+function askExclude(btn) {
+  const box = btn.closest(".actions");
+  if (box.nextElementSibling?.classList.contains("confirm")) return;
+  box.hidden = true;
+  box.insertAdjacentHTML("afterend", `<div class="actions confirm"><span>Mettre ${esc(btn.dataset.name)} en liste noire ? Ses séquences en cours s'arrêtent et ses brouillons en attente sont rejetés.</span><button class="btn primary" type="button" data-act="exclude-yes" data-id="${btn.dataset.id}">Confirmer</button><button class="btn ghost" type="button" data-act="exclude-no">Annuler</button></div>`);
+  box.nextElementSibling.querySelector(".primary").focus();
+}
+function cancelExclude(btn) {
+  const c = btn.closest(".confirm"), box = c.previousElementSibling;
+  box.hidden = false; c.remove();
+  box.querySelector('[data-act="exclude"]').focus();
+}
+
+async function exclude(id) {
+  const gone = state.toComplete.find((x) => x.row.account.id === id)?.row.account || state.overview.accounts.find((r) => r.account.id === id)?.account;
+  if (!state.demo) await api(`/api/accounts/${id}/exclude`, { method: "POST", body: JSON.stringify({ reason: "écarté depuis le dashboard" }) });
+  const card = $("#n-" + id), row = $("#a-" + id), next = card ? neighbour(card) : null;
+  card?.remove(); row?.remove();
+  state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id);
+  state.overview.accounts = state.overview.accounts.filter((r) => r.account.id !== id);
+  state.book = state.book.filter((x) => x.accountId !== id);
+  if (state.demo) { if (gone) state.blacklist = [{ id, accountId: id, name: gone.name, reason: "écarté depuis le dashboard", since: new Date().toISOString() }, ...state.blacklist]; }
+  // The server also stopped the account's sequences and rejected its drafts: those cards leave too
+  else await syncLists();
+  if (!state.toComplete.length) renderNewList();
+  renderBlacklist(); renderBook(); renderCounts();
+  focusAfter(next);
+  toast("En liste noire, il ne reviendra pas.");
+}
+
+async function addContact(id) {
+  const v = (k) => $(`#${k}-${id}`).value.trim();
+  const roles = state.toComplete.find((x) => x.row.account.id === id)?.roles || [];
+  const payload = { fullName: v("fn"), role: v("ro") || roles[0] || "inconnu", email: v("em") || null, linkedinUrl: v("li") || null, enroll: true };
+  if (!payload.fullName) { toast("Indiquez au moins le nom de la personne."); $(`#fn-${id}`).focus(); return; }
+  if (payload.linkedinUrl && !payload.linkedinUrl.startsWith("https://")) { toast("Le profil LinkedIn doit commencer par https://"); $(`#li-${id}`).focus(); return; }
+  let msg = payload.email ? "Séquence lancée, premier brouillon dans la file À valider." : "Contact ajouté, recherche de l'email en cours.";
+  if (!state.demo) msg = (await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) })).message || msg;
+  dropCard($("#n-" + id), "toComplete", (x) => x.row.account.id === id);
+  toast(msg);
+  await syncLists();
+}
+
+async function addOfficer(id, i) {
+  const entry = state.book.find((x) => x.accountId === id), o = entry?.officers[i];
+  if (!o) return;
+  const payload = { fullName: o.fullName, role: o.role, enroll: false, fromRegistry: true };
+  if (!state.demo) {
+    const r = await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) });
+    toast(r.message || "Contact ajouté.");
+  } else {
+    entry.officers = entry.officers.filter((x) => x !== o);
+    entry.contacts.push({ contact: { fullName: o.fullName, role: o.role, email: null, dataSource: "Annuaire des entreprises (dirigeant publié au registre)" }, status: "no-email" });
+    toast("Contact ajouté. Ajoutez son email pour lancer la séquence.");
+  }
+  // The company has a contact now: it leaves the prospects to complete
+  $("#n-" + id)?.remove();
+  state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id);
+  if (!state.toComplete.length) renderNewList();
+  renderBook(); renderCounts();
+  await syncLists();
+}
+
+async function blockName() {
+  const name = $("#block-name").value.trim(), reason = $("#block-reason").value.trim();
+  if (!name) { toast("Indiquez le nom de l'entreprise."); $("#block-name").focus(); return; }
+  if (!state.demo) {
+    await api("/api/blacklist", { method: "POST", body: JSON.stringify({ name, reason: reason || null }) });
+    // Blocking a name also excludes the account of that name, its sequences and its drafts
+    await syncLists();
+  } else state.blacklist = [{ id: Date.now(), name, reason: reason || null, since: new Date().toISOString() }, ...state.blacklist];
+  $("#block-name").value = ""; $("#block-reason").value = "";
+  renderBlacklist();
+  toast("Ajouté à la liste noire.");
+}
+
+async function unblock(id, act, btn) {
+  const line = btn.closest(".person"), next = neighbour(line);
+  if (!state.demo) await api(act === "restore" ? `/api/accounts/${id}/restore` : `/api/blacklist/${id}/remove`, { method: "POST" });
+  state.blacklist = state.blacklist.filter((b) => b.id !== id);
+  line.remove(); focusAfter(next);
+  // A restored account comes back in the ranked table and, without a contact, in the prospects to complete
+  await syncLists();
+  toast("Réintégré.");
+}
+
+async function runDiscovery() {
+  try { if (!state.demo) await api("/api/discovery/run", { method: "POST" }); }
+  catch (err) { if (err.status === 409) { toast("Recherche déjà en cours.", { error: true }); return; } throw err; }
+  if (!state.demo) { state.lastRun = { ...(state.lastRun || {}), running: true }; renderRun(); watchRun(); }
+  toast("Recherche lancée, résultats dans 15 à 30 minutes.");
+}
+
+async function copyNote(id, btn) {
+  const t = state.tasks.find((x) => x.draft.id === id);
+  try { await navigator.clipboard.writeText(noCites(t.draft.body)); toast("Note copiée."); }
+  catch (_) { const b = btn.closest(".card").querySelector(".body"); const r = document.createRange(); r.selectNodeContents(b); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Texte sélectionné, copiez-le."); }
+}
+
+async function run(btn) {
+  const id = Number(btn.dataset.id), act = btn.dataset.act;
+  if (act === "edit") return toggleEdit(id);
+  if (act === "copy") return copyNote(id, btn);
+  if (act === "exclude") return askExclude(btn);
+  if (act === "exclude-no") return cancelExclude(btn);
+  if (act === "reject") return removeLater($("#d-" + id), { list: "drafts", match: (d) => d.draft.id === id, message: "Brouillon rejeté.",
+    send: (keepalive) => api(`/api/drafts/${id}/reject`, { method: "POST", keepalive }) });
+  if (act === "handled") return removeLater($("#r-" + id), { list: "replies", match: (r) => r.id === id, message: "Réponse traitée.",
+    send: (keepalive) => api(`/api/replies/${id}/handled`, { method: "POST", keepalive }) });
+  if (act === "dismiss-demand") {
+    const key = btn.dataset.key;
+    return removeLater(btn.closest(".card"), { list: "demands", match: (d) => d.key === key, message: "Demande écartée.",
+      send: (keepalive) => api("/api/demands/dismiss", { method: "POST", keepalive, body: JSON.stringify({ key }) }) });
+  }
+  await busy(btn, async () => {
+    try {
+      if (act === "approve") await approve(id);
+      else if (act === "done") {
+        try { if (!state.demo) await api(`/api/drafts/${id}/done`, { method: "POST" }); }
+        catch (err) { if (err.status !== 409) throw err; dropCard($("#t-" + id), "tasks", (d) => d.draft.id === id); toast(errorText(err), { error: true }); return; }
+        dropCard($("#t-" + id), "tasks", (d) => d.draft.id === id); toast("Étape suivante planifiée.");
+      }
+      else if (act === "add-contact") await addContact(id);
+      else if (act === "exclude-yes") await exclude(id);
+      else if (act === "restore" || act === "unblock") await unblock(id, act, btn);
+      else if (act === "block-name") await blockName();
+      else if (act === "add-officer") await addOfficer(id, Number(btn.dataset.i));
+      else if (act === "run-discovery") await runDiscovery();
+    } catch (err) {
+      if (err.status === 401) setBanner("expired");
+      toast(errorText(err), { error: true });
+    }
+  });
 }
 
 const VIEWS = ["today", "prospects", "book", "results", "method"];
+
+function showTab(name) {
+  document.querySelectorAll('[role="tab"]').forEach((b) => {
+    const on = b.dataset.tab === name;
+    b.setAttribute("aria-selected", on);
+    // Roving tabindex: Tab reaches the selected tab only, the arrow keys move between tabs
+    b.tabIndex = on ? 0 : -1;
+  });
+  VIEWS.forEach((v) => ($("#view-" + v).hidden = v !== name));
+  try { localStorage.setItem("prospect-tab", name); } catch (_) {}
+}
+
+/** The open view lives in the address (#prospects), so the back button and links work. */
+function goTab(name) {
+  if (location.hash === "#" + name) showTab(name); else location.hash = name;
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (VIEWS.includes(v)) showTab(v); });
+
+/** Narrow screen: the tabs scroll sideways, and fade on the right while more of them are hidden. */
+function fadeTabs() {
+  const n = $("nav.tabs");
+  n.classList.toggle("more", n.scrollLeft + n.clientWidth < n.scrollWidth - 1);
+}
+$("nav.tabs").addEventListener("scroll", fadeTabs, { passive: true });
+window.addEventListener("resize", fadeTabs);
 
 function setTheme(mode) {
   if (mode === "auto") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = mode;
@@ -1040,119 +1494,117 @@ function syncTheme() {
   document.querySelectorAll("[data-theme-set]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.themeSet === mode));
 }
 
-document.addEventListener("click", async (e) => {
+document.addEventListener("click", (e) => {
   const tab = e.target.closest("[data-tab]");
-  if (tab) {
-    const name = tab.dataset.tab;
-    document.querySelectorAll('[role="tab"]').forEach((b) => b.setAttribute("aria-selected", b.dataset.tab === name));
-    VIEWS.forEach((v) => ($("#view-" + v).hidden = v !== name));
-    try { localStorage.setItem("prospect-tab", name); } catch (_) {}
-    window.scrollTo(0, 0);
-    return;
-  }
+  if (tab) { goTab(tab.dataset.tab); return; }
   const theme = e.target.closest("[data-theme-set]");
   if (theme) { setTheme(theme.dataset.themeSet); return; }
+  if (e.target.closest("#toast-action")) { const f = toast.onAction; hideToast(); f?.(); return; }
+  if (e.target.closest("#banner-action")) { if ($("#banner").dataset.kind === "expired") location.reload(); else load(); return; }
+  const sort = e.target.closest("[data-sort]");
+  if (sort) {
+    const key = sort.dataset.sort, same = state.sort.key === key;
+    state.sort = { key, dir: same ? (state.sort.dir === "descending" ? "ascending" : "descending") : (key === "name" ? "ascending" : "descending") };
+    renderAccounts();
+    return;
+  }
   const chip = e.target.closest("[data-filter]");
-  if (chip) { state.filter = chip.dataset.filter; render(); return; }
+  if (chip) { state.filter = chip.dataset.filter; renderCounts(); return; }
   const cite = e.target.closest(".cite");
   if (cite) {
-    const card = cite.closest(".card"); const f = card?.querySelector(`[data-fid="${cite.dataset.fact}"]`);
-    if (f) { f.closest("details").open = true; f.classList.add("flash"); setTimeout(() => f.classList.remove("flash"), 1200); }
+    const f = cite.closest(".card")?.querySelector(`[data-fid="${cite.dataset.fact}"]`);
+    if (f) { f.closest("details").open = true; f.scrollIntoView({ block: "nearest" }); f.focus({ preventScroll: true }); f.classList.add("flash"); setTimeout(() => f.classList.remove("flash"), 1200); }
     return;
   }
-  const btn = e.target.closest("[data-act]"); if (!btn) return;
-  const id = Number(btn.dataset.id), act = btn.dataset.act;
-  if (act === "edit") {
-    const card = $("#d-" + id); const editing = !card.querySelector("[data-edit]").hidden;
-    const blocked = card.classList.contains("blocked");
-    card.querySelector("[data-edit]").hidden = editing; card.querySelectorAll("[data-view]").forEach((v) => (v.hidden = !editing));
-    btn.textContent = editing ? btn.dataset.label : "Annuler";
-    // A blocked draft shows "Corriger" first; "Approuver" only appears once it is being edited
-    const ap = card.querySelector('[data-act="approve"]');
-    if (blocked) { ap.hidden = editing; btn.classList.toggle("primary", editing); }
-    return;
-  }
-  if (act === "copy") {
-    const t = state.tasks.find((x) => x.draft.id === id);
-    try { await navigator.clipboard.writeText(t.draft.body.replace(/\s*\[F:[^\]]+\]/g, "")); toast("Note copiée"); }
-    catch (_) { const b = btn.closest(".card").querySelector(".body"); const r = document.createRange(); r.selectNodeContents(b); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Texte sélectionné, copiez-le"); }
-    return;
-  }
-  try {
-    if (act === "approve") {
-      const card = $("#d-" + id); const editing = !card.querySelector("[data-edit]").hidden;
-      const payload = editing ? { subject: card.querySelector(`#s-${id}`)?.value, body: card.querySelector(`#b-${id}`).value } : {};
-      if (!state.demo) await api(`/api/drafts/${id}/approve`, { method: "POST", body: JSON.stringify(payload) });
-      else if (editing && /accompagn|leader|\u2014/i.test(payload.body)) throw Object.assign(new Error(), { body: ["[BLOCK] vocabulaire : le message contient encore une expression interdite"] });
-      state.drafts = state.drafts.filter((d) => d.draft.id !== id); toast("Approuvé, envoi au prochain créneau");
-    } else if (act === "reject") {
-      if (!state.demo) await api(`/api/drafts/${id}/reject`, { method: "POST" });
-      state.drafts = state.drafts.filter((d) => d.draft.id !== id); toast("Rejeté");
-    } else if (act === "done") {
-      if (!state.demo) await api(`/api/drafts/${id}/done`, { method: "POST" });
-      state.tasks = state.tasks.filter((d) => d.draft.id !== id); toast("Étape suivante planifiée");
-    } else if (act === "add-contact") {
-      const v = (k) => $(`#${k}-${id}`).value.trim();
-      const payload = { fullName: v("fn"), role: v("ro") || $(`#ro-${id}`).placeholder, email: v("em") || null, linkedinUrl: v("li") || null, enroll: true };
-      if (!payload.fullName) { toast("Indique au moins le nom de la personne"); return; }
-      let msg = payload.email ? "Séquence lancée, premier brouillon dans la file À valider" : "Contact ajouté, recherche de l'email en cours";
-      if (!state.demo) msg = (await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) })).message || msg;
-      state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id); toast(msg);
-    } else if (act === "exclude") {
-      if (!state.demo) { await api(`/api/accounts/${id}/exclude`, { method: "POST", body: JSON.stringify({ reason: "écarté depuis le dashboard" }) }); toast("En liste noire, il ne reviendra pas"); await load(); return; }
-      const gone = state.toComplete.find((x) => x.row.account.id === id)?.row.account || state.overview.accounts.find((r) => r.account.id === id)?.account;
-      state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id);
-      state.book = (state.book || []).filter((x) => x.accountId !== id);
-      if (gone) state.blacklist = [{ id, accountId: id, name: gone.name, reason: "écarté depuis le dashboard", since: new Date().toISOString() }, ...(state.blacklist || [])];
-      toast("En liste noire, il ne reviendra pas");
-    } else if (act === "restore" || act === "unblock") {
-      if (!state.demo) { await api(act === "restore" ? `/api/accounts/${id}/restore` : `/api/blacklist/${id}/remove`, { method: "POST" }); toast("Réintégré"); await load(); return; }
-      state.blacklist = (state.blacklist || []).filter((b) => b.id !== id); toast("Réintégré");
-    } else if (act === "block-name") {
-      const name = $("#block-name").value.trim(), reason = $("#block-reason").value.trim();
-      if (!name) { toast("Indique le nom de l'entreprise"); return; }
-      $("#block-name").value = ""; $("#block-reason").value = "";
-      if (!state.demo) { await api("/api/blacklist", { method: "POST", body: JSON.stringify({ name, reason: reason || null }) }); toast("Ajouté à la liste noire"); await load(); return; }
-      state.blacklist = [{ id: Date.now(), name, reason: reason || null, since: new Date().toISOString() }, ...(state.blacklist || [])]; toast("Ajouté à la liste noire");
-    } else if (act === "add-officer") {
-      const entry = (state.book || []).find((x) => x.accountId === id), o = entry?.officers[Number(btn.dataset.i)];
-      if (!o) return;
-      const payload = { fullName: o.fullName, role: o.role, enroll: false, fromRegistry: true };
-      if (!state.demo) { const r = await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) }); toast(r.message || "Contact ajouté"); await load(); return; }
-      entry.officers = entry.officers.filter((x) => x !== o);
-      entry.contacts.push({ contact: { fullName: o.fullName, role: o.role, email: null, dataSource: "Annuaire des entreprises (dirigeant publié au registre)" }, status: "no-email" });
-      state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id); toast("Contact ajouté. Ajoute son email pour lancer la séquence.");
-    } else if (act === "run-discovery") {
-      if (!state.demo) await api("/api/discovery/run", { method: "POST" });
-      toast("Recherche lancée, résultats dans 15 à 30 minutes"); return;
-    } else if (act === "dismiss-demand") {
-      const key = btn.dataset.key;
-      if (!state.demo) await api("/api/demands/dismiss", { method: "POST", body: JSON.stringify({ key }) });
-      state.demands = (state.demands || []).filter((d) => d.key !== key); toast("Demande écartée");
-    } else if (act === "handled") {
-      if (!state.demo) await api(`/api/replies/${id}/handled`, { method: "POST" });
-      state.replies = state.replies.filter((r) => r.id !== id); toast("Marqué comme traité");
-    }
-    render();
-  } catch (err) {
-    const msg = Array.isArray(err.body) ? err.body.join(" · ") : "Action impossible, réessayez.";
-    toast(msg.replace(/^\[\w+\]\s*/, ""));
-  }
+  const btn = e.target.closest("[data-act]");
+  // A submit button is handled by the submit event, so Enter in a field does the same as the click
+  if (!btn || (btn.form && btn.type === "submit")) return;
+  run(btn);
 });
+
+document.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const btn = e.submitter?.dataset.act ? e.submitter : e.target.querySelector('[type="submit"][data-act]');
+  if (btn) run(btn);
+});
+
+// In a draft being edited: Cmd or Ctrl + Enter approves, Escape closes when nothing was changed
+document.addEventListener("keydown", (e) => {
+  const card = e.target.closest?.('article[id^="d-"]');
+  if (!card || !e.target.matches("textarea, input")) return;
+  const id = Number(card.id.slice(2)), d = draftOf(id);
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); card.querySelector('[data-act="approve"]').click(); return; }
+  if (e.key !== "Escape" || !d) return;
+  const changed = card.querySelector(`#b-${id}`).value !== d.body || (card.querySelector(`#s-${id}`)?.value ?? d.subject ?? "") !== (d.subject ?? "");
+  if (changed) toast("Modifications en cours : cliquez sur Annuler pour les abandonner.");
+  else toggleEdit(id, false);
+});
+
+document.addEventListener("input", (e) => {
+  const list = e.target.dataset?.search;
+  if (!list) return;
+  state.q[list] = e.target.value;
+  ({ accounts: renderAccounts, book: renderBook, blacklist: renderBlacklist })[list]();
+});
+
+// Tab pattern: the arrow keys, Home and End move between tabs and open the one reached
+$("nav.tabs").addEventListener("keydown", (e) => {
+  const tabs = [...document.querySelectorAll('[role="tab"]')], i = tabs.indexOf(document.activeElement);
+  if (i < 0) return;
+  const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: tabs.length - 1 }[e.key];
+  if (to === undefined) return;
+  e.preventDefault();
+  const next = tabs[(to + tabs.length) % tabs.length];
+  next.focus(); goTab(next.dataset.tab);
+});
+
+// Work queue shortcuts, outside a field: j and k move between cards, a approves, e opens the edit mode
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || !["j", "k", "a", "e"].includes(e.key)) return;
+  if (e.target.closest?.("input, textarea, select, [contenteditable]") || $("#view-today").hidden) return;
+  const cards = [...document.querySelectorAll("#view-today .group:not([hidden]) article.card")];
+  if (!cards.length) return;
+  const current = document.activeElement?.closest?.("#view-today article.card"), i = cards.indexOf(current);
+  if (e.key === "j" || e.key === "k") {
+    e.preventDefault();
+    const next = cards[e.key === "j" ? Math.min(i + 1, cards.length - 1) : Math.max(i - 1, 0)] || cards[0];
+    next.focus(); next.scrollIntoView({ block: "nearest" });
+    return;
+  }
+  if (!current || !current.id.startsWith("d-")) return;
+  e.preventDefault();
+  const id = Number(current.id.slice(2)), approve = current.querySelector('[data-act="approve"]');
+  if (e.key === "e") toggleEdit(id, true);
+  else if (approve.hidden) toast("Ce brouillon est bloqué : corrigez-le d'abord (touche e).");
+  else approve.click();
+});
+
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
 
 $("#csv").addEventListener("change", async (e) => {
   const file = e.target.files[0]; if (!file) return;
   const text = await file.text();
-  if (state.demo) { toast(`${Math.max(0, text.trim().split(/\r?\n/).length - 1)} lignes lues (exemple, rien n'est importé)`); e.target.value = ""; return; }
-  try {
-    const r = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "text/csv" }, body: text }).then((x) => x.json());
-    toast(`${r.created} créés, ${r.updated} mis à jour, ${r.contacts} contacts${r.errors.length ? `, ${r.errors.length} erreurs` : ""}`);
-    load();
-  } catch (_) { toast("Import impossible, vérifie l'en-tête du fichier"); }
   e.target.value = "";
+  if (state.demo) { toast(`${Math.max(0, text.trim().split(/\r?\n/).length - 1)} lignes lues (exemple, rien n'est importé).`); return; }
+  const report = $("#import-report");
+  try {
+    const r = await api("/api/import", { method: "POST", headers: { "Content-Type": "text/csv" }, body: text });
+    toast(`${plural(r.created, "compte créé", "comptes créés")}, ${r.updated} mis à jour, ${plural(r.contacts, "contact", "contacts")}.`);
+    report.hidden = !r.errors.length;
+    report.textContent = r.errors.length ? `Lignes non importées : ${r.errors.join(" · ")}.` : "";
+    await syncLists();
+  } catch (err) {
+    toast(err.status === 401 ? errorText(err) : "Import impossible. Vérifiez l'en-tête du fichier.", { error: true });
+  }
 });
 
 syncTheme();
-try { const t = localStorage.getItem("prospect-tab"); if (t) document.querySelector(`[data-tab="${t}"]`)?.click(); } catch (_) {}
+{
+  // The address wins, then the view open at the last visit
+  let start = location.hash.slice(1);
+  if (!VIEWS.includes(start)) { try { start = localStorage.getItem("prospect-tab"); } catch (_) {} }
+  if (VIEWS.includes(start)) showTab(start);
+}
+fadeTabs();
 load();
 </script>

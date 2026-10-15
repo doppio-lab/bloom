@@ -30,6 +30,7 @@ import lab.doppio.bloom.core.model.SequenceStep
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.scoring.ScoreBreakdown
+import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -98,6 +99,9 @@ data class AccountRow(
 data class ReplyRow(
     val id: Long, val enrollmentId: Long?, val from: String, val intent: ReplyIntent, val summary: String,
     val followUpOn: String?, val receivedAt: String, val handled: Boolean,
+    /** Company of the contact who replied, when the reply belongs to a sequence. */
+    val accountName: String? = null,
+    val subject: String? = null,
 )
 
 class Repository {
@@ -337,7 +341,9 @@ class Repository {
     suspend fun addContact(c: Contact): ContactId = dbQuery {
         Contacts.insert {
             it[accountId] = c.accountId; it[fullName] = c.fullName; it[role] = c.role; it[persona] = c.persona.name
-            it[email] = c.email?.lowercase(); it[linkedinUrl] = c.linkedinUrl; it[dataSource] = c.dataSource; it[language] = c.language
+            // A profile link is kept only when it is https, whatever route the contact comes from
+            it[email] = c.email?.lowercase(); it[linkedinUrl] = c.linkedinUrl?.trim()?.takeIf { u -> u.startsWith("https://") }
+            it[dataSource] = c.dataSource; it[language] = c.language
         } get Contacts.id
     }
 
@@ -618,10 +624,18 @@ class Repository {
     }
 
     suspend fun openReplies(): List<ReplyRow> = dbQuery {
-        Replies.selectAll().where { Replies.handled eq false }.orderBy(Replies.receivedAt, SortOrder.DESC).map {
-            ReplyRow(it[Replies.id], it[Replies.enrollmentId], it[Replies.fromAddress], ReplyIntent.valueOf(it[Replies.intent]), it[Replies.summary], it[Replies.followUpOn]?.toString(), it[Replies.receivedAt].toString(), it[Replies.handled])
-        }
+        // The company comes through the enrollment and the contact; a reply outside any sequence has none
+        Replies
+            .join(Enrollments, JoinType.LEFT, Replies.enrollmentId, Enrollments.id)
+            .join(Contacts, JoinType.LEFT, Enrollments.contactId, Contacts.id)
+            .join(Accounts, JoinType.LEFT, Contacts.accountId, Accounts.id)
+            .select(Replies.columns + Accounts.name)
+            .where { Replies.handled eq false }.orderBy(Replies.receivedAt, SortOrder.DESC).map {
+                ReplyRow(it[Replies.id], it[Replies.enrollmentId], it[Replies.fromAddress], ReplyIntent.valueOf(it[Replies.intent]), it[Replies.summary], it[Replies.followUpOn]?.toString(), it[Replies.receivedAt].toString(), it[Replies.handled], it.getOrNull(Accounts.name), it[Replies.subject])
+            }
     }
+
+    suspend fun countOpenReplies(): Long = dbQuery { Replies.selectAll().where { Replies.handled eq false }.count() }
 
     suspend fun markReplyHandled(id: Long) = dbQuery { Replies.update({ Replies.id eq id }) { it[handled] = true } }
 
