@@ -197,10 +197,11 @@ class Repository {
     suspend fun blockedNames(): Set<String> = dbQuery { Blocklist.selectAll().map { it[Blocklist.name] }.toSet() }
 
     suspend fun blacklist(): List<Blocked> = dbQuery {
-        val accounts = Accounts.selectAll().where { Accounts.excludedReason.isNotNull() }.orderBy(Accounts.excludedAt, SortOrder.DESC_NULLS_LAST).map {
+        val excluded = Accounts.selectAll().where { Accounts.excludedReason.isNotNull() }.orderBy(Accounts.excludedAt, SortOrder.DESC_NULLS_LAST).toList()
+        val accounts = excluded.map {
             Blocked(it[Accounts.id], it[Accounts.id], it[Accounts.name], it[Accounts.excludedReason], it[Accounts.excludedAt]?.toString())
         }
-        val excludedSlugs = Accounts.selectAll().where { Accounts.excludedReason.isNotNull() }.map { it[Accounts.slug] }.toSet()
+        val excludedSlugs = excluded.map { it[Accounts.slug] }.toSet()
         // A blocked name that already shows as an excluded account is listed once, as the account
         val names = Blocklist.selectAll().orderBy(Blocklist.createdAt, SortOrder.DESC).filter { it[Blocklist.slug] !in excludedSlugs }.map {
             Blocked(it[Blocklist.id], null, it[Blocklist.name], it[Blocklist.reason], it[Blocklist.createdAt].toString())

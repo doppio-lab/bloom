@@ -2,7 +2,15 @@ package lab.doppio.bloom.data
 
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.Account
+import lab.doppio.bloom.core.model.Channel
+import lab.doppio.bloom.core.model.Contact
+import lab.doppio.bloom.core.model.Draft
+import lab.doppio.bloom.core.model.DraftStatus
+import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.Persona
 import lab.doppio.bloom.core.model.ReplyIntent
+import lab.doppio.bloom.core.model.Sector
+import lab.doppio.bloom.core.sequence.DefaultSequences
 import lab.doppio.bloom.data.db.Demand
 import lab.doppio.bloom.data.db.Demands
 import lab.doppio.bloom.data.db.Repository
@@ -14,6 +22,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class RepositoryTest {
@@ -69,5 +78,22 @@ class RepositoryTest {
         repo.logAgentRun("writer", null, "m", 1000, 200, 10, true, null)
         repo.logAgentRun("research-explore", null, "m", 3000, 500, 10, false, "boom")
         assertEquals(4700, repo.tokensSince(start))
+    }
+
+    @Test
+    fun `la liste noire montre les comptes exclus puis les noms bloqués sans compte`() = runTest {
+        val velomoov = repo.upsertAccount(Account(name = "Velomoov"))
+        repo.excludeAccount(velomoov, "client actuel")
+        repo.blockName("Vélomoov SAS", "doublon du compte")
+        repo.blockName("Uber", "hors cible")
+
+        val list = repo.blacklist()
+
+        assertEquals(listOf("Velomoov", "Uber"), list.map { it.name })
+        assertEquals(velomoov, list[0].accountId)
+        assertEquals("client actuel", list[0].reason)
+        assertNull(list[1].accountId)
+        assertEquals("hors cible", list[1].reason)
+        assertTrue(list.all { it.since != null })
     }
 }
