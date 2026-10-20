@@ -410,12 +410,27 @@ class Orchestrator(
         }
 
         val firstOfMonth = today.withDayOfMonth(1)
-        if (today != firstOfMonth || now.hour >= 4) job("gdpr-purge", firstOfMonth) {
-            val purged = repo.purgeStaleContacts()
-            val officers = repo.purgeStaleOfficers()
-            val demands = repo.purgeOldDemands()
-            repo.logEvent("GDPR_PURGE", payload = """{"contacts":$purged,"officers":$officers,"demands":$demands}""")
-        }
+        if (today != firstOfMonth || now.hour >= 4) job("gdpr-purge", firstOfMonth) { gdprPurge(now.toInstant()) }
+    }
+
+    data class PurgeReport(val contacts: Int, val officers: Int, val demands: Int, val replyBodies: Int, val signals: Int, val seenKeys: Int)
+
+    /** Monthly: personal data past its retention, plus the discovery rows nothing reads any more. */
+    internal suspend fun gdprPurge(now: Instant = Instant.now()): PurgeReport {
+        val report = PurgeReport(
+            contacts = repo.purgeStaleContacts(now),
+            officers = repo.purgeStaleOfficers(now),
+            demands = repo.purgeOldDemands(now),
+            replyBodies = repo.purgeOldReplyBodies(now),
+            signals = repo.purgeOldSignals(now = now),
+            seenKeys = repo.purgeOldDiscoverySeen(now = now),
+        )
+        repo.logEvent(
+            "GDPR_PURGE",
+            payload = """{"contacts":${report.contacts},"officers":${report.officers},"demands":${report.demands},""" +
+                """"replyBodies":${report.replyBodies},"signals":${report.signals},"seenKeys":${report.seenKeys}}""",
+        )
+        return report
     }
 
     /** Claims the job for its period, then runs it apart from the loops. */
