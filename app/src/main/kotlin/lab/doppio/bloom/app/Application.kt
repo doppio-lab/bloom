@@ -93,6 +93,16 @@ internal fun parseDryRun(raw: String?): Boolean = when (raw?.trim()?.lowercase()
     else -> error("DRY_RUN : valeur attendue true ou false, reçu « $raw »")
 }
 
+/**
+ * MAILBOXES="prenom@doppio-studio.fr:motdepasseapplication:Prénom Nom,..." : the password may hold
+ * colons, the display name is everything after the second one. A malformed entry stops the start.
+ */
+internal fun parseMailboxes(raw: String?): List<Mailbox> = raw.orEmpty().split(',').filter { it.isNotBlank() }.map { entry ->
+    val parts = entry.split(':', limit = 3).map { it.trim() }
+    if (parts.size < 3 || parts.any { it.isEmpty() }) error("MAILBOXES : format attendu adresse:mot-de-passe:Nom, reçu « ${entry.trim()} »")
+    Mailbox(parts[0], parts[1], parts[2])
+}
+
 /** Câblage manuel : pas de framework d'injection pour une douzaine de composants. */
 class AppContext {
     val repo = Repository()
@@ -126,11 +136,7 @@ class AppContext {
         smtpHost = env("SMTP_HOST", "smtp.gmail.com"),
         smtpPort = env("SMTP_PORT", "587").toInt(),
         imapHost = env("IMAP_HOST", "imap.gmail.com"),
-        // MAILBOXES="prenom@doppio-studio.fr:motdepasseapplication:Prénom Nom,..."
-        mailboxes = env("MAILBOXES", "").split(',').filter { it.isNotBlank() }.map {
-            val (address, password, name) = it.split(':', limit = 3)
-            Mailbox(address.trim(), password.trim(), name.trim())
-        },
+        mailboxes = parseMailboxes(System.getenv("MAILBOXES")),
         publicBaseUrl = env("PUBLIC_BASE_URL", "http://localhost:8080"),
         unsubscribeSecret = requireSecret(System::getenv, "UNSUBSCRIBE_SECRET"),
         legalFooterFr = env(

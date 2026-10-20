@@ -1,5 +1,6 @@
 package lab.doppio.bloom.app
 
+import lab.doppio.bloom.app.outreach.Mailbox
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -38,6 +39,22 @@ class ConfigTest {
         for (bad in listOf(null, "", "   ", "change-me", "une-longue-chaine-aleatoire", "short-secret")) {
             val e = assertFailsWith<IllegalStateException>("value: $bad") { requireSecret(lookup("UNSUBSCRIBE_SECRET" to bad), "UNSUBSCRIBE_SECRET") }
             assertTrue("UNSUBSCRIBE_SECRET" in e.message.orEmpty(), e.message)
+        }
+    }
+
+    @Test
+    fun `MAILBOXES reads address, password and display name, the password may hold colons`() {
+        val boxes = parseMailboxes(" a@x.fr : pw : Ann A ,b@x.fr:p:w:Bob,, ")
+        assertEquals(listOf(Mailbox("a@x.fr", "pw", "Ann A"), Mailbox("b@x.fr", "p", "w:Bob")), boxes)
+        assertEquals(emptyList(), parseMailboxes(null))
+        assertEquals(emptyList(), parseMailboxes(""))
+    }
+
+    @Test
+    fun `a MAILBOXES entry with fewer than three parts stops the start with a clear message`() {
+        for (bad in listOf("a@x.fr:pw", "a@x.fr", "a@x.fr:pw:")) {
+            val e = assertFailsWith<IllegalStateException>(bad) { parseMailboxes(bad) }
+            assertTrue("MAILBOXES" in e.message.orEmpty() && "adresse:mot-de-passe:Nom" in e.message.orEmpty(), e.message)
         }
     }
 }
