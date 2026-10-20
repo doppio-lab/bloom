@@ -15,7 +15,7 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * Hosted job boards (Greenhouse, Lever, Ashby). Their posting APIs are public and need no key, but
+ * Hosted job boards (Greenhouse, Lever, Ashby, SmartRecruiters). Their posting APIs are public and need no key, but
  * they are addressed by company, so this enriches accounts we already know instead of finding new ones.
  * What it adds over France Travail: the exact publication date, hence how long a mobile role has been open.
  */

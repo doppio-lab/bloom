@@ -44,7 +44,6 @@ import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
-import kotlin.math.roundToInt
 
 /**
  * Sources de faits. Chaque client renvoie des [Fact] sourcés et, quand c'est possible,
@@ -445,6 +444,3 @@ class WebPageSource(client: HttpClient) {
         return f to text
     }
 }
-
-/** Utilitaire pour arrondir un score affiché. */
-fun Double.pct(): Int = (this * 100).roundToInt()

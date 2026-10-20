@@ -25,8 +25,9 @@ import java.time.temporal.ChronoUnit
 
 /**
  * Étape 1 du pipeline : trouver des entreprises qui ont un besoin mobile maintenant, sans que personne
- * ne les saisisse. Deux sources historiques, écrites ici, et des sources ajoutées par [DiscoverySource]
- * (BODACC, BOAMP, presse, GitHub), plus la relecture des pages carrières des comptes connus :
+ * ne les saisisse. Deux sources historiques, écrites ici, des sources ajoutées par [DiscoverySource]
+ * (BODACC, BOAMP, TED, presse, GitHub), les demandes publiées sur Codeur, plus la relecture des pages
+ * carrières (job boards hébergés) des comptes connus :
  *
  *  - les offres d'emploi mobiles publiées en France (API France Travail) : une entreprise qui recrute
  *    un développeur iOS ou Android est un prospect pour la régie, la formation KMP ou un forfait ;
