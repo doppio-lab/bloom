@@ -28,6 +28,9 @@ class ImapPoller(private val config: MailConfig, private val clock: java.time.Cl
     private companion object {
         /** A returned message is read for its headers only: no need to keep more than this. */
         const val RAW_MESSAGE_CHARS = 200_000
+
+        /** One pass reads at most this many unread messages per mailbox; the rest wait for the next one. */
+        const val MAX_PER_PASS = 50
     }
 
     override suspend fun poll(): List<InboundMail> = withContext(Dispatchers.IO) {
@@ -66,19 +69,24 @@ class ImapPoller(private val config: MailConfig, private val clock: java.time.Cl
 
     private fun pollOne(mb: Mailbox): List<InboundMail> = withInbox(mb, Folder.READ_ONLY) { inbox ->
         val uidFolder = inbox as UIDFolder
-        inbox.search(FlagTerm(Flags(Flags.Flag.SEEN), false)).map { m ->
-            val from = (m.from?.firstOrNull() as? InternetAddress)?.address ?: m.from?.firstOrNull()?.toString().orEmpty()
-            val refs = (m.getHeader("In-Reply-To")?.toList().orEmpty() + m.getHeader("References")?.toList().orEmpty())
-                .flatMap { it.split(Regex("\\s+")) }.filter { it.startsWith("<") }
-            val bounce = from.contains("mailer-daemon", true) || from.contains("postmaster", true) ||
-                (m.contentType?.contains("report-type=delivery-status", true) == true)
-            // A bounce rarely has In-Reply-To: the Message-ID of the original sits in the returned headers
-            val bounceRefs = if (bounce) messageIdPattern.findAll(raw(m)).map { it.value }.toList() else emptyList()
-            val uid = uidFolder.getUID(m)
-            val key = m.getHeader("Message-ID")?.firstOrNull()?.trim() ?: "${mb.address}/${uidFolder.uidValidity}/$uid"
-            InboundMail(mb.address, from, m.subject, textOf(m), (refs + bounceRefs).distinct(),
-                m.receivedDate?.toInstant() ?: clock.instant(), bounce, uid, key)
+        inbox.search(FlagTerm(Flags(Flags.Flag.SEEN), false)).take(MAX_PER_PASS).mapNotNull { m ->
+            // One message that cannot even be read is skipped: it must not hide the others
+            runCatching { read(mb, uidFolder, m) }.getOrElse { log.warn("Message illisible dans ${mb.address}", it); null }
         }
+    }
+
+    private fun read(mb: Mailbox, uidFolder: UIDFolder, m: Message): InboundMail {
+        val from = (m.from?.firstOrNull() as? InternetAddress)?.address ?: m.from?.firstOrNull()?.toString().orEmpty()
+        val refs = (m.getHeader("In-Reply-To")?.toList().orEmpty() + m.getHeader("References")?.toList().orEmpty())
+            .flatMap { it.split(Regex("\\s+")) }.filter { it.startsWith("<") }
+        val bounce = from.contains("mailer-daemon", true) || from.contains("postmaster", true) ||
+            (m.contentType?.contains("report-type=delivery-status", true) == true)
+        // A bounce rarely has In-Reply-To: the Message-ID of the original sits in the returned headers
+        val bounceRefs = if (bounce) messageIdPattern.findAll(raw(m)).map { it.value }.toList() else emptyList()
+        val uid = uidFolder.getUID(m)
+        val key = m.getHeader("Message-ID")?.firstOrNull()?.trim() ?: "${mb.address}/${uidFolder.uidValidity}/$uid"
+        return InboundMail(mb.address, from, m.subject, textOf(m), (refs + bounceRefs).distinct(),
+            m.receivedDate?.toInstant() ?: clock.instant(), bounce, uid, key)
     }
 
     /** The whole message as text, capped: enough for the headers of a returned message. */
@@ -88,15 +96,22 @@ class ImapPoller(private val config: MailConfig, private val clock: java.time.Cl
         return out.toString(Charsets.UTF_8).take(RAW_MESSAGE_CHARS)
     }
 
-    private fun textOf(p: Part): String = when {
-        p.isMimeType("text/plain") -> p.content as String
-        p.isMimeType("text/html") -> org.jsoup.Jsoup.parse(p.content as String).text()
-        p.isMimeType("multipart/*") -> {
-            val mp = p.content as Multipart
-            (0 until mp.count).map { mp.getBodyPart(it) }.let { parts ->
-                parts.firstOrNull { it.isMimeType("text/plain") }?.let { textOf(it) } ?: parts.joinToString("\n") { textOf(it) }
+    /** The readable text of a message or part. Never throws: an unreadable part gives an empty string. */
+    internal fun textOf(p: Part): String = runCatching {
+        when {
+            p.isMimeType("text/plain") -> stringContent(p)
+            p.isMimeType("text/html") -> org.jsoup.Jsoup.parse(stringContent(p)).text()
+            p.isMimeType("multipart/*") -> {
+                val mp = p.content as? Multipart ?: return@runCatching stringContent(p)
+                (0 until mp.count).map { mp.getBodyPart(it) }.let { parts ->
+                    parts.firstOrNull { it.isMimeType("text/plain") }?.let { textOf(it) } ?: parts.joinToString("\n") { textOf(it) }
+                }
             }
+            else -> ""
         }
-        else -> ""
-    }
+    }.getOrElse { log.warn("Corps de message illisible ({})", p.contentType, it); "" }
+
+    /** The decoded content when the handler gives a String, the raw bytes as UTF-8 otherwise (unknown charset...). */
+    private fun stringContent(p: Part): String =
+        runCatching { p.content as? String }.getOrNull() ?: p.inputStream.use { it.readBytes().toString(Charsets.UTF_8) }
 }

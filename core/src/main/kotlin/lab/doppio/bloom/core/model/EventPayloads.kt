@@ -15,6 +15,12 @@ data class ImportPayload(val created: Int, val updated: Int, val contacts: Int) 
     fun toJson(): String = encode(serializer(), this)
 }
 
+/** A reply given up after repeated failures: which message, and who it came from. */
+@Serializable
+data class ReplyUnreadablePayload(val key: String, val from: String) {
+    fun toJson(): String = encode(serializer(), this)
+}
+
 @Serializable
 data class ReplyReceivedPayload(val intent: ReplyIntent) {
     fun toJson(): String = encode(serializer(), this)

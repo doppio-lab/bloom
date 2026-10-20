@@ -74,6 +74,35 @@ class ProcessRepliesTest {
     }
 
     @Test
+    fun `a reply that keeps failing is retried twice, then marked seen and logged`() = runTest {
+        classifier.failure = IllegalStateException("corps illisible")
+        inbox.mails = listOf(inbound(1))
+        val process = process()
+        process()
+        process()
+        assertTrue(inbox.seen.isEmpty(), "the first two passes leave it unread")
+        assertTrue(events.types.isEmpty())
+
+        process()
+        assertEquals(listOf(1L), inbox.seen[mailboxA.address], "the third pass gives up on it")
+        assertEquals(listOf(EventType.REPLY_UNREADABLE), events.types)
+        assertEquals("""{"key":"<m1@client.test>","from":"jane@client.test"}""", events.events.single().second)
+    }
+
+    @Test
+    fun `a failure followed by a success starts the count again`() = runTest {
+        inbox.mails = listOf(inbound(1))
+        val process = process()
+        classifier.failure = IllegalStateException("boom")
+        process()
+        process()
+        classifier.failure = null
+        process()
+        assertEquals(listOf(1L), inbox.seen[mailboxA.address])
+        assertTrue(EventType.REPLY_UNREADABLE !in events.types)
+    }
+
+    @Test
     fun `a reply stops running sequences only, finished ones keep their status`() = runTest {
         val active = sequences.addEnrollment(contact.id, EnrollmentStatus.ACTIVE)
         val paused = sequences.addEnrollment(contact.id, EnrollmentStatus.PAUSED)
