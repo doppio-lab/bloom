@@ -17,6 +17,7 @@ data class DbConfig(val url: String, val user: String, val password: String, val
 object Db {
     private var config: DbConfig? = null
     private var lockConnection: java.sql.Connection? = null
+    private var dataSource: HikariDataSource? = null
 
     /**
      * Only one instance may run the background loops, or emails would leave twice. Holds a Postgres
@@ -24,12 +25,33 @@ object Db {
      */
     @Synchronized
     fun tryHoldSingleInstanceLock(): Boolean {
-        if (lockConnection?.isValid(2) == true) return true
+        if (lockHeld()) return true
         val c = config ?: error("Db.connect first")
         val conn = java.sql.DriverManager.getConnection(c.url, c.user, c.password)
         val held = conn.createStatement().use { st -> st.executeQuery("SELECT pg_try_advisory_lock($SINGLE_INSTANCE_LOCK)").use { it.next() && it.getBoolean(1) } }
         if (held) lockConnection = conn else conn.close()
         return held
+    }
+
+    /**
+     * Whether this process still holds the lock. The lock lives with its connection: when the server drops
+     * it (restart, network cut) the lock is gone too, so the loops must re-check this on every tick instead
+     * of trusting the first answer. A dead connection is closed and forgotten so the next try reconnects.
+     */
+    @Synchronized
+    fun lockHeld(): Boolean {
+        val conn = lockConnection ?: return false
+        if (runCatching { conn.isValid(2) }.getOrDefault(false)) return true
+        runCatching { conn.close() }
+        lockConnection = null
+        return false
+    }
+
+    /** Gives the lock back (shutdown, tests). Closing the connection releases the advisory lock. */
+    @Synchronized
+    fun releaseSingleInstanceLock() {
+        runCatching { lockConnection?.close() }
+        lockConnection = null
     }
 
     private const val SINGLE_INSTANCE_LOCK = 0x626c6f6f6dL // "bloom"
@@ -47,7 +69,17 @@ object Db {
             },
         )
         Flyway.configure().dataSource(ds).locations("classpath:db/migration").load().migrate()
+        dataSource = ds
         return Database.connect(ds)
+    }
+
+    /** At shutdown: releases the instance lock and the pool. Safe to call more than once. */
+    @Synchronized
+    fun close() {
+        runCatching { lockConnection?.close() }
+        lockConnection = null
+        runCatching { dataSource?.close() }
+        dataSource = null
     }
 }
 
@@ -65,8 +97,8 @@ object Accounts : Table("accounts") {
     val excludedAt = timestamp("excluded_at").nullable()
     val officersCheckedAt = timestamp("officers_checked_at").nullable()
     val siren = text("siren").nullable()
-    val sector = text("sector")
-    val market = text("market")
+    val sector = text("sector").default("OTHER")
+    val market = text("market").default("FR")
     val headcount = integer("headcount").nullable()
     val iosAppId = long("ios_app_id").nullable()
     val androidPackage = text("android_package").nullable()
@@ -225,6 +257,7 @@ object Drafts : Table("drafts") {
     val sendAttempts = integer("send_attempts").default(0)
     val nextAttemptAt = timestamp("next_attempt_at").nullable()
     val lastError = text("last_error").nullable()
+    val sendAfter = timestamp("send_after").nullable()
     override val primaryKey = PrimaryKey(id)
 }
 
@@ -256,7 +289,7 @@ object Deals : Table("deals") {
     val accountId = long("account_id")
     val offer = text("offer")
     val stage = text("stage")
-    val amountEur = long("amount_eur")
+    val amountEur = long("amount_eur").default(0)
     val sourceSignal = text("source_signal").nullable()
     val expectedClose = date("expected_close").nullable()
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)
@@ -269,8 +302,8 @@ object AgentRuns : Table("agent_runs") {
     val agent = text("agent")
     val accountId = long("account_id").nullable()
     val model = text("model")
-    val inputTokens = integer("input_tokens")
-    val outputTokens = integer("output_tokens")
+    val inputTokens = integer("input_tokens").default(0)
+    val outputTokens = integer("output_tokens").default(0)
     val durationMs = long("duration_ms")
     val success = bool("success")
     val error = text("error").nullable()

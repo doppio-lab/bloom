@@ -1,8 +1,8 @@
 package lab.doppio.bloom.app
 
-import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.UserIdPrincipal
@@ -13,12 +13,18 @@ import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.origin
+import io.ktor.server.plugins.ratelimit.RateLimit
+import io.ktor.server.plugins.ratelimit.RateLimitName
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.plugins.statuspages.StatusPages
-import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
@@ -36,7 +42,9 @@ import lab.doppio.bloom.app.outreach.MailConfig
 import lab.doppio.bloom.app.outreach.Mailbox
 import lab.doppio.bloom.app.outreach.Orchestrator
 import lab.doppio.bloom.app.outreach.UnsubscribeTokens
+import lab.doppio.bloom.app.web.CsrfGuard
 import lab.doppio.bloom.app.web.apiRoutes
+import lab.doppio.bloom.app.web.bloomErrors
 import lab.doppio.bloom.app.web.discoveryRoutes
 import lab.doppio.bloom.app.web.unsubscribeRoutes
 import lab.doppio.bloom.core.model.SendingPolicy
@@ -60,12 +68,49 @@ import lab.doppio.bloom.data.discovery.DiscoveryConfig
 import lab.doppio.bloom.data.discovery.DiscoveryService
 import lab.doppio.bloom.data.sources.defaultHttpClient
 import kotlinx.coroutines.runBlocking
+import kotlin.time.Duration.Companion.seconds
 
-private fun env(name: String, default: String? = null): String =
-    System.getenv(name) ?: default ?: error("Variable d'environnement manquante : $name")
+/** A blank value in .env (KEY=) counts as an absent key: the default applies, or the start stops. */
+internal fun envValue(lookup: (String) -> String?, name: String, default: String? = null): String =
+    lookup(name)?.takeIf { it.isNotBlank() } ?: default ?: error("Variable d'environnement manquante : $name")
+
+private fun env(name: String, default: String? = null): String = envValue(System::getenv, name, default)
 
 /** An empty value in .env (KEY=) counts as an absent key. */
 private fun optionalEnv(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
+
+/** The example values shipped in .env.example: never accepted as a secret. */
+private val PLACEHOLDER_SECRETS = setOf("change-me", "une-longue-chaine-aleatoire")
+
+/** A secret that must be set: not blank, not the example value, at least 16 characters. */
+internal fun requireSecret(lookup: (String) -> String?, name: String): String {
+    val value = lookup(name)?.trim().orEmpty()
+    if (value.isEmpty()) error("Variable d'environnement manquante : $name")
+    if (value in PLACEHOLDER_SECRETS) error("$name : remplacer la valeur d'exemple de .env.example par un secret")
+    if (value.length < 16) error("$name : au moins 16 caractères")
+    return value
+}
+
+/**
+ * DRY_RUN decides whether emails leave: only "true" or "false" are accepted. Anything else ("yes",
+ * "1", a blank) stops the start instead of being read as false. Absent: true, nothing leaves.
+ */
+internal fun parseDryRun(raw: String?): Boolean = when (raw?.trim()?.lowercase()) {
+    null -> true
+    "true" -> true
+    "false" -> false
+    else -> error("DRY_RUN : valeur attendue true ou false, reçu « $raw »")
+}
+
+/**
+ * MAILBOXES="prenom@doppio-studio.fr:motdepasseapplication:Prénom Nom,..." : the password may hold
+ * colons, the display name is everything after the second one. A malformed entry stops the start.
+ */
+internal fun parseMailboxes(raw: String?): List<Mailbox> = raw.orEmpty().split(',').filter { it.isNotBlank() }.map { entry ->
+    val parts = entry.split(':', limit = 3).map { it.trim() }
+    if (parts.size < 3 || parts.any { it.isEmpty() }) error("MAILBOXES : format attendu adresse:mot-de-passe:Nom, reçu « ${entry.trim()} »")
+    Mailbox(parts[0], parts[1], parts[2])
+}
 
 /** Câblage manuel : pas de framework d'injection pour une douzaine de composants. */
 class AppContext {
@@ -94,19 +139,34 @@ class AppContext {
     private val tracker = RunTracker(repo, dailyTokenBudget = optionalEnv("LLM_DAILY_TOKEN_BUDGET")?.toLong() ?: 0)
     /** Portée des tâches de fond déclenchées depuis le dashboard (découverte, recherche). */
     val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Portée des boucles de l'orchestrateur (planification, envoi, relève, nuit). */
+    val loops = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Stops the loops and the background jobs, waits up to 10 s for them (a send in progress finishes
+     * or is reconciled at the next start), then closes the database pool.
+     */
+    fun shutdown() {
+        loops.cancel()
+        background.cancel()
+        runBlocking {
+            withTimeoutOrNull(10_000) {
+                loops.coroutineContext[Job]?.join()
+                background.coroutineContext[Job]?.join()
+            } ?: org.slf4j.LoggerFactory.getLogger("bloom").warn("Des tâches de fond n'ont pas fini dans les 10 s")
+        }
+        Db.close()
+    }
     val policy = SendingPolicy(maxPerMailboxPerDay = env("MAX_PER_MAILBOX_PER_DAY", "25").toInt())
 
     val mail = MailConfig(
         smtpHost = env("SMTP_HOST", "smtp.gmail.com"),
         smtpPort = env("SMTP_PORT", "587").toInt(),
         imapHost = env("IMAP_HOST", "imap.gmail.com"),
-        // MAILBOXES="prenom@doppio-studio.fr:motdepasseapplication:Prénom Nom,..."
-        mailboxes = env("MAILBOXES", "").split(',').filter { it.isNotBlank() }.map {
-            val (address, password, name) = it.split(':', limit = 3)
-            Mailbox(address.trim(), password.trim(), name.trim())
-        },
+        mailboxes = parseMailboxes(System.getenv("MAILBOXES")),
         publicBaseUrl = env("PUBLIC_BASE_URL", "http://localhost:8080"),
-        unsubscribeSecret = env("UNSUBSCRIBE_SECRET"),
+        unsubscribeSecret = requireSecret(System::getenv, "UNSUBSCRIBE_SECRET"),
         legalFooterFr = env(
             "LEGAL_FOOTER_FR",
             "Doppio Lab (Advisely), Paris. Vos coordonnées professionnelles proviennent de sources publiques " +
@@ -116,7 +176,7 @@ class AppContext {
             "LEGAL_FOOTER_EN",
             "Doppio Lab (Advisely), Paris, France. Your business contact details come from public sources and are used only for this contact.",
         ),
-        dryRun = env("DRY_RUN", "true").toBoolean(),
+        dryRun = parseDryRun(System.getenv("DRY_RUN")),
     )
     val tokens = UnsubscribeTokens(mail.unsubscribeSecret)
     private val gateway = EmailGateway(mail, tokens)
@@ -131,8 +191,9 @@ class AppContext {
     val research = ResearchAgent(llm, repo, tracker, appStore = appStore, registry = registry, jobs = jobs, web = WebPageSource(http))
 
     /**
-     * Sources added to discovery, chosen by DISCOVERY_SOURCES. The press feeds are left out of the default:
-     * their reuse terms have to be checked by the owner before the source is turned on.
+     * Sources added to discovery, chosen by DISCOVERY_SOURCES. The press feeds are part of the default;
+     * their reuse terms have to be checked by the owner, who removes "press" from the list in case of doubt
+     * (see .env.example).
      */
     private val enabledSources = env("DISCOVERY_SOURCES", "bodacc,boamp,ted,codeur,press,github,jobboards").split(',').map { it.trim().lowercase() }.toSet()
     private val discoverySources = listOfNotNull(
@@ -167,34 +228,50 @@ fun main() {
     val ctx = AppContext()
     org.slf4j.LoggerFactory.getLogger("bloom").info("LLM : {}", ctx.llm.describe())
     runBlocking { ctx.repo.ensureSequences(DefaultSequences.all()) }
-    ctx.orchestrator.start(CoroutineScope(SupervisorJob() + Dispatchers.Default))
+    ctx.orchestrator.start(ctx.loops)
     embeddedServer(Netty, port = env("PORT", "8080").toInt()) { module(ctx) }.start(wait = true)
 }
 
 fun Application.module(ctx: AppContext) {
+    // SIGTERM (docker stop, systemd): the loops stop before the pool, nothing is left half done
+    monitor.subscribe(ApplicationStopping) { ctx.shutdown() }
     install(CallLogging)
+    install(CsrfGuard)
     install(ContentNegotiation) { json(Json { encodeDefaults = true; ignoreUnknownKeys = true }) }
-    install(StatusPages) {
-        exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }
-        exception<Throwable> { call, e ->
-            this@module.environment.log.error("Erreur", e)
-            call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "erreur interne"))
-        }
-    }
-    val adminPassword = env("ADMIN_PASSWORD")
+    install(StatusPages) { bloomErrors(this@module.environment.log) }
+    val adminPassword = requireSecret(System::getenv, "ADMIN_PASSWORD")
+    val failedLogins = FailedAuthLimiter(maxPerMinute = 20)
     install(Authentication) {
         basic("admin") {
             realm = "Doppio Bloom"
-            validate { if (it.name == "doppio" && it.password == adminPassword) UserIdPrincipal(it.name) else null }
+            validate { credentials ->
+                val host = request.origin.remoteHost
+                if (!failedLogins.allow(host)) return@validate null
+                if (credentials.name == "doppio" && secretsMatch(adminPassword, credentials.password)) {
+                    UserIdPrincipal(credentials.name)
+                } else {
+                    failedLogins.recordFailure(host)
+                    null
+                }
+            }
+        }
+    }
+    install(RateLimit) {
+        // Per remote host: the dashboard polls a few endpoints, far below this
+        register(RateLimitName("admin")) {
+            rateLimiter(limit = 300, refillPeriod = 60.seconds)
+            requestKey { call -> call.request.origin.remoteHost }
         }
     }
     routing {
         // Public : la désinscription doit marcher sans compte, en un clic
         unsubscribeRoutes(ctx)
-        authenticate("admin") {
-            staticResources("/", "static")
-            apiRoutes(ctx)
-            discoveryRoutes(ctx)
+        rateLimit(RateLimitName("admin")) {
+            authenticate("admin") {
+                staticResources("/", "static")
+                apiRoutes(ctx)
+                discoveryRoutes(ctx)
+            }
         }
         get("/health") { call.respondText("ok") }
     }

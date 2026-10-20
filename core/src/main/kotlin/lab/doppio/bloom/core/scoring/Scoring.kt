@@ -128,6 +128,8 @@ object Scoring {
         bestByType.entries.sortedByDescending { it.value }.forEach { (type, v) ->
             reasons += "+${v.roundToInt()} signal ${type.name.lowercase()}"
         }
+        // The lines above must add up to the intent shown, so say when the cap took over.
+        if (intentRaw > 50.0) reasons += "Signaux plafonnés à 50 (${intentRaw.roundToInt()} avant plafond)"
 
         val warm = if (account.warmPath != null) 10 else 0
         if (warm > 0) reasons += "+10 lien chaud : ${account.warmPath}"

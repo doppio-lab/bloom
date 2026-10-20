@@ -12,6 +12,7 @@ import io.ktor.server.routing.route
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.app.AppContext
+import lab.doppio.bloom.app.outreach.UnsubscribeTokens
 import lab.doppio.bloom.core.guard.GuardInput
 import lab.doppio.bloom.core.guard.MessageGuard
 import lab.doppio.bloom.core.model.Account
@@ -21,12 +22,14 @@ import lab.doppio.bloom.core.model.Deal
 import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.Draft
 import lab.doppio.bloom.core.model.DraftStatus
+import lab.doppio.bloom.core.model.EnrollmentStatus
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.data.db.AccountRow
 import lab.doppio.bloom.data.db.Dossier
 import lab.doppio.bloom.data.db.ReplyRow
+import lab.doppio.bloom.data.db.Repository
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -100,8 +103,8 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
 
     post("/accounts") {
         val req = call.receive<NewAccount>()
-        val id = repo.upsertAccount(req.account)
-        req.contacts.forEach { repo.addContact(it.copy(accountId = id)) }
+        val contacts = req.contacts.map { it.copy(email = emailOrNull(it.email)) }
+        val id = repo.createAccountWithContacts(req.account, contacts)
         // The research takes minutes: it runs in the background, the dossier appears when it is done
         if (req.researchNow) launchResearch(ctx, id)
         call.respond(HttpStatusCode.Created, mapOf("id" to id.toString(), "research" to if (req.researchNow) "lancée" else "non demandée"))
@@ -121,21 +124,19 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     }
 
     post("/contacts") {
-        val c = call.receive<Contact>()
+        val c = call.receive<Contact>().let { it.copy(email = emailOrNull(it.email)) }
         call.respond(HttpStatusCode.Created, mapOf("id" to repo.addContact(c)))
     }
 
     post("/contacts/{id}/enroll") {
         val contact = repo.contact(call.parameters["id"]!!.toLong()) ?: return@post call.respond(HttpStatusCode.NotFound)
-        require(contact.email == null || !repo.isSuppressed(contact.email!!)) { "Ce contact s'est opposé à la prospection" }
-        val dossier = repo.dossier(contact.accountId)
-        val requested = call.receive<EnrollRequest>().offer
-        require(requested != null || dossier?.noFit != true) { "Le dossier conclut qu'aucune offre ne convient : choisir l'offre explicitement" }
-        val offer = requested ?: dossier?.offer ?: Offer.DISCOVERY
-        val seq = repo.sequenceFor(offer) ?: repo.sequenceFor(Offer.DISCOVERY)!!
-        val id = repo.enroll(contact.id, seq.id)
-        repo.logEvent("ENROLLED", contact.accountId, contact.id)
-        ctx.orchestrator.planSoon()
+        require(contact.email != null) { "Ce contact n'a pas d'email" }
+        require(!repo.isSuppressed(contact.email!!)) { "Ce contact s'est opposé à la prospection" }
+        val requested = call.receiveOrDefault(EnrollRequest()).offer
+        require(requested != null || repo.dossier(contact.accountId)?.noFit != true) { "Le dossier conclut qu'aucune offre ne convient : choisir l'offre explicitement" }
+        // Same path as the discovery flow: one open sequence per contact, offer from the dossier unless chosen
+        val id = enrollContact(ctx, contact, requested)
+            ?: return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "ce contact est déjà en séquence"))
         call.respond(HttpStatusCode.Created, mapOf("enrollmentId" to id))
     }
 
@@ -153,7 +154,7 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
 
     post("/drafts/{id}/approve") {
         val id = call.parameters["id"]!!.toLong()
-        val req = runCatching { call.receive<DecisionRequest>() }.getOrDefault(DecisionRequest())
+        val req = call.receiveOrDefault(DecisionRequest())
         val draft = repo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
         // A draft already decided elsewhere (other user, blacklist, sent) is never approved again
         if (draft.status != DraftStatus.PENDING_REVIEW) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to NOT_PENDING))
@@ -211,31 +212,41 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     }
 }
 
-fun Route.unsubscribeRoutes(ctx: AppContext) {
+fun Route.unsubscribeRoutes(ctx: AppContext) = unsubscribeRoutes(ctx.tokens, ctx.repo)
+
+private const val UNSUBSCRIBE_PAGE = "<!doctype html><meta charset=utf-8><title>Désinscription</title><body style='font-family:system-ui;max-width:32rem;margin:4rem auto'>"
+
+/** Public, no account: the one-click POST of RFC 8058 and the page a person reaches from the email link. */
+fun Route.unsubscribeRoutes(tokens: UnsubscribeTokens, repo: Repository) {
     suspend fun unsubscribe(token: String): Boolean {
-        val contactId = ctx.tokens.verify(token) ?: return false
-        val contact = ctx.repo.contact(contactId)
-        contact?.email?.let { ctx.repo.suppress(it, "lien de désinscription") }
-        contact?.let { c -> ctx.repo.enrollmentsOfContact(c.id).forEach { ctx.repo.setEnrollmentStatus(it.id, lab.doppio.bloom.core.model.EnrollmentStatus.STOPPED_UNSUBSCRIBE) } }
-        ctx.repo.logEvent("UNSUBSCRIBED", contact?.accountId, contactId)
+        val contactId = tokens.verify(token) ?: return false
+        val contact = repo.contact(contactId)
+        contact?.email?.let { repo.suppress(it, "lien de désinscription") }
+        contact?.let { repo.stopActiveSequences(it.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE) }
+        repo.logEvent("UNSUBSCRIBED", contact?.accountId, contactId)
         return true
     }
 
-    // Lien cliqué par une personne : on confirme sans demander de compte ni de motif
+    // Lien ouvert par une personne (ou par le scanner de liens de sa messagerie) : on demande un clic de
+    // confirmation, seul le POST désinscrit
     get("/u/{token}") {
-        val ok = unsubscribe(call.parameters["token"]!!)
+        val token = call.parameters["token"]!!
+        if (tokens.verify(token) == null) return@get call.respondText("Lien invalide.", ContentType.Text.Html, HttpStatusCode.BadRequest)
         call.respondText(
-            if (ok) "<!doctype html><meta charset=utf-8><title>Désinscription</title><body style='font-family:system-ui;max-width:32rem;margin:4rem auto'>" +
-                "<h1>C'est fait.</h1><p>Vous ne recevrez plus de message de Doppio Lab. Désolé pour le dérangement.</p></body>"
-            else "Lien invalide.",
+            UNSUBSCRIBE_PAGE + "<h1>Ne plus recevoir nos messages</h1>" +
+                "<p>Un clic et vous ne recevrez plus rien de Doppio Lab.</p>" +
+                "<form method=\"post\"><button type=\"submit\" style='font:inherit;padding:.6rem 1.2rem'>Confirmer la désinscription</button></form></body>",
             ContentType.Text.Html,
-            if (ok) HttpStatusCode.OK else HttpStatusCode.BadRequest,
         )
     }
-    // RFC 8058 : POST en un clic depuis le client mail
+    // Désinscription effective : bouton de la page ci-dessus, ou POST en un clic du client mail (RFC 8058)
     post("/u/{token}") {
         val ok = unsubscribe(call.parameters["token"]!!)
-        call.respond(if (ok) HttpStatusCode.OK else HttpStatusCode.BadRequest)
+        if (!ok) return@post call.respondText("Lien invalide.", ContentType.Text.Html, HttpStatusCode.BadRequest)
+        call.respondText(
+            UNSUBSCRIBE_PAGE + "<h1>C'est fait.</h1><p>Vous ne recevrez plus de message de Doppio Lab. Désolé pour le dérangement.</p></body>",
+            ContentType.Text.Html,
+        )
     }
 }
 

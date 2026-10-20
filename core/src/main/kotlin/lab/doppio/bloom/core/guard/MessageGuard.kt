@@ -51,20 +51,27 @@ object MessageGuard {
     )
     private val emojiRegex = Regex("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{1F000}-\\x{1F2FF}]")
     private val urlRegex = Regex("""https?://\S+|www\.\S+""")
-    private val numberRegex = Regex("""\d+(?:[  .,]\d+)*""")
+    // Thousands separators: space, no-break space (U+00A0, French quotes), narrow no-break space (U+202F), dot, comma.
+    private val numberSeparators = "[ \u00A0\u202F.,]"
+    private val numberRegex = Regex("\\d+(?:$numberSeparators\\d+)*")
 
     private val ambiguousNames = setOf("routine", "proton")
 
     /** Nombres toujours autorisés : durées des offres, petits entiers de langage courant. */
     private val alwaysAllowedNumbers = setOf("1", "2", "3", "15", "20", "30")
 
+    /** Marker plus the space that precedes it, so "paiement [F:a2]." gives "paiement." and "minutes ? [F:a2]" keeps its space. */
+    private val citationWithSpaceRegex = Regex(" ?" + citationRegex.pattern)
+
     fun stripCitations(text: String): String =
-        citationRegex.replace(text, "").replace(Regex(" {2,}"), " ").replace(Regex(" +([.,;:!?])"), "$1").trim()
+        citationWithSpaceRegex.replace(text, "").replace(Regex(" {2,}"), " ").trim()
 
     fun check(input: GuardInput): List<Violation> {
         val v = mutableListOf<Violation>()
         val plain = stripCitations(input.body)
-        val lower = (input.subject.orEmpty() + "\n" + plain).lowercase()
+        // Subject and body together: a number or a link in the subject reaches the prospect just the same.
+        val full = input.subject.orEmpty() + "\n" + plain
+        val lower = full.lowercase()
 
         // 1. Typographie et ton
         if ('—' in lower || " – " in lower) {
@@ -111,9 +118,11 @@ object MessageGuard {
             cited.mapNotNull { factsById[it] }.forEach { append(it.statement).append(' ').append(it.excerpt.orEmpty()).append(' ') }
             reference?.let { append(it.proof) }
             append(' ').append(input.offer.label)
-        }.normalizeNumbers()
-        numberRegex.findAll(plain).map { it.value.normalizeNumber() }.distinct()
-            .filter { it !in alwaysAllowedNumbers && it !in provenanceText }
+        }
+        // Whole numbers only: "12" must not pass because a fact mentions "412".
+        val sourcedNumbers = numberRegex.findAll(provenanceText).map { it.value.normalizeNumber() }.toSet()
+        numberRegex.findAll(full).map { it.value.normalizeNumber() }.distinct()
+            .filter { it !in alwaysAllowedNumbers && it !in sourcedNumbers }
             .forEach { v += Violation("chiffre-non-sourcé", Severity.BLOCK, "« $it » n'apparaît dans aucun fait cité") }
 
         // 5. Références clients : seulement celles qui ont une raison d'être citées
@@ -136,10 +145,10 @@ object MessageGuard {
         }
 
         // 6. Délivrabilité
-        if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(plain)) {
+        if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(full)) {
             v += Violation("lien", Severity.BLOCK, "pas de lien dans le premier email (délivrabilité)")
         }
-        urlRegex.findAll(plain).map { it.value }.filterNot { "doppio-lab.com" in it }.forEach {
+        urlRegex.findAll(full).map { it.value }.filterNot { isOwnDomain(it) }.forEach {
             v += Violation("lien", Severity.BLOCK, "lien externe non autorisé : $it")
         }
 
@@ -155,6 +164,14 @@ object MessageGuard {
 
     fun isPublishable(violations: List<Violation>): Boolean = violations.none { it.severity == Severity.BLOCK }
 
-    private fun String.normalizeNumber(): String = replace(Regex("[  .,]"), "")
-    private fun String.normalizeNumbers(): String = numberRegex.replace(this) { it.value.normalizeNumber() }
+    /** True only when the host of the URL is doppio-lab.com or one of its subdomains, whatever the path or query says. */
+    private fun isOwnDomain(url: String): Boolean {
+        val host = url.lowercase()
+            .replaceFirst(Regex("^https?://"), "")
+            .substringBefore('/').substringBefore('?').substringBefore('#')
+            .substringAfterLast('@').substringBefore(':')
+        return host == "doppio-lab.com" || host.endsWith(".doppio-lab.com")
+    }
+
+    private fun String.normalizeNumber(): String = replace(Regex(numberSeparators), "")
 }

@@ -13,6 +13,7 @@ import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Parameters
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -35,12 +36,14 @@ import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
 import org.jsoup.Jsoup
+import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.ZonedDateTime
-import kotlin.math.roundToInt
+import java.time.format.DateTimeFormatter
 
 /**
  * Sources de faits. Chaque client renvoie des [Fact] sourcés et, quand c'est possible,
@@ -56,13 +59,17 @@ fun defaultHttpClient(): HttpClient = HttpClient(CIO) {
 }
 
 object FactIds {
+    /** Full SHA-1 of the source and the statement: the id is a global primary key, 32 bits would collide. */
     fun of(sourceUrl: String, statement: String): String =
         MessageDigest.getInstance("SHA-1").digest("$sourceUrl|$statement".toByteArray())
-            .joinToString("") { "%02x".format(it) }.take(8)
+            .joinToString("") { "%02x".format(it) }
 }
 
-fun fact(accountId: AccountId, kind: FactKind, statement: String, sourceUrl: String, excerpt: String? = null) =
-    Fact(FactIds.of(sourceUrl, statement), accountId, kind, statement, sourceUrl, Instant.now().toString(), excerpt?.take(500))
+/** Publication date as written in a statement: stable from one night to the next, unlike an age in days. */
+internal fun publishedOn(at: Instant): String = at.atZone(ZoneId.of("Europe/Paris")).toLocalDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
+
+fun fact(accountId: AccountId, kind: FactKind, statement: String, sourceUrl: String, excerpt: String? = null, now: Instant = Instant.now()) =
+    Fact(FactIds.of(sourceUrl, statement), accountId, kind, statement, sourceUrl, now.toString(), excerpt?.take(500))
 
 data class AppMeta(val appId: Long, val name: String, val sellerName: String?, val sellerUrl: String?, val genreId: Int?)
 
@@ -77,7 +84,7 @@ class RateLimiter(private val minInterval: Duration) {
     private var last = Instant.EPOCH
     suspend fun <T> run(block: suspend () -> T): T = mutex.withLock {
         val wait = Duration.between(Instant.now(), last.plus(minInterval)).toMillis()
-        if (wait > 0) kotlinx.coroutines.delay(wait)
+        if (wait > 0) delay(wait)
         last = Instant.now()
         block()
     }
@@ -116,11 +123,11 @@ class AppStoreSource(private val http: HttpClient, private val country: String =
         )
 
         if (avg != null && count != null) {
-            facts += fact(accountId, FactKind.APP_METADATA, "$name : note moyenne App Store ${"%.1f".format(avg).replace('.', ',')} sur $count notes ($country)", storeUrl)
+            facts += fact(accountId, FactKind.APP_METADATA, "$name : note moyenne App Store ${"%.1f".format(avg).replace('.', ',')} sur $count notes ($country)", storeUrl, now = now)
         }
         if (releaseDate != null) {
             val days = Duration.between(releaseDate, now).toDays()
-            val f = fact(accountId, FactKind.APP_METADATA, "$name : dernière version $version publiée il y a $days jours", storeUrl)
+            val f = fact(accountId, FactKind.APP_METADATA, "$name : dernière version $version publiée le ${publishedOn(releaseDate)}", storeUrl, now = now)
             facts += f
             if (days > 120) {
                 signals += Signal(accountId, SignalType.RELEASE_STALL, ((days - 120) / 240.0).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
@@ -138,6 +145,7 @@ class AppStoreSource(private val http: HttpClient, private val country: String =
                 accountId, FactKind.APP_REVIEW,
                 "$name : moyenne des ${recent.size} avis des 90 derniers jours ${"%.1f".format(recentAvg).replace('.', ',')}, contre ${"%.1f".format(avg).replace('.', ',')} en moyenne globale",
                 rssUrl,
+                now = now,
             )
             facts += f
             if (drop >= 0.4) signals += Signal(accountId, SignalType.RATING_DROP, (drop / 1.5).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
@@ -153,6 +161,7 @@ class AppStoreSource(private val http: HttpClient, private val country: String =
                     (versions?.let { " (version la plus citée : $it)" } ?: ""),
                 rssUrl,
                 excerpt = complaints.take(3).joinToString(" | ") { "${it.rating}/5 « ${it.title} » ${it.content.take(140)}" },
+                now = now,
             )
             facts += f
             if (share >= 0.15) signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, (share * 2).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
@@ -244,10 +253,13 @@ class FranceTravailSource(
     private val clientId: String,
     private val clientSecret: String,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+    private val tokenMutex = Mutex()
     private var token: String? = null
     private var tokenExpiry: Instant = Instant.EPOCH
 
-    private suspend fun accessToken(): String {
+    /** Searches run concurrently: the lock makes them share one token instead of each asking for its own. */
+    private suspend fun accessToken(): String = tokenMutex.withLock {
         token?.takeIf { Instant.now().isBefore(tokenExpiry) }?.let { return it }
         val res = http.submitForm(
             url = "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire",
@@ -271,11 +283,19 @@ class FranceTravailSource(
      */
     suspend fun search(motsCles: String, publieeDepuis: Int? = null, maxPages: Int = 3): List<JsonObject> = buildList {
         for (page in 0 until maxPages) {
-            val res = http.get("https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search") {
+            suspend fun request() = http.get("https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search") {
                 header("Authorization", "Bearer ${accessToken()}")
                 parameter("motsCles", motsCles)
                 publieeDepuis?.let { parameter("publieeDepuis", it) }
                 parameter("range", "${page * 150}-${page * 150 + 149}")
+            }
+            var res = request()
+            // Throttled: wait what the API asks (5 s at most) and try the page once more instead of dropping it
+            if (res.status.value == 429) {
+                val wait = res.headers["Retry-After"]?.toLongOrNull()?.coerceIn(0, 5) ?: 5
+                log.warn("France Travail limite le débit (429), nouvel essai dans {} s", wait)
+                delay(wait * 1000)
+                res = request()
             }
             // Rejected credentials must be visible: silently reading zero offers hid a misconfiguration
             if (res.status.value == 401 || res.status.value == 403) error("France Travail a refusé les identifiants (HTTP ${res.status.value})")
@@ -303,18 +323,20 @@ class FranceTravailSource(
             val url = o["origineOffre"]?.jsonObject?.get("urlOrigine").str()
                 ?: "https://candidat.francetravail.fr/offres/recherche/detail/$id"
             val age = created?.let { Duration.between(it, now).toDays() }
+            // The date, not the age: the id derives from the statement, so an age would mint a new fact every night
             val f = fact(
                 accountId, FactKind.JOB_POSTING,
-                "Offre d'emploi « $title »" + (age?.let { " publiée il y a $it jours" } ?: ""),
+                "Offre d'emploi « $title »" + (created?.let { " publiée le ${publishedOn(it)}" } ?: ""),
                 url,
                 excerpt = description.take(400),
+                now = now,
             )
             facts += f
             signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, now.toString(), listOf(f.id))
             if (HiringRules.mentionsKmp(title + description)) signals += Signal(accountId, SignalType.HIRING_KMP, 0.9, now.toString(), listOf(f.id))
             HiringRules.stuckStrength(age)?.let { signals += Signal(accountId, SignalType.HIRING_STUCK, it, now.toString(), listOf(f.id)) }
             if (HiringRules.mentionsCrossPlatform(title + description)) {
-                facts += fact(accountId, FactKind.JOB_POSTING, "L'offre « $title » mentionne une stack cross-platform (Flutter ou React Native)", url)
+                facts += fact(accountId, FactKind.JOB_POSTING, "L'offre « $title » mentionne une stack cross-platform (Flutter ou React Native)", url, now = now)
             }
         }
         return SourceResult(facts, signals)
@@ -407,20 +429,18 @@ class CompanyRegistrySource(private val http: HttpClient) {
 // Pages web publiques de l'entreprise (site, page carrières, blog tech)
 // ---------------------------------------------------------------------------------------------
 
-class WebPageSource(private val http: HttpClient) {
+class WebPageSource(client: HttpClient) {
+    private val http = client.withoutRedirects()
     private val limiter = RateLimiter(Duration.ofSeconds(1))
 
     /** Renvoie le texte visible d'une page, tronqué. Le fait créé contient l'URL exacte lue. */
     suspend fun read(accountId: AccountId, url: String, maxChars: Int = 6_000): Pair<Fact, String>? {
-        val html = runCatching { limiter.run { http.get(url).bodyAsText() } }.getOrNull() ?: return null
+        val html = runCatching { limiter.run { http.fetchPublic(url) } }.getOrNull() ?: return null
         val doc = Jsoup.parse(html, url)
         doc.select("script, style, nav, footer, noscript, svg").remove()
         val title = doc.title().ifBlank { url }
-        val text = doc.body()?.text().orEmpty().take(maxChars)
+        val text = doc.body().text().take(maxChars)
         val f = fact(accountId, FactKind.WEB_PAGE, "Page lue : $title", url, excerpt = text.take(500))
         return f to text
     }
 }
-
-/** Utilitaire pour arrondir un score affiché. */
-fun Double.pct(): Int = (this * 100).roundToInt()

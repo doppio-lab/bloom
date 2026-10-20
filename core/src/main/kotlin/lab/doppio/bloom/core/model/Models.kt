@@ -1,8 +1,6 @@
 package lab.doppio.bloom.core.model
 
 import kotlinx.serialization.Serializable
-import java.time.Instant
-import java.time.LocalDate
 
 /**
  * Modèle de domaine de Doppio Bloom.
@@ -228,6 +226,3 @@ data class SendingPolicy(
     val minSecondsBetweenSends: Int = 180,
     val holidays: Set<String> = emptySet(),
 )
-
-fun Instant.iso(): String = toString()
-fun LocalDate.iso(): String = toString()

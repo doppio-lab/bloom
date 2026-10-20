@@ -3,7 +3,9 @@
 -- Une entreprise trouvée via une offre d'emploi n'a pas toujours de site identifié
 ALTER TABLE accounts ALTER COLUMN domain DROP NOT NULL;
 
--- Clé de dédoublonnage : nom normalisé ("Vélomoov SAS" -> "velomoov"), calculée par l'application
+-- Clé de dédoublonnage : nom normalisé ("Vélomoov SAS" -> "velomoov"), calculée par l'application.
+-- Le remplissage SQL ci-dessous ne reproduit pas CompanyNames.normalize (accents, formes juridiques) :
+-- il supposait une table vide au moment de la migration. Tout slug écrit depuis vient de l'application.
 ALTER TABLE accounts ADD COLUMN slug TEXT;
 UPDATE accounts SET slug = lower(regexp_replace(name, '[^a-zA-Z0-9]+', '-', 'g')) WHERE slug IS NULL;
 ALTER TABLE accounts ALTER COLUMN slug SET NOT NULL;

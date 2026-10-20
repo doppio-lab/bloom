@@ -5,9 +5,9 @@ L'outil de prospection commerciale de Doppio Lab. Au café, la floraison (bloom)
 Kotlin, Koog 1.3, Ktor 3, PostgreSQL. LLM au choix : local avec Ollama (gratuit), Anthropic, ou toute API compatible OpenAI.
 
 Principe : **on ne contacte que sur preuve**. Chaque message part d'un signal observable (avis App Store qui
-parlent de crash, offre d'emploi iOS ouverte depuis 74 jours, équipe qui recrute sur KMP), chaque affirmation
-est reliée à un fait sourcé, et un garde-fou déterministe bloque tout chiffre inventé, tout jargon et toute
-référence client hors sujet. Les LLM cherchent et rédigent ; le code score, vérifie et décide.
+parlent de crash, offre d'emploi iOS ouverte depuis 74 jours, équipe qui recrute sur KMP), le premier email
+cite au moins un fait sourcé, et un garde-fou déterministe bloque tout chiffre absent des faits cités, tout
+jargon et toute référence client hors sujet. Les LLM cherchent et rédigent ; le code score, vérifie et décide.
 
 ## Ce que fait l'outil
 
@@ -54,7 +54,7 @@ Dans les deux cas, PostgreSQL tourne dans Docker et le schéma est créé tout s
 |---|---|---|
 | Docker avec Compose v2 (Docker Desktop ou OrbStack) | base de données, et serveur en option A | `docker compose version` |
 | Un LLM : Ollama en local (gratuit) ou une clé d'API | agents de recherche, de rédaction et de classification | voir « Choisir le LLM » |
-| Un JDK 17 ou plus récent | option B seulement, pour lancer Gradle | `java -version` |
+| Un JDK 21 | option B seulement, pour lancer Gradle | `java -version` |
 
 Le code vise Java 21. En option B, Gradle utilise un JDK 21 déjà présent sur la machine. S'il n'en trouve
 aucun, installer Temurin 21 (`brew install --cask temurin@21`).
@@ -166,7 +166,7 @@ curl -u doppio:$ADMIN_PASSWORD -X POST localhost:8080/api/contacts/1/enroll -H '
 ```
 
 Autres points d'entrée : l'import CSV (section suivante) et la découverte automatique, qui tourne chaque
-nuit entre 2h et 4h ou à la demande :
+nuit entre 2 h et 5 h ou à la demande :
 
 ```bash
 curl -u doppio:$ADMIN_PASSWORD -X POST localhost:8080/api/discovery/run
@@ -280,7 +280,7 @@ URL joignable depuis Internet (les liens de désinscription en dépendent).
   bon : il sort de toutes les listes, ses séquences en cours s'arrêtent, ses brouillons en attente sont rejetés,
   et la découverte ne le recrée pas. Un nom peut aussi être ajouté à la main avant que la découverte ne le trouve.
   « Réintégrer » le retire de la liste sans relancer les séquences arrêtées.
-- **Carnet** (vue Carnet). Pour chaque entreprise au-dessus de 45 ou qui a déjà un contact : les contacts choisis
+- **Carnet** (vue Carnet). Pour chaque entreprise à partir de 45 ou qui a déjà un contact, 150 comptes au plus : les contacts choisis
   et leur état, les dirigeants publiés par l'Annuaire des entreprises (présidents, directeurs généraux, gérants ;
   ni administrateurs ni commissaires aux comptes), et les recherches LinkedIn à ouvrir. « Ajouter au carnet »
   transforme un dirigeant en contact sans lancer de séquence. Export CSV par `GET /api/book.csv`.
@@ -322,8 +322,6 @@ Limites à connaître :
   derniers projets. Seuls le titre, la tranche de budget, les catégories et le lien sont conservés.
 - LinkedIn : aucun accès conforme à ses offres (pas d'API de lecture, lecture automatique interdite par ses
   conditions). France Travail agrège déjà une centaine de sites partenaires, dont Indeed, HelloWork et l'APEC.
-- Presse : seuls le titre et le lien sont repris. Les conditions de réutilisation des deux flux sont à
-  vérifier avant d'activer la source.
 
 ## Ta liste en CSV
 
@@ -347,7 +345,8 @@ Vélomoov;velomoov.fr;123456789;;MOBILITY_TRANSPORT;120;Recommandé par Julie;Cl
 - Hypothèses à confirmer au premier lancement : le flux de classement App Store par genre
   (`itunes.apple.com/fr/rss/topfreeapplications/limit=200/genre=…/json`) et le champ `entreprise.url` des offres
   France Travail. Si l'un ne répond plus, la découverte continue avec l'autre source.
-- Non fait : page de détail d'un compte dans le dashboard, tests de l'orchestrateur et des routes, Google Play.
+- Non fait : page de détail d'un compte dans le dashboard, Google Play. Les tests de l'orchestrateur et des
+  routes sont en cours d'ajout.
 
 ## Garde-fous de conformité intégrés
 

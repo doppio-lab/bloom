@@ -40,12 +40,9 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
 
     data class Result(val intent: ReplyIntent, val confidence: Double, val followUpOn: LocalDate?, val referral: String?, val summary: String, val suggestedReply: String?)
 
-    /** Mots qui déclenchent l'opposition sans attendre le LLM, par prudence. */
-    private val hardStop = Regex("(?i)(désinscri|unsubscribe|ne plus me contacter|retirez[- ]moi|\\bstop\\b|remove me|opt[- ]out)")
-
     suspend fun classify(subject: String?, body: String, accountId: Long?, today: LocalDate = LocalDate.now()): Result {
-        val trimmed = body.lines().takeWhile { line -> !line.startsWith(">") && !line.contains("a écrit") && !line.contains("wrote:") }.joinToString("\n").take(4_000)
-        if (hardStop.containsMatchIn(trimmed.take(400))) {
+        val trimmed = ReplyText.stripQuotedHistory(body)
+        if (ReplyText.isHardStop(trimmed)) {
             return Result(ReplyIntent.UNSUBSCRIBE, 1.0, null, null, "Demande d'arrêt détectée par mot-clé", null)
         }
         val c = tracker.track("reply-classifier", accountId, llm.fast) {
@@ -55,6 +52,7 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
                     user("Objet : ${subject.orEmpty()}\n\n$trimmed")
                 },
                 model = llm.fast,
+                fixingParser = llm.fixingParser,
             ).getOrThrow()
             r.data to r
         }
@@ -68,6 +66,38 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
             suggestedReply = c.suggestedReply.ifBlank { null },
         )
     }
+}
+
+/** Deterministic pre-processing of a reply, before any LLM call. */
+internal object ReplyText {
+    /**
+     * Mots qui déclenchent l'opposition sans attendre le LLM, par prudence.
+     * No bare "stop": it suppressed interested replies such as "on travaille non-stop sur l'app".
+     */
+    private val hardStop = Regex(
+        "(?i)(désinscri|unsubscribe|ne plus me contacter|ne plus recevoir|merci de ne plus|retirez[- ]moi|remove me|opt[- ]out)",
+    )
+
+    /** First line of a quoted thread or of a forwarded header block (Gmail, Outlook, Apple Mail, French and English). */
+    private val quotedHeader = Regex(
+        "^(>|de :|from:|envoyé :|sent:|-----original message-----|-----message d'origine-----|le .* a écrit|on .* wrote)",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
+     * Keeps only what the prospect wrote: the quoted thread below is our own email, and it contains
+     * the unsubscribe wording that would otherwise trigger the hard stop.
+     */
+    fun stripQuotedHistory(body: String): String =
+        body.lines()
+            .takeWhile { line ->
+                val t = line.trim()
+                !(quotedHeader.containsMatchIn(t) || t == "--" || t == "__" || "a écrit" in t || "wrote:" in t)
+            }
+            .joinToString("\n").trimEnd().take(4_000)
+
+    /** True when the start of the reply asks to stop: the code decides, not the LLM. */
+    fun isHardStop(trimmed: String): Boolean = hardStop.containsMatchIn(trimmed.take(400))
 }
 
 /** Outils de lecture des métriques pour le coach hebdomadaire. Lecture seule. */
@@ -101,9 +131,10 @@ class MetricsTools(private val repo: Repository) : ToolSet {
         val sentByAccount = events.filter { it.first == "EMAIL_SENT" }.mapNotNull { it.second }.toSet()
         val positiveByAccount = events.filter { it.first == "REPLY_POSITIVE" }.mapNotNull { it.second }.toSet()
         val rows = repo.accountsByScore(500).filter { it.account.id in sentByAccount }
-        return rows.groupBy { it.recommendedOffer }.entries.joinToString("\n") { (offer, list) ->
+        // Grouped by the strongest signal of the account, as the tool promises, not by the recommended offer
+        return rows.groupBy { repo.dominantSignal(it.account.id) }.entries.joinToString("\n") { (signal, list) ->
             val pos = list.count { it.account.id in positiveByAccount }
-            "${offer ?: "sans offre"} : ${list.size} comptes contactés, $pos réponses positives"
+            "${signal?.name ?: "sans signal"} : ${list.size} comptes contactés, $pos réponses positives"
         }.ifBlank { "Pas encore de données." }
     }
 

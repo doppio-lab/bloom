@@ -40,6 +40,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.neq
 import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
@@ -49,6 +50,8 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.sum
 import org.jetbrains.exposed.sql.upsert
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import kotlinx.coroutines.Dispatchers
 import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -196,10 +199,11 @@ class Repository {
     suspend fun blockedNames(): Set<String> = dbQuery { Blocklist.selectAll().map { it[Blocklist.name] }.toSet() }
 
     suspend fun blacklist(): List<Blocked> = dbQuery {
-        val accounts = Accounts.selectAll().where { Accounts.excludedReason.isNotNull() }.orderBy(Accounts.excludedAt, SortOrder.DESC_NULLS_LAST).map {
+        val excluded = Accounts.selectAll().where { Accounts.excludedReason.isNotNull() }.orderBy(Accounts.excludedAt, SortOrder.DESC_NULLS_LAST).toList()
+        val accounts = excluded.map {
             Blocked(it[Accounts.id], it[Accounts.id], it[Accounts.name], it[Accounts.excludedReason], it[Accounts.excludedAt]?.toString())
         }
-        val excludedSlugs = Accounts.selectAll().where { Accounts.excludedReason.isNotNull() }.map { it[Accounts.slug] }.toSet()
+        val excludedSlugs = excluded.map { it[Accounts.slug] }.toSet()
         // A blocked name that already shows as an excluded account is listed once, as the account
         val names = Blocklist.selectAll().orderBy(Blocklist.createdAt, SortOrder.DESC).filter { it[Blocklist.slug] !in excludedSlugs }.map {
             Blocked(it[Blocklist.id], null, it[Blocklist.name], it[Blocklist.reason], it[Blocklist.createdAt].toString())
@@ -365,12 +369,31 @@ class Repository {
         Contacts.update({ Contacts.id eq contactId }) { it[lastInboundAt] = Instant.now() }
     }
 
-    /** RGPD : purge des contacts sans échange depuis 3 ans (recommandation CNIL). Les oppositions restent. */
+    /**
+     * RGPD : purge des contacts sans échange depuis 3 ans (recommandation CNIL). Les oppositions restent.
+     * Everything the contact left behind goes with it: replies keep their row when an enrollment is deleted
+     * (ON DELETE SET NULL) and events have no foreign key, so both are deleted here explicitly.
+     */
     suspend fun purgeStaleContacts(now: Instant = Instant.now()): Int = dbQuery {
         val limit = now.minus(3 * 365L, ChronoUnit.DAYS)
-        Contacts.deleteWhere {
-            (Contacts.createdAt.less(limit)) and (Contacts.lastInboundAt.isNull() or Contacts.lastInboundAt.less(limit))
+        val contactIds = Contacts.selectAll()
+            .where { (Contacts.createdAt.less(limit)) and (Contacts.lastInboundAt.isNull() or Contacts.lastInboundAt.less(limit)) }
+            .map { it[Contacts.id] }
+        if (contactIds.isEmpty()) return@dbQuery 0
+        val enrollmentIds = Enrollments.selectAll().where { Enrollments.contactId inList contactIds }.map { it[Enrollments.id] }
+        if (enrollmentIds.isNotEmpty()) {
+            Replies.deleteWhere { Replies.enrollmentId inList enrollmentIds }
+            Drafts.deleteWhere { Drafts.enrollmentId inList enrollmentIds }
+            Enrollments.deleteWhere { Enrollments.id inList enrollmentIds }
         }
+        Events.deleteWhere { Events.contactId inList contactIds }
+        Contacts.deleteWhere { Contacts.id inList contactIds }
+    }
+
+    /** RGPD : the text of a reply is only needed to classify it. After 12 months only the intent and the summary stay. */
+    suspend fun purgeOldReplyBodies(now: Instant = Instant.now()): Int = dbQuery {
+        val limit = now.minus(365, ChronoUnit.DAYS)
+        Replies.update({ (Replies.receivedAt.less(limit)) and (Replies.body neq "") }) { it[body] = "" }
     }
 
     /** RGPD : officer names read from the registry more than 3 years ago are deleted, like contacts. */
@@ -399,13 +422,37 @@ class Repository {
             }
     }
 
+    /**
+     * Saves the signals that are new. The sources rebuild the same signal from the same facts on every
+     * run, so one observed within 24 hours of an identical one (account, type, fact ids) is skipped.
+     */
     suspend fun saveSignals(signals: List<Signal>) = dbQuery {
         signals.forEach { s ->
+            val observedAt = Instant.parse(s.observedAt)
+            val encodedFactIds = s.factIds.encode()
+            val seen = Signals.selectAll().where {
+                (Signals.accountId eq s.accountId) and (Signals.type eq s.type.name) and (Signals.factIds eq encodedFactIds) and
+                    (Signals.observedAt greaterEq observedAt.minus(1, ChronoUnit.DAYS)) and (Signals.observedAt lessEq observedAt.plus(1, ChronoUnit.DAYS))
+            }.any()
+            if (seen) return@forEach
             Signals.insert {
                 it[accountId] = s.accountId; it[type] = s.type.name; it[strength] = s.strength
-                it[observedAt] = Instant.parse(s.observedAt); it[factIds] = s.factIds.encode()
+                it[this.observedAt] = observedAt; it[factIds] = encodedFactIds
             }
         }
+    }
+
+    /** Signals older than what [signalsOf] reads are dead weight for the score: dropped. */
+    suspend fun purgeOldSignals(olderThanDays: Long = 180, now: Instant = Instant.now()): Int = dbQuery {
+        Signals.deleteWhere { Signals.observedAt.less(now.minus(olderThanDays, ChronoUnit.DAYS)) }
+    }
+
+    /**
+     * Discovery keys checked longer ago than the longest recheck window (365 days for job offers and the
+     * added sources, see [wasSeen]) are never consulted again: dropped.
+     */
+    suspend fun purgeOldDiscoverySeen(olderThanDays: Long = 365, now: Instant = Instant.now()): Int = dbQuery {
+        DiscoverySeen.deleteWhere { DiscoverySeen.checkedAt.less(now.minus(olderThanDays, ChronoUnit.DAYS)) }
     }
 
     suspend fun signalsOf(accountId: AccountId, maxAgeDays: Long = 180): List<Signal> = dbQuery {
@@ -527,12 +574,18 @@ class Repository {
 
     // --- Envoi : réserver, envoyer, constater. Un brouillon réservé n'est jamais renvoyé. ------------
 
-    /** Oldest approved email whose retry delay has passed. */
+    /** Oldest approved email whose day has come and whose retry delay has passed. */
     suspend fun nextToSend(now: Instant = Instant.now()): Draft? = dbQuery {
         Drafts.selectAll().where {
             (Drafts.status eq DraftStatus.APPROVED.name) and (Drafts.channel eq Channel.EMAIL.name) and
-                (Drafts.nextAttemptAt.isNull() or Drafts.nextAttemptAt.lessEq(now))
+                (Drafts.nextAttemptAt.isNull() or Drafts.nextAttemptAt.lessEq(now)) and
+                (Drafts.sendAfter.isNull() or Drafts.sendAfter.lessEq(now))
         }.orderBy(Drafts.createdAt).limit(1).firstOrNull()?.toDraft()
+    }
+
+    /** The step's due day: a draft prepared (and approved) earlier waits for it. */
+    suspend fun setSendAfter(id: Long, sendAfter: Instant) = dbQuery {
+        Drafts.update({ Drafts.id eq id }) { it[this.sendAfter] = sendAfter }
     }
 
     /**
@@ -559,12 +612,14 @@ class Repository {
     }
 
     /**
-     * SMTP refused the message. It goes back to the queue after a growing delay (15, 30 min...) so the
-     * other emails keep going out, and becomes FAILED after [maxAttempts]. Returns the new status.
+     * The send did not go through. When [retryable] (SMTP refused the message before accepting it), it
+     * goes back to the queue after a growing delay (15, 30 min...) so the other emails keep going out, and
+     * becomes FAILED after [maxAttempts]. Otherwise (timeout, lost connection: the message may have left)
+     * it is FAILED at once and a human checks the sent folder. Returns the new status.
      */
-    suspend fun recordSendFailure(id: Long, error: String, now: Instant = Instant.now(), maxAttempts: Int = 3): DraftStatus = dbQuery {
+    suspend fun recordSendFailure(id: Long, error: String, now: Instant = Instant.now(), maxAttempts: Int = 3, retryable: Boolean = true): DraftStatus = dbQuery {
         val attempts = (Drafts.selectAll().where { Drafts.id eq id }.firstOrNull()?.get(Drafts.sendAttempts) ?: 0) + 1
-        val next = if (attempts >= maxAttempts) DraftStatus.FAILED else DraftStatus.APPROVED
+        val next = if (!retryable || attempts >= maxAttempts) DraftStatus.FAILED else DraftStatus.APPROVED
         Drafts.update({ (Drafts.id eq id) and (Drafts.status eq DraftStatus.SENDING.name) }) {
             it[status] = next.name
             it[sendAttempts] = attempts
@@ -639,6 +694,30 @@ class Repository {
 
     suspend fun markReplyHandled(id: Long) = dbQuery { Replies.update({ Replies.id eq id }) { it[handled] = true } }
 
+    /**
+     * The contact is away until [until]: the sequence stays active and its next step is counted from that
+     * date (SequenceEngine anchors the delay on lastActionAt), and an open draft leaves no sooner.
+     */
+    suspend fun postponeEnrollment(enrollmentId: Long, until: Instant) = dbQuery {
+        Enrollments.update({ Enrollments.id eq enrollmentId }) {
+            it[status] = EnrollmentStatus.ACTIVE.name
+            it[lastActionAt] = until
+        }
+        Drafts.update({ (Drafts.enrollmentId eq enrollmentId) and (Drafts.status inList listOf(DraftStatus.PENDING_REVIEW.name, DraftStatus.APPROVED.name)) }) {
+            it[sendAfter] = until
+        }
+    }
+
+    /**
+     * Stops the contact's running sequences (ACTIVE or PAUSED) with [status]. Finished ones (COMPLETED,
+     * REPLIED, already stopped) keep their status: they are history. Returns how many were stopped.
+     */
+    suspend fun stopActiveSequences(contactId: ContactId, status: EnrollmentStatus): Int = dbQuery {
+        Enrollments.update({
+            (Enrollments.contactId eq contactId) and (Enrollments.status inList listOf(EnrollmentStatus.ACTIVE.name, EnrollmentStatus.PAUSED.name))
+        }) { it[this.status] = status.name }
+    }
+
     suspend fun isSuppressed(email: String): Boolean = dbQuery {
         val e = email.lowercase()
         val domain = "@" + e.substringAfter('@')
@@ -647,6 +726,16 @@ class Repository {
 
     suspend fun suppress(value: String, reason: String) = dbQuery {
         Suppressions.insertIgnore { it[this.value] = value.lowercase(); it[this.reason] = reason }
+    }
+
+    /**
+     * One transaction for an account and its contacts: when a contact is refused (duplicate email...)
+     * no account is left behind without it. The nested calls join the surrounding transaction.
+     */
+    suspend fun createAccountWithContacts(a: Account, contacts: List<Contact>): AccountId = newSuspendedTransaction(Dispatchers.IO) {
+        val id = upsertAccount(a)
+        contacts.forEach { addContact(it.copy(accountId = id)) }
+        id
     }
 
     // --- Pipeline ------------------------------------------------------------------------------

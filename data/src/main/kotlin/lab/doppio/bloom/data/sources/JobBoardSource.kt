@@ -1,9 +1,7 @@
 package lab.doppio.bloom.data.sources
 
 import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.isSuccess
+import io.ktor.http.ContentType
 import lab.doppio.bloom.core.discovery.BoardRef
 import lab.doppio.bloom.core.discovery.HiringRules
 import lab.doppio.bloom.core.discovery.JobBoards
@@ -17,19 +15,20 @@ import java.time.Duration
 import java.time.Instant
 
 /**
- * Hosted job boards (Greenhouse, Lever, Ashby). Their posting APIs are public and need no key, but
+ * Hosted job boards (Greenhouse, Lever, Ashby, SmartRecruiters). Their posting APIs are public and need no key, but
  * they are addressed by company, so this enriches accounts we already know instead of finding new ones.
  * What it adds over France Travail: the exact publication date, hence how long a mobile role has been open.
  */
-class JobBoardSource(private val http: HttpClient) {
+class JobBoardSource(client: HttpClient) {
+    private val http = client.withoutRedirects()
     private val limiter = RateLimiter(Duration.ofSeconds(1))
 
-    private suspend fun fetch(url: String): String? = runCatching {
-        limiter.run { http.get(url).takeIf { it.status.isSuccess() }?.bodyAsText() }
+    private suspend fun fetch(url: String, accepted: List<ContentType> = TEXT_CONTENT_TYPES): String? = runCatching {
+        limiter.run { http.fetchPublic(url, accepted) }
     }.getOrNull()
 
     suspend fun postings(ref: BoardRef): List<Posting> {
-        val body = fetch(JobBoards.apiUrl(ref)) ?: return emptyList()
+        val body = fetch(JobBoards.apiUrl(ref), JSON_CONTENT_TYPES) ?: return emptyList()
         return runCatching { JobBoards.parse(ref.provider, sourcesJson.parseToJsonElement(body)) }.getOrDefault(emptyList())
     }
 
@@ -49,13 +48,16 @@ class JobBoardSource(private val http: HttpClient) {
         val facts = mutableListOf<Fact>()
         val signals = mutableListOf<Signal>()
         postings.filter { HiringRules.isMobile(it.title) }.take(max).forEach { p ->
-            // An age is stated only when the board gives the first publication date
-            val age = p.publishedAt?.takeIf { p.dateIsFirstPublication }?.let { Duration.between(it, now).toDays() }
+            // A date is stated only when the board gives the first publication date. The date, not the age:
+            // the id derives from the statement, so an age would mint a new fact every night
+            val published = p.publishedAt?.takeIf { p.dateIsFirstPublication }
+            val age = published?.let { Duration.between(it, now).toDays() }
             val f = fact(
                 accountId, FactKind.JOB_POSTING,
-                "Offre d'emploi « ${p.title} »" + (age?.let { " publiée il y a $it jours" } ?: ""),
+                "Offre d'emploi « ${p.title} »" + (published?.let { " publiée le ${publishedOn(it)}" } ?: ""),
                 p.url,
                 excerpt = p.location,
+                now = now,
             )
             facts += f
             signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, now.toString(), listOf(f.id))

@@ -12,11 +12,13 @@ import io.ktor.server.routing.route
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.app.AppContext
+import lab.doppio.bloom.app.outreach.normalizeEmail
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.Csv
 import lab.doppio.bloom.core.discovery.Targeting
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.Contact
+import lab.doppio.bloom.core.model.EnrollmentStatus
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Offer
@@ -51,21 +53,32 @@ import org.slf4j.LoggerFactory
 
 private val log = LoggerFactory.getLogger("DiscoveryRoutes")
 
-/** Inscrit un contact dans la séquence de l'offre recommandée. Renvoie vrai si c'est fait. */
-suspend fun enrollContact(ctx: AppContext, contact: Contact): Boolean {
-    val email = contact.email ?: return false
-    if (ctx.repo.isSuppressed(email)) return false
-    if (ctx.repo.enrollmentsOfContact(contact.id).isNotEmpty()) return false
+/** A blank email is no email; a non-blank one must be a single valid address or the request is refused. */
+internal fun emailOrNull(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    return normalizeEmail(raw) ?: throw IllegalArgumentException("Adresse email invalide : « ${raw.trim()} »")
+}
+
+/**
+ * Inscrit un contact dans la séquence de l'offre [requested], sinon celle du dossier ou recommandée.
+ * Renvoie l'inscription, ou null quand rien ne démarre : pas d'email, opposition, séquence déjà en cours,
+ * ou dossier qui conclut qu'aucune offre ne convient (sauf offre choisie explicitement).
+ */
+suspend fun enrollContact(ctx: AppContext, contact: Contact, requested: Offer? = null): Long? {
+    val email = contact.email ?: return null
+    if (ctx.repo.isSuppressed(email)) return null
+    if (ctx.repo.enrollmentsOfContact(contact.id).any { it.status == EnrollmentStatus.ACTIVE || it.status == EnrollmentStatus.PAUSED }) return null
+    val dossier = ctx.repo.dossier(contact.accountId)
     // The researcher found no offer that fits: no sequence starts on its own
-    if (ctx.repo.dossier(contact.accountId)?.noFit == true) return false
-    val offer = ctx.repo.dossier(contact.accountId)?.offer
+    if (requested == null && dossier?.noFit == true) return null
+    val offer = requested ?: dossier?.offer
         ?: ctx.repo.accountsByScore(500).firstOrNull { it.account.id == contact.accountId }?.recommendedOffer
         ?: Offer.DISCOVERY
-    val seq = ctx.repo.sequenceFor(offer) ?: ctx.repo.sequenceFor(Offer.DISCOVERY) ?: return false
-    ctx.repo.enroll(contact.id, seq.id)
+    val seq = ctx.repo.sequenceFor(offer) ?: ctx.repo.sequenceFor(Offer.DISCOVERY) ?: return null
+    val id = ctx.repo.enroll(contact.id, seq.id)
     ctx.repo.logEvent("ENROLLED", contact.accountId, contact.id)
     ctx.orchestrator.planSoon()
-    return true
+    return id
 }
 
 @Serializable data class DismissDemand(val key: String)
@@ -101,11 +114,22 @@ private suspend fun book(ctx: AppContext): List<BookEntry> {
 
 private val lenientJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
+/**
+ * A quoted CSV cell. A value starting with =, +, -, @, tab or CR would be run as a formula by a
+ * spreadsheet (a company name or a role is typed by anyone): a leading quote makes it text.
+ */
+internal fun csvCell(value: String): String {
+    val safe = if (value.isNotEmpty() && value[0] in "=+-@\t\r") "'$value" else value
+    return "\"" + safe.replace("\"", "\"\"") + "\""
+}
+
 fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
     val repo = ctx.repo
 
     /** Lancer la découverte sans attendre la nuit. Elle tourne en tâche de fond (plusieurs minutes). */
     post("/discovery/run") {
+        // Only the instance that runs the loops discovers: two runs at once would merge the same accounts twice
+        if (!ctx.orchestrator.isLeader) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to "cette instance ne tient pas les tâches de fond, réessayer dans une minute"))
         if (ctx.orchestrator.discoveryRunning) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to "déjà en cours"))
         ctx.background.launch {
             runCatching { ctx.orchestrator.runDiscovery(); ctx.orchestrator.researchBatch() }
@@ -148,14 +172,15 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
         val account = repo.account(accountId) ?: return@post call.respond(HttpStatusCode.NotFound)
         val req = call.receive<NewContactRequest>()
         require(req.fullName.isNotBlank() && req.role.isNotBlank()) { "Nom et rôle sont obligatoires" }
-        req.email?.let { require(!repo.isSuppressed(it)) { "Cette personne s'est opposée à la prospection" } }
+        val email = emailOrNull(req.email)
+        email?.let { require(!repo.isSuppressed(it)) { "Cette personne s'est opposée à la prospection" } }
 
         val contact = Contact(
             accountId = accountId,
             fullName = req.fullName.trim(),
             role = req.role.trim(),
             persona = Targeting.personaFromRole(req.role),
-            email = req.email?.trim()?.takeIf { it.contains('@') },
+            email = email,
             linkedinUrl = req.linkedinUrl?.trim()?.takeIf { it.startsWith("https://") },
             dataSource = if (req.fromRegistry) "Annuaire des entreprises (dirigeant publié au registre)" else "saisie manuelle (profil public LinkedIn ou site de l'entreprise)",
         )
@@ -163,7 +188,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
         val saved = contact.copy(id = id)
 
         if (saved.email != null) {
-            val enrolled = req.enroll && enrollContact(ctx, saved)
+            val enrolled = req.enroll && enrollContact(ctx, saved) != null
             return@post call.respond(HttpStatusCode.Created, NewContactResult(id, enrolled, if (enrolled) "Séquence lancée" else "Contact ajouté"))
         }
         val finder = ctx.dropcontact
@@ -197,7 +222,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
     /** Blacklist an account: it leaves every list, its sequences stop, and discovery never brings it back. */
     post("/accounts/{id}/exclude") {
         val id = call.parameters["id"]!!.toLong()
-        val reason = runCatching { call.receive<ExcludeRequest>().reason }.getOrDefault("").ifBlank { "écarté à la main" }
+        val reason = call.receiveOrDefault(ExcludeRequest("")).reason.ifBlank { "écarté à la main" }
         repo.excludeAccount(id, reason)
         repo.logEvent("ACCOUNT_EXCLUDED", id)
         call.respond(HttpStatusCode.OK, mapOf("status" to "écarté"))
@@ -236,7 +261,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
         val lines = listOf("entreprise;nom;role;email;linkedin;statut;source") + book(ctx).flatMap { e ->
             e.contacts.map { c -> listOf(e.name, c.contact.fullName, c.contact.role, c.contact.email.orEmpty(), c.contact.linkedinUrl.orEmpty(), "contact", c.contact.dataSource) } +
                 e.officers.map { o -> listOf(e.name, o.fullName, o.role, "", "", "suggestion", o.sourceUrl) }
-        }.map { cells -> cells.joinToString(";") { "\"" + it.replace("\"", "\"\"") + "\"" } }
+        }.map { cells -> cells.joinToString(";") { csvCell(it) } }
         call.response.headers.append("Content-Disposition", "attachment; filename=\"carnet-bloom.csv\"")
         call.respondText("\uFEFF" + lines.joinToString("\r\n"), io.ktor.http.ContentType.Text.CSV)
     }
@@ -272,7 +297,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
                 repo.saveScore(Scoring.score(account.copy(id = id), repo.signalsOf(id)))
                 val contactName = r["contact_name"].orEmpty()
                 if (contactName.isNotBlank()) {
-                    val email = r["contact_email"]?.trim()?.takeIf { it.contains('@') }
+                    val email = emailOrNull(r["contact_email"])
                     if (email != null && repo.isSuppressed(email)) {
                         errors += "ligne $line : $email s'est opposé à la prospection, contact ignoré"
                     } else {

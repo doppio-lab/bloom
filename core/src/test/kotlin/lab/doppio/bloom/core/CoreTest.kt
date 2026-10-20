@@ -52,6 +52,18 @@ class ScoringTest {
     }
 
     @Test
+    fun `les signaux au-delà du plafond sont annoncés dans les raisons`() {
+        val signals = listOf(
+            Signal(1, SignalType.PUBLIC_TENDER, 1.0, "2026-10-12T08:00:00Z", listOf("f1")),
+            Signal(1, SignalType.REFERRAL, 1.0, "2026-10-12T08:00:00Z", listOf("f2")),
+            Signal(1, SignalType.HIRING_STUCK, 1.0, "2026-10-12T08:00:00Z", listOf("f3")),
+        )
+        val s = Scoring.score(account, signals, now)
+        assertEquals(50, s.intent)
+        assertTrue(s.reasons.any { it.startsWith("Signaux plafonnés à 50") }, s.reasons.joinToString())
+    }
+
+    @Test
     fun `un signal ancien perd la moitié de son poids à sa demi-vie`() {
         val d = Scoring.decay(Instant.parse("2026-09-12T08:00:00Z"), now, 30.0)
         assertTrue(d in 0.49..0.51)
@@ -87,6 +99,42 @@ class GuardTest {
     }
 
     @Test
+    fun `un chiffre contenu dans un autre chiffre du fait reste inventé`() {
+        val fact = Fact("a3", 1, FactKind.APP_METADATA, "Note App Store", "https://apps.apple.com/fr/app/id123", "2026-10-10T08:00:00Z", excerpt = "note moyenne 3,1 sur 412 notes")
+        val blocked = MessageGuard.check(input("Bonjour, 12 crashs par jour sur l'app [F:a3]. Un échange ?").copy(availableFacts = facts + fact))
+        assertTrue(blocked.any { it.rule == "chiffre-non-sourcé" }, blocked.joinToString())
+        val allowed = MessageGuard.check(input("Bonjour, 412 notes sur l'app [F:a3]. Un échange ?").copy(availableFacts = facts + fact))
+        assertTrue(allowed.none { it.rule == "chiffre-non-sourcé" }, allowed.joinToString())
+    }
+
+    @Test
+    fun `l'espace insécable des citations françaises est un séparateur de milliers`() {
+        val fact = Fact("a4", 1, FactKind.WEB_PAGE, "Base installée", "https://example.fr/presse", "2026-10-10T08:00:00Z", excerpt = "100\u00A0000 utilisateurs")
+        listOf("100 000 utilisateurs", "100\u202F000 utilisateurs", "100\u00A0000 utilisateurs").forEach { phrase ->
+            val v = MessageGuard.check(input("Bonjour, $phrase [F:a4]. Un échange ?").copy(availableFacts = facts + fact))
+            assertTrue(v.none { it.rule == "chiffre-non-sourcé" }, "$phrase : $v")
+        }
+    }
+
+    @Test
+    fun `l'objet est soumis aux mêmes règles de chiffres et de liens que le corps`() {
+        val body = "Bonjour, crash au paiement [F:a2]. Un échange ?"
+        val number = MessageGuard.check(input(body, subject = "40 % de crashs au paiement"))
+        assertTrue(number.any { it.rule == "chiffre-non-sourcé" }, number.joinToString())
+        val link = MessageGuard.check(input(body, subject = "Voir https://x.y"))
+        assertTrue(link.any { it.rule == "lien" }, link.joinToString())
+    }
+
+    @Test
+    fun `seul le domaine doppio-lab point com est autorisé dans les liens`() {
+        fun followUp(body: String) = MessageGuard.check(input(body).copy(stepIndex = 1))
+        val evil = followUp("Bonjour, crash au paiement [F:a2]. Voir https://evil.io/?ref=doppio-lab.com et dites-moi ?")
+        assertTrue(evil.any { it.rule == "lien" }, evil.joinToString())
+        val own = followUp("Bonjour, crash au paiement [F:a2]. Voir https://www.doppio-lab.com/cas et dites-moi ?")
+        assertTrue(own.none { it.rule == "lien" }, own.joinToString())
+    }
+
+    @Test
     fun `un premier email sans preuve est bloqué`() {
         val v = MessageGuard.check(input("Bonjour, on fait des apps natives. Un échange ?"))
         assertTrue(v.any { it.rule == "sans-preuve" })
@@ -110,6 +158,13 @@ class GuardTest {
     @Test
     fun `les citations sont retirées avant envoi`() {
         assertEquals("Crash au paiement.", MessageGuard.stripCitations("Crash au paiement [F:a2]."))
+        assertEquals("crash au paiement.", MessageGuard.stripCitations("crash au paiement [F:ab12]."))
+    }
+
+    @Test
+    fun `retirer les citations ne touche pas à l'espace avant la ponctuation française`() {
+        assertEquals("Ça vaut un échange de 15 minutes ?", MessageGuard.stripCitations("Ça vaut un échange de 15 minutes ? [F:ab12]"))
+        assertEquals("Un crash : au paiement ! Vraiment ?", MessageGuard.stripCitations("Un crash : au paiement ! Vraiment ?"))
     }
 }
 
@@ -123,6 +178,20 @@ class SequenceEngineTest {
         val now = Instant.parse("2026-10-12T07:00:00Z")
         val e = Enrollment(1, 1, 1, EnrollmentStatus.ACTIVE, 0, null, "2026-10-12T06:00:00Z")
         assertIs<NextAction.PrepareDraft>(SequenceEngine.next(e, seq, policy, now))
+    }
+
+    @Test
+    fun `le brouillon est préparé un jour ouvré avant le créneau, pas la veille calendaire`() {
+        // Jeudi 15 octobre 2026, 14h Paris : créneau mardi 20 8h30 ; lundi 19 férié, donc préparation dès vendredi 16 8h30.
+        val holidayMonday = SendingPolicy(holidays = setOf("2026-10-19"))
+        val e = Enrollment(1, 1, 1, EnrollmentStatus.ACTIVE, 0, null, "2026-10-15T06:00:00Z")
+        val next = SequenceEngine.next(e, seq, holidayMonday, Instant.parse("2026-10-15T12:00:00Z"))
+        assertEquals(NextAction.WaitUntil(Instant.parse("2026-10-16T06:30:00Z")), next)
+
+        // Envoi le lundi seulement : créneau lundi 19 8h30, préparation dès vendredi 16 8h30 (pas dimanche).
+        val mondays = SendingPolicy(days = setOf(1))
+        val friday = Enrollment(1, 1, 1, EnrollmentStatus.ACTIVE, 0, null, "2026-10-16T06:00:00Z")
+        assertIs<NextAction.PrepareDraft>(SequenceEngine.next(friday, seq, mondays, Instant.parse("2026-10-16T12:00:00Z")))
     }
 
     @Test

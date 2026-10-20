@@ -2,6 +2,7 @@ package lab.doppio.bloom.core.discovery
 
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.model.Offer
+import lab.doppio.bloom.core.model.Persona
 import lab.doppio.bloom.core.model.Sector
 import java.net.URLEncoder
 import java.text.Normalizer
@@ -29,18 +30,24 @@ object CompanyNames {
             .split(' ')
             .filter { it.isNotBlank() && it !in legalForms }
 
-    /** Même entreprise ? Jaccard des mots >= 0,6, ou un nom contenu dans l'autre (4 lettres minimum). */
+    /**
+     * Même entreprise ? Jaccard des mots >= 0,6, ou le nom court est le début du nom long, mot à mot
+     * (4 lettres minimum, et au moins la moitié des mots du nom long) : "Qonto" vaut "Qonto SAS (Olinda)",
+     * mais "Free" n'est pas "Freebox" et "Alan" n'est pas "Alan Allman Associates".
+     */
     fun sameCompany(a: String, b: String): Boolean {
-        val ta = tokens(a).toSet()
-        val tb = tokens(b).toSet()
+        val la = tokens(a)
+        val lb = tokens(b)
+        val ta = la.toSet()
+        val tb = lb.toSet()
         if (ta.isEmpty() || tb.isEmpty()) return false
         val jaccard = (ta intersect tb).size.toDouble() / (ta union tb).size
         if (jaccard >= 0.6) return true
-        val ja = ta.joinToString("")
-        val jb = tb.joinToString("")
-        val shorter = if (ja.length <= jb.length) ja else jb
-        val longer = if (shorter === ja) jb else ja
-        return shorter.length >= 4 && longer.startsWith(shorter)
+        val shorter = if (la.size <= lb.size) la else lb
+        val longer = if (shorter === la) lb else la
+        return shorter.joinToString("").length >= 4 &&
+            shorter.size * 2 >= longer.size &&
+            longer.take(shorter.size) == shorter
     }
 
     /**
@@ -70,27 +77,31 @@ object Exclusions {
         "scalian", "astek", "groupe open", "umanis", "keyrus", "davidson", "hardis", "neosoft", "amaris", "consort",
         "alteca", "cooptalis", "free work", "freework", "lincoln", "nexton", "smile", "wavestone", "doppio",
     )
+    /** Same normalization as the account name, otherwise "groupe open" or "creme de la creme" can never match. */
+    private val normalizedNames: Set<String> by lazy { names.map { CompanyNames.tokens(it).joinToString(" ") }.toSet() }
     private val keywords = listOf(
         "consulting", "conseil", "esn", "ssii", "interim", "intérim", "recrutement", "recruitment", "staffing", "talent",
         "freelance", "portage", "agence digitale", "digital agency",
     )
+    /** Keywords as token sequences, matched on whole words: "esn" must not exclude "Fresnel". */
+    private val keywordTokens: List<Pair<String, List<String>>> by lazy {
+        keywords.map { it to CompanyNames.tokens(it) }.filter { it.second.isNotEmpty() }
+    }
     /** NAF : intérim et placement (78), conseil en gestion (70.22Z). */
     private val nafPrefixes = listOf("78.", "70.22")
 
     fun reason(name: String, naf: String? = null, extra: Set<String> = emptySet()): String? {
         val tokens = CompanyNames.tokens(name)
         val joined = tokens.joinToString(" ")
-        (names + extra.map { CompanyNames.tokens(it).joinToString(" ") }).firstOrNull { n ->
-            joined == n || joined.startsWith("$n ") || Regex("\\b${Regex.escape(n)}\\b").containsMatchIn(joined) && n.length >= 5
+        (normalizedNames + extra.map { CompanyNames.tokens(it).joinToString(" ") }).firstOrNull { n ->
+            // A short entry ("open" from "groupe open", "atos") only matches the whole name:
+            // "Open Banking" is not Groupe Open. Longer entries also match as a prefix or a whole word.
+            joined == n || n.length >= 5 && (joined.startsWith("$n ") || Regex("\\b${Regex.escape(n)}\\b").containsMatchIn(joined))
         }?.let { return "liste d'exclusion : $it" }
-        val lower = name.lowercase()
-        keywords.firstOrNull { it in lower }?.let { return "mot-clé : $it" }
+        keywordTokens.firstOrNull { (_, k) -> tokens.windowed(k.size).any { it == k } }?.let { return "mot-clé : ${it.first}" }
         if (naf != null && nafPrefixes.any { naf.startsWith(it) }) return "code NAF $naf (intérim ou conseil)"
         return null
     }
-
-    /** Les ESN déclarent souvent 62.02A : on ne les exclut pas d'office, mais on le signale. */
-    fun isPossibleServiceCompany(naf: String?): Boolean = naf == "62.02A" || naf == "62.02B"
 }
 
 object SectorMapping {
@@ -144,15 +155,15 @@ object Targeting {
         Offer.TRAINING_ANTHROPIC -> TargetPersona(listOf("CTO", "Head of AI", "Engineering Manager"), "celui qui pilote les projets LLM")
     }
 
-    fun personaFromRole(role: String): lab.doppio.bloom.core.model.Persona {
+    fun personaFromRole(role: String): Persona {
         val r = role.lowercase()
         return when {
-            Regex("\\bcto\\b|chief technology|directeur technique|vp eng").containsMatchIn(r) -> lab.doppio.bloom.core.model.Persona.CTO
-            Regex("head of mobile|lead mobile|responsable mobile|mobile lead|lead (ios|android)").containsMatchIn(r) -> lab.doppio.bloom.core.model.Persona.HEAD_OF_MOBILE
-            Regex("engineering manager|manager .*ing|responsable .*dév").containsMatchIn(r) -> lab.doppio.bloom.core.model.Persona.ENGINEERING_MANAGER
-            Regex("\\bceo\\b|fondat|founder|président|directeur général").containsMatchIn(r) -> lab.doppio.bloom.core.model.Persona.CEO_FOUNDER
-            Regex("\\bcpo\\b|product|produit").containsMatchIn(r) -> lab.doppio.bloom.core.model.Persona.PRODUCT_LEAD
-            else -> lab.doppio.bloom.core.model.Persona.OTHER
+            Regex("\\bcto\\b|chief technology|directeur technique|vp eng").containsMatchIn(r) -> Persona.CTO
+            Regex("head of mobile|lead mobile|responsable mobile|mobile lead|lead (ios|android)").containsMatchIn(r) -> Persona.HEAD_OF_MOBILE
+            Regex("engineering manager|manager .*ing|responsable .*dév").containsMatchIn(r) -> Persona.ENGINEERING_MANAGER
+            Regex("\\bceo\\b|fondat|founder|président|directeur général").containsMatchIn(r) -> Persona.CEO_FOUNDER
+            Regex("\\bcpo\\b|product|produit").containsMatchIn(r) -> Persona.PRODUCT_LEAD
+            else -> Persona.OTHER
         }
     }
 
