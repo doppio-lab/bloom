@@ -12,6 +12,7 @@ import io.ktor.server.routing.route
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.app.AppContext
+import lab.doppio.bloom.app.outreach.normalizeEmail
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.Csv
 import lab.doppio.bloom.core.discovery.Targeting
@@ -50,6 +51,12 @@ import org.slf4j.LoggerFactory
 @Serializable data class ImportReport(val created: Int, val updated: Int, val contacts: Int, val errors: List<String>)
 
 private val log = LoggerFactory.getLogger("DiscoveryRoutes")
+
+/** A blank email is no email; a non-blank one must be a single valid address or the request is refused. */
+internal fun emailOrNull(raw: String?): String? {
+    if (raw.isNullOrBlank()) return null
+    return normalizeEmail(raw) ?: throw IllegalArgumentException("Adresse email invalide : « ${raw.trim()} »")
+}
 
 /** Inscrit un contact dans la séquence de l'offre recommandée. Renvoie vrai si c'est fait. */
 suspend fun enrollContact(ctx: AppContext, contact: Contact): Boolean {
@@ -148,14 +155,15 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
         val account = repo.account(accountId) ?: return@post call.respond(HttpStatusCode.NotFound)
         val req = call.receive<NewContactRequest>()
         require(req.fullName.isNotBlank() && req.role.isNotBlank()) { "Nom et rôle sont obligatoires" }
-        req.email?.let { require(!repo.isSuppressed(it)) { "Cette personne s'est opposée à la prospection" } }
+        val email = emailOrNull(req.email)
+        email?.let { require(!repo.isSuppressed(it)) { "Cette personne s'est opposée à la prospection" } }
 
         val contact = Contact(
             accountId = accountId,
             fullName = req.fullName.trim(),
             role = req.role.trim(),
             persona = Targeting.personaFromRole(req.role),
-            email = req.email?.trim()?.takeIf { it.contains('@') },
+            email = email,
             linkedinUrl = req.linkedinUrl?.trim()?.takeIf { it.startsWith("https://") },
             dataSource = if (req.fromRegistry) "Annuaire des entreprises (dirigeant publié au registre)" else "saisie manuelle (profil public LinkedIn ou site de l'entreprise)",
         )
@@ -272,7 +280,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
                 repo.saveScore(Scoring.score(account.copy(id = id), repo.signalsOf(id)))
                 val contactName = r["contact_name"].orEmpty()
                 if (contactName.isNotBlank()) {
-                    val email = r["contact_email"]?.trim()?.takeIf { it.contains('@') }
+                    val email = emailOrNull(r["contact_email"])
                     if (email != null && repo.isSuppressed(email)) {
                         errors += "ligne $line : $email s'est opposé à la prospection, contact ignoré"
                     } else {

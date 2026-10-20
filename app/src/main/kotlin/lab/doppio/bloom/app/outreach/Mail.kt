@@ -40,6 +40,20 @@ data class MailConfig(
     val dryRun: Boolean,
 )
 
+/**
+ * One valid address, trimmed and lowercased, or null. Lists, display names, quoted local parts, spaces and
+ * line breaks are refused: an address is a recipient, never a header to inject or a list to expand.
+ */
+internal fun normalizeEmail(raw: String?): String? {
+    val s = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+    if (s.any { it.isWhitespace() || it in "<>,;\"()[]:\\" }) return null
+    if (s.count { it == '@' } != 1 || s.substringAfter('@').isEmpty() || s.substringBefore('@').isEmpty()) return null
+    return runCatching { InternetAddress(s, true).apply { validate() }.address.lowercase() }.getOrNull()
+}
+
+/** A subject fits on one header line: a line break would start another header. */
+internal fun cleanSubject(subject: String): String = subject.replace(Regex("[\r\n]+"), " ")
+
 /** Jetons de désinscription signés : pas de base à consulter pour vérifier un lien. */
 class UnsubscribeTokens(private val secret: String) {
     private fun mac(data: String): String {
@@ -101,8 +115,10 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
         inReplyTo: String?,
         messageId: String,
     ): String = withContext(Dispatchers.IO) {
+        val recipient = normalizeEmail(to) ?: throw IllegalArgumentException("Adresse email invalide : « $to »")
         val unsubscribeUrl = "${config.publicBaseUrl}/u/${tokens.tokenFor(contactId)}"
         val fullBody = body + footer(contactId, language)
+        val cleanSubject = cleanSubject(if (inReplyTo != null && !subject.startsWith("Re:")) "Re: $subject" else subject)
 
         if (config.dryRun) {
             log.info("[DRY RUN] {} -> {} | {}\n{}", mailbox.address, to, subject, fullBody)
@@ -112,8 +128,8 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
             override fun updateMessageID() { setHeader("Message-ID", messageId) }
         }
         msg.setFrom(InternetAddress(mailbox.address, mailbox.displayName, "UTF-8"))
-        msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to))
-        msg.setSubject(if (inReplyTo != null && !subject.startsWith("Re:")) "Re: $subject" else subject, "UTF-8")
+        msg.setRecipient(Message.RecipientType.TO, InternetAddress(recipient))
+        msg.setSubject(cleanSubject, "UTF-8")
         msg.setText(fullBody, "UTF-8", "plain")
         // RFC 8058 : désinscription en un clic, exigée par Gmail et Yahoo pour les expéditeurs en volume
         msg.setHeader("List-Unsubscribe", "<$unsubscribeUrl>, <mailto:${mailbox.address}?subject=unsubscribe>")
