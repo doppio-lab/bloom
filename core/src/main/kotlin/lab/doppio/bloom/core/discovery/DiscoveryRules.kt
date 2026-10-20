@@ -99,9 +99,6 @@ object Exclusions {
         if (naf != null && nafPrefixes.any { naf.startsWith(it) }) return "code NAF $naf (intérim ou conseil)"
         return null
     }
-
-    /** Les ESN déclarent souvent 62.02A : on ne les exclut pas d'office, mais on le signale. */
-    fun isPossibleServiceCompany(naf: String?): Boolean = naf == "62.02A" || naf == "62.02B"
 }
 
 object SectorMapping {
