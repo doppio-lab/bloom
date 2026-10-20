@@ -52,6 +52,18 @@ class ScoringTest {
     }
 
     @Test
+    fun `les signaux au-delà du plafond sont annoncés dans les raisons`() {
+        val signals = listOf(
+            Signal(1, SignalType.PUBLIC_TENDER, 1.0, "2026-10-12T08:00:00Z", listOf("f1")),
+            Signal(1, SignalType.REFERRAL, 1.0, "2026-10-12T08:00:00Z", listOf("f2")),
+            Signal(1, SignalType.HIRING_STUCK, 1.0, "2026-10-12T08:00:00Z", listOf("f3")),
+        )
+        val s = Scoring.score(account, signals, now)
+        assertEquals(50, s.intent)
+        assertTrue(s.reasons.any { it.startsWith("Signaux plafonnés à 50") }, s.reasons.joinToString())
+    }
+
+    @Test
     fun `un signal ancien perd la moitié de son poids à sa demi-vie`() {
         val d = Scoring.decay(Instant.parse("2026-09-12T08:00:00Z"), now, 30.0)
         assertTrue(d in 0.49..0.51)
