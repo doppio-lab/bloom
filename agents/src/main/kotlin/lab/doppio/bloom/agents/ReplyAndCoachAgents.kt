@@ -77,9 +77,23 @@ internal object ReplyText {
         "(?i)(désinscri|unsubscribe|ne plus me contacter|ne plus recevoir|merci de ne plus|retirez[- ]moi|remove me|opt[- ]out)",
     )
 
-    /** Keeps only what the prospect wrote: the quoted thread below is our own email. */
+    /** First line of a quoted thread or of a forwarded header block (Gmail, Outlook, Apple Mail, French and English). */
+    private val quotedHeader = Regex(
+        "^(>|de :|from:|envoyé :|sent:|-----original message-----|-----message d'origine-----|le .* a écrit|on .* wrote)",
+        RegexOption.IGNORE_CASE,
+    )
+
+    /**
+     * Keeps only what the prospect wrote: the quoted thread below is our own email, and it contains
+     * the unsubscribe wording that would otherwise trigger the hard stop.
+     */
     fun stripQuotedHistory(body: String): String =
-        body.lines().takeWhile { line -> !line.startsWith(">") && !line.contains("a écrit") && !line.contains("wrote:") }.joinToString("\n").take(4_000)
+        body.lines()
+            .takeWhile { line ->
+                val t = line.trim()
+                !(quotedHeader.containsMatchIn(t) || t == "--" || t == "__" || "a écrit" in t || "wrote:" in t)
+            }
+            .joinToString("\n").trimEnd().take(4_000)
 
     /** True when the start of the reply asks to stop: the code decides, not the LLM. */
     fun isHardStop(trimmed: String): Boolean = hardStop.containsMatchIn(trimmed.take(400))
