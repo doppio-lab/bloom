@@ -136,6 +136,7 @@ class WriterAgent(
                         user(context + feedback)
                     },
                     model = llm.writer,
+                    fixingParser = llm.fixingParser,
                 ).getOrThrow()
                 r.data to r
             }

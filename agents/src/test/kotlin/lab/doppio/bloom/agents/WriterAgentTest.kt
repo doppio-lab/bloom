@@ -64,4 +64,21 @@ class WriterAgentTest {
         assertTrue(violations.any { it.rule == "vocabulaire" })
         assertEquals(3, log.runs.size)
     }
+
+    @Test
+    fun `a malformed answer is repaired by the fixing model instead of failing the run`() = runTest {
+        val log = InMemoryRunLog()
+        val malformed = "Voici le brouillon :\n$clean"
+        val llm = TestSupport.llm {
+            mockLLMAnswer(malformed).asDefaultResponse
+            // The fixing prompt carries the exception and the malformed content
+            mockLLMAnswer(clean) onCondition { request -> "EXCEPTION" in request && "Voici le brouillon" in request }
+        }
+        val (output, violations, attempts) = compose(llm, log)
+        assertEquals(1, attempts)
+        assertTrue(MessageGuard.isPublishable(violations), violations.toString())
+        assertEquals("équipe mobile", output.subject)
+        val run = log.runs.single()
+        assertTrue(run.success)
+    }
 }

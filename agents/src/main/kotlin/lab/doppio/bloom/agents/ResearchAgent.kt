@@ -137,6 +137,7 @@ class ResearchAgent(
                     user("Compte : ${account.name} (${account.domain ?: "site inconnu"}), secteur ${account.sector}, marché ${account.market}.\nFaits :\n$factList")
                 },
                 model = llm.research,
+                fixingParser = llm.fixingParser,
             ).getOrThrow()
             r.data to r
         }
