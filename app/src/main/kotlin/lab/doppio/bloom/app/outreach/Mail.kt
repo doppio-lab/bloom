@@ -176,22 +176,31 @@ data class InboundMail(
     val key: String,
 )
 
+/** What the orchestrator needs from the inbox; [ImapPoller] reads it over IMAP, tests fake it. */
+interface MailInbox {
+    /** The unread messages of every mailbox. */
+    suspend fun poll(): List<InboundMail>
+
+    /** Marks processed messages so they are not read again. */
+    suspend fun markSeen(mailboxAddress: String, uids: List<Long>)
+}
+
 /**
  * Relève IMAP des boîtes d'envoi. Rien n'est supprimé. Un message n'est marqué vu qu'après traitement
  * ([markSeen]) : s'il échoue, il sera relu à la passe suivante.
  */
-class ImapPoller(private val config: MailConfig) {
+class ImapPoller(private val config: MailConfig) : MailInbox {
     private val log = LoggerFactory.getLogger(javaClass)
     private val messageIdPattern = Regex("<[^<>\\s@]+@[^<>\\s]+>")
 
-    suspend fun poll(): List<InboundMail> = withContext(Dispatchers.IO) {
+    override suspend fun poll(): List<InboundMail> = withContext(Dispatchers.IO) {
         if (config.dryRun) return@withContext emptyList()
         config.mailboxes.flatMap { mb ->
             runCatching { pollOne(mb) }.getOrElse { log.warn("IMAP en échec pour ${mb.address}", it); emptyList() }
         }
     }
 
-    suspend fun markSeen(mailboxAddress: String, uids: List<Long>) = withContext(Dispatchers.IO) {
+    override suspend fun markSeen(mailboxAddress: String, uids: List<Long>) = withContext<Unit>(Dispatchers.IO) {
         if (uids.isEmpty()) return@withContext
         val mb = config.mailboxes.firstOrNull { it.address == mailboxAddress } ?: return@withContext
         withInbox(mb, Folder.READ_WRITE) { inbox ->

@@ -57,7 +57,7 @@ class Orchestrator(
     private val classifier: ReplyClassifierAgent,
     private val coach: WeeklyCoachAgent,
     private val gateway: MailSender,
-    private val poller: ImapPoller,
+    private val poller: MailInbox,
     private val mail: MailConfig,
     private val policy: SendingPolicy,
     private val discovery: lab.doppio.bloom.data.discovery.DiscoveryService,
@@ -308,7 +308,11 @@ class Orchestrator(
             enrollments.forEach { repo.setEnrollmentStatus(it.id, SequenceEngine.onReply(result.intent)) }
         }
         when (result.intent) {
-            ReplyIntent.UNSUBSCRIBE -> repo.suppress(mail.from, "réponse : ${result.summary}")
+            ReplyIntent.UNSUBSCRIBE -> {
+                // The reply may come from another address (alias, assistant): the one we wrote to is opposed too
+                repo.suppress(mail.from, "réponse : ${result.summary}")
+                contact?.email?.takeIf { !it.equals(mail.from, ignoreCase = true) }?.let { repo.suppress(it, "réponse : ${result.summary}") }
+            }
             ReplyIntent.BOUNCE -> contact?.email?.let { repo.suppress(it, "rebond") }
             else -> {}
         }
