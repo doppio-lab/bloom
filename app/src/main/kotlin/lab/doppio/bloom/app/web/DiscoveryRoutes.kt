@@ -108,6 +108,15 @@ private suspend fun book(ctx: AppContext): List<BookEntry> {
 
 private val lenientJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
+/**
+ * A quoted CSV cell. A value starting with =, +, -, @, tab or CR would be run as a formula by a
+ * spreadsheet (a company name or a role is typed by anyone): a leading quote makes it text.
+ */
+internal fun csvCell(value: String): String {
+    val safe = if (value.isNotEmpty() && value[0] in "=+-@\t\r") "'$value" else value
+    return "\"" + safe.replace("\"", "\"\"") + "\""
+}
+
 fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
     val repo = ctx.repo
 
@@ -246,7 +255,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
         val lines = listOf("entreprise;nom;role;email;linkedin;statut;source") + book(ctx).flatMap { e ->
             e.contacts.map { c -> listOf(e.name, c.contact.fullName, c.contact.role, c.contact.email.orEmpty(), c.contact.linkedinUrl.orEmpty(), "contact", c.contact.dataSource) } +
                 e.officers.map { o -> listOf(e.name, o.fullName, o.role, "", "", "suggestion", o.sourceUrl) }
-        }.map { cells -> cells.joinToString(";") { "\"" + it.replace("\"", "\"\"") + "\"" } }
+        }.map { cells -> cells.joinToString(";") { csvCell(it) } }
         call.response.headers.append("Content-Disposition", "attachment; filename=\"carnet-bloom.csv\"")
         call.respondText("\uFEFF" + lines.joinToString("\r\n"), io.ktor.http.ContentType.Text.CSV)
     }
