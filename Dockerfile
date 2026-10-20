@@ -2,7 +2,7 @@ FROM eclipse-temurin:21-jdk AS build
 WORKDIR /src
 
 # Build scripts first so the dependency layer is only rebuilt when they change
-COPY gradlew settings.gradle.kts build.gradle.kts ./
+COPY gradlew settings.gradle.kts build.gradle.kts gradle.properties ./
 COPY gradle/ gradle/
 COPY core/build.gradle.kts core/
 COPY data/build.gradle.kts data/
