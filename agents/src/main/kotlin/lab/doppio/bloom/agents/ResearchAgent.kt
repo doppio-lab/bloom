@@ -143,9 +143,10 @@ class ResearchAgent(
         }
         // Les hypothèses qui citent des faits inexistants sont écartées : pas d'hypothèse sans preuve.
         val hypotheses = output.hypotheses
-            .filter { h -> h.factIds.isNotEmpty() && h.factIds.all { it in known } }
-            .map { h -> "${h.statement} " + h.factIds.joinToString(" ") { "[F:$it]" } }
-        val offer = Offer.entries.firstOrNull { it.name == output.offer.uppercase() }
+            .map { h -> h.statement to h.factIds.map { DossierSynthesis.normalizeFactId(it) } }
+            .filter { (_, ids) -> ids.isNotEmpty() && ids.all { it in known } }
+            .map { (statement, ids) -> "$statement " + ids.joinToString(" ") { "[F:$it]" } }
+        val offer = DossierSynthesis.parseOffer(output.offer)
         repo.saveDossier(
             Dossier(
                 accountId = account.id,
@@ -157,6 +158,27 @@ class ResearchAgent(
             ),
         )
         if (offer == null) repo.logEvent("DOSSIER_NO_FIT", accountId = account.id)
+    }
+}
+
+/** Tolerant reading of the synthesis output: the model does not always echo identifiers and offers verbatim. */
+internal object DossierSynthesis {
+    private val marker = Regex("^\\[?F:(.*?)]?$", RegexOption.IGNORE_CASE)
+
+    /** "abc", "F:abc" and "[F:abc]" all name the fact abc. */
+    fun normalizeFactId(raw: String): String = raw.trim().let { marker.matchEntire(it)?.groupValues?.get(1) ?: it }.removeSuffix("]").trim()
+
+    /** Name or label first, then an unambiguous partial wording. Null means no fit. */
+    fun parseOffer(raw: String): Offer? {
+        val wanted = raw.trim().lowercase()
+        if (wanted.isBlank() || wanted == "none") return null
+        Offer.entries.firstOrNull { it.name.lowercase() == wanted || it.label.lowercase() == wanted }?.let { return it }
+        val tokens = wanted.split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotBlank() }
+        if (tokens.isEmpty()) return null
+        return Offer.entries.singleOrNull { offer ->
+            val haystack = (offer.name + " " + offer.label).lowercase()
+            tokens.all { it in haystack }
+        }
     }
 }
 
