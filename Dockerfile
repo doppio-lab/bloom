@@ -1,7 +1,23 @@
 FROM eclipse-temurin:21-jdk AS build
 WORKDIR /src
-COPY . .
-RUN ./gradlew :app:installDist --no-daemon
+
+# Build scripts first so the dependency layer is only rebuilt when they change
+COPY gradlew settings.gradle.kts build.gradle.kts ./
+COPY gradle/ gradle/
+COPY core/build.gradle.kts core/
+COPY data/build.gradle.kts data/
+COPY agents/build.gradle.kts agents/
+COPY app/build.gradle.kts app/
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew :core:dependencies :data:dependencies :agents:dependencies :app:dependencies --no-daemon -q > /dev/null
+
+# Sources last: a source change only re-runs this layer
+COPY core/src core/src
+COPY data/src data/src
+COPY agents/src agents/src
+COPY app/src app/src
+RUN --mount=type=cache,target=/root/.gradle \
+    ./gradlew :app:installDist --no-daemon -q
 
 FROM eclipse-temurin:21-jre
 WORKDIR /app

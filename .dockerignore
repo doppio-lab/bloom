@@ -1,5 +1,11 @@
 .git/
 .gradle/
+.kotlin/
 **/build/
 .idea/
 .env
+.worktrees/
+.github/
+marketing/
+docs/
+*.md
