@@ -181,10 +181,14 @@ data class BloomConfig(
             )
         }
 
-        /** MAILBOXES="prenom@doppio-studio.fr:motdepasseapplication:Prénom Nom,..." (the name may itself contain colons). */
-        internal fun parseMailboxes(raw: String): List<Mailbox> = raw.split(',').filter { it.isNotBlank() }.map {
-            val (address, password, name) = it.split(':', limit = 3)
-            Mailbox(address.trim(), password.trim(), name.trim())
+        /**
+         * MAILBOXES="prenom@doppio-studio.fr:motdepasseapplication:Prénom Nom,..." (the name may itself contain colons).
+         * A malformed entry stops the start with a message that names the expected format.
+         */
+        internal fun parseMailboxes(raw: String): List<Mailbox> = raw.split(',').filter { it.isNotBlank() }.map { entry ->
+            val parts = entry.split(':', limit = 3).map { it.trim() }
+            if (parts.size < 3 || parts.any { it.isEmpty() }) error("MAILBOXES : format attendu adresse:mot-de-passe:Nom, reçu « ${entry.trim()} »")
+            Mailbox(parts[0], parts[1], parts[2])
         }
     }
 }
