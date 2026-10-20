@@ -1,10 +1,12 @@
 package lab.doppio.bloom.agents
 
 import kotlinx.coroutines.test.runTest
+import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.SignalType
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class SiteResearchToolsTest {
@@ -159,5 +161,42 @@ class ProvenHypothesesTest {
             known,
         )
         assertEquals(listOf("Crash au paiement [F:a1] [F:a2]"), kept)
+    }
+}
+
+class DossierSynthesisTest {
+    @Test
+    fun `fact identifiers are accepted with or without the citation marker`() {
+        assertEquals("abc", normalizeFactId("abc"))
+        assertEquals("abc", normalizeFactId("F:abc"))
+        assertEquals("abc", normalizeFactId("[F:abc]"))
+        assertEquals("abc", normalizeFactId(" [F:abc] "))
+        assertEquals("a1-b2_c3", normalizeFactId("[F:a1-b2_c3]"))
+        val hypotheses = listOf(ResearchAgent.Hypothesis("Besoin", listOf("[F:a1]", "F:a2")))
+        assertEquals(listOf("Besoin [F:a1] [F:a2]"), provenHypotheses(hypotheses, setOf("a1", "a2")))
+    }
+
+    @Test
+    fun `offers are matched on their name or label, whatever the case`() {
+        assertEquals(Offer.DISCOVERY, parseOffer("DISCOVERY"))
+        assertEquals(Offer.DISCOVERY, parseOffer("discovery"))
+        assertEquals(Offer.DISCOVERY, parseOffer("Audit Discovery 2 jours"))
+        assertEquals(Offer.TRAINING_KMP, parseOffer("formation kotlin multiplatform 3 jours"))
+    }
+
+    @Test
+    fun `a partial wording still finds the offer when it is unambiguous`() {
+        assertEquals(Offer.DISCOVERY, parseOffer("AUDIT"))
+        assertEquals(Offer.DISCOVERY, parseOffer("Discovery 2 jours"))
+        assertEquals(Offer.REGIE, parseOffer("régie"))
+        assertEquals(Offer.TRAINING_ANTHROPIC, parseOffer("formation Anthropic"))
+    }
+
+    @Test
+    fun `NONE, an empty answer and an ambiguous wording mean no fit`() {
+        assertNull(parseOffer("NONE"))
+        assertNull(parseOffer(""))
+        assertNull(parseOffer("aucune"))
+        assertNull(parseOffer("formation"), "two trainings match: do not pick one at random")
     }
 }

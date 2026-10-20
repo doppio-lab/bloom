@@ -156,7 +156,7 @@ class ResearchAgent(
         // An angle with a number no fact carries is not kept: the best proven hypothesis stands in for it
         val angle = output.angle.takeIf { ungroundedNumbers(it, grounding).isEmpty() }
             ?: hypotheses.firstOrNull()?.let { MessageGuard.stripCitations(it) }.orEmpty()
-        val offer = Offer.entries.firstOrNull { it.name == output.offer.uppercase() }
+        val offer = parseOffer(output.offer)
         factRepo.saveDossier(
             Dossier(
                 accountId = account.id,
