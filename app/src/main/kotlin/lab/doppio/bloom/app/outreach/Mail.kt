@@ -5,6 +5,7 @@ import jakarta.mail.Folder
 import jakarta.mail.Message
 import jakarta.mail.Multipart
 import jakarta.mail.Part
+import jakarta.mail.SendFailedException
 import jakarta.mail.Session
 import jakarta.mail.Transport
 import jakarta.mail.UIDFolder
@@ -116,6 +117,13 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
         messageId
     }
 }
+
+/**
+ * True only when the SMTP server refused the message before accepting it (a reply to MAIL FROM, RCPT TO
+ * or DATA with nothing sent). Any other error, a timeout after the DATA was accepted among them, may
+ * already have delivered the message: the draft must not leave again with a new Message-ID.
+ */
+fun isRetryableSmtpFailure(e: Throwable): Boolean = e is SendFailedException && e.validSentAddresses.isNullOrEmpty()
 
 data class InboundMail(
     val mailbox: String,

@@ -22,4 +22,6 @@ dependencies {
     implementation(libs.logback)
     testImplementation(kotlin("test"))
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.coroutines.test)
 }

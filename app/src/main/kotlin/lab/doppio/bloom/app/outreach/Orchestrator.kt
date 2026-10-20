@@ -187,8 +187,9 @@ class Orchestrator(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val status = repo.recordSendFailure(draft.id, e.message ?: e.javaClass.simpleName, now)
-            log.warn("Envoi du brouillon ${draft.id} refusé, statut $status", e)
+            // Only a refusal received before acceptance is retried: after a timeout the message may have left
+            val status = repo.recordSendFailure(draft.id, e.message ?: e.javaClass.simpleName, now, retryable = isRetryableSmtpFailure(e))
+            log.warn("Envoi du brouillon ${draft.id} en échec, statut $status", e)
             if (status == DraftStatus.FAILED) repo.logEvent("EMAIL_FAILED", contact.accountId, contact.id, draft.id)
             return
         }

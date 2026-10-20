@@ -604,12 +604,14 @@ class Repository {
     }
 
     /**
-     * SMTP refused the message. It goes back to the queue after a growing delay (15, 30 min...) so the
-     * other emails keep going out, and becomes FAILED after [maxAttempts]. Returns the new status.
+     * The send did not go through. When [retryable] (SMTP refused the message before accepting it), it
+     * goes back to the queue after a growing delay (15, 30 min...) so the other emails keep going out, and
+     * becomes FAILED after [maxAttempts]. Otherwise (timeout, lost connection: the message may have left)
+     * it is FAILED at once and a human checks the sent folder. Returns the new status.
      */
-    suspend fun recordSendFailure(id: Long, error: String, now: Instant = Instant.now(), maxAttempts: Int = 3): DraftStatus = dbQuery {
+    suspend fun recordSendFailure(id: Long, error: String, now: Instant = Instant.now(), maxAttempts: Int = 3, retryable: Boolean = true): DraftStatus = dbQuery {
         val attempts = (Drafts.selectAll().where { Drafts.id eq id }.firstOrNull()?.get(Drafts.sendAttempts) ?: 0) + 1
-        val next = if (attempts >= maxAttempts) DraftStatus.FAILED else DraftStatus.APPROVED
+        val next = if (!retryable || attempts >= maxAttempts) DraftStatus.FAILED else DraftStatus.APPROVED
         Drafts.update({ (Drafts.id eq id) and (Drafts.status eq DraftStatus.SENDING.name) }) {
             it[status] = next.name
             it[sendAttempts] = attempts
