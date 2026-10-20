@@ -52,12 +52,12 @@ internal object MetricsToolTexts {
 
     // --- Replies ------------------------------------------------------------------------------------
     const val NO_OFFER_RECOMMENDED = "aucune"
-    const val NO_OFFER = "sans offre"
+    const val NO_SIGNAL = "sans signal"
     const val NO_DATA_YET = "Pas encore de données."
 
     fun topAccount(name: String, score: Int, offer: Any, reasons: String) = "$name : $score pts, offre $offer, $reasons"
     fun pipelineStage(stage: Any, deals: Int, amountEur: Long, offers: Map<*, Int>) = "$stage : $deals affaires, $amountEur euros, offres $offers"
-    fun replyRate(offer: Any, contacted: Int, positive: Int) = "$offer : $contacted comptes contactés, $positive réponses positives"
+    fun replyRate(signal: Any, contacted: Int, positive: Int) = "$signal : $contacted comptes contactés, $positive réponses positives"
     fun agentCost(agent: String, runs: Int, failures: Int, inputTokens: Long, outputTokens: Long, avgMs: Long) =
         "$agent : $runs exécutions, $failures échecs, $inputTokens tokens en entrée, $outputTokens en sortie, $avgMs ms en moyenne"
 }

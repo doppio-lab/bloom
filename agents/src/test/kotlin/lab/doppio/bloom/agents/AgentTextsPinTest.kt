@@ -2,6 +2,7 @@ package lab.doppio.bloom.agents
 
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.Account
+import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.Deal
@@ -20,6 +21,7 @@ import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.model.Sequence
 import lab.doppio.bloom.core.model.SequenceStep
 import lab.doppio.bloom.core.model.Signal
+import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.AccountRow
 import lab.doppio.bloom.core.port.AgentRunRepository
@@ -194,7 +196,7 @@ class AgentTextsPinTest {
         val executor = CannedExecutor("note")
         val noRuns = object : AgentRunRepository by FakeAgentRunRepository() {}
         val agent = WeeklyCoachAgent(
-            fakeLlm(executor), FakeEventRepository(), FakeAccountRepository(emptyList()), deals(emptyList()), noRuns,
+            fakeLlm(executor), FakeEventRepository(), FakeAccountRepository(emptyList()), deals(emptyList()), FakeFactRepository(emptyList()), noRuns,
             RunTracker(FakeAgentRunRepository(), clock = fixedClock), fixedClock,
         )
         agent.weeklyMemo()
@@ -220,7 +222,11 @@ class AgentTextsPinTest {
         val runs = object : AgentRunRepository by FakeAgentRunRepository() {
             override suspend fun agentStats(since: Instant): List<AgentStats> = stats
         }
-        return MetricsTools(events, accounts, deals(deals), runs, fixedClock)
+        val facts = object : FactRepository by FakeFactRepository(emptyList()) {
+            // Account 1 was approached on a quality signal, account 2 has none
+            override suspend fun dominantSignal(accountId: AccountId): SignalType? = if (accountId == 1L) SignalType.QUALITY_COMPLAINTS else null
+        }
+        return MetricsTools(events, accounts, deals(deals), facts, runs, fixedClock)
     }
 
     private fun row(id: Long, name: String, offer: Offer?) = AccountRow(Account(id, name), 60, 0, 0, 0, offer, listOf("+4 marché France", "+12 app mobile en production", "+8 x", "+2 y"), null)
@@ -232,7 +238,7 @@ class AgentTextsPinTest {
         assertEquals("Pas encore de données.", metrics().replyRateBySignal())
         val rows = listOf(row(1, "Acme", Offer.DISCOVERY), row(2, "Beta", null))
         assertEquals("Acme : 60 pts, offre DISCOVERY, +4 marché France; +12 app mobile en production; +8 x\nBeta : 60 pts, offre aucune, +4 marché France; +12 app mobile en production; +8 x", metrics(rows).topAccounts())
-        assertEquals("DISCOVERY : 1 comptes contactés, 1 réponses positives\nsans offre : 1 comptes contactés, 0 réponses positives", metrics(rows).replyRateBySignal())
+        assertEquals("QUALITY_COMPLAINTS : 1 comptes contactés, 1 réponses positives\nsans signal : 1 comptes contactés, 0 réponses positives", metrics(rows).replyRateBySignal())
         val deals = listOf(Deal(1, 1, Offer.DISCOVERY, DealStage.MEETING, 4000, null, null), Deal(2, 2, Offer.FORFAIT, DealStage.MEETING, 6000, null, null))
         assertEquals("MEETING : 2 affaires, 10000 euros, offres {DISCOVERY=1, FORFAIT=1}", metrics(deals = deals).pipeline())
         assertEquals(
