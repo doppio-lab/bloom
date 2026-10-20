@@ -72,7 +72,18 @@ class UnsubscribeTokens(private val secret: String) {
     }
 }
 
-class EmailGateway(private val config: MailConfig, private val tokens: UnsubscribeTokens) {
+/** What the orchestrator needs from the mail gateway; [EmailGateway] does it over SMTP, tests fake it. */
+interface MailSender {
+    /** Chosen before the send and stored with the draft, so a reply can always be matched to it. */
+    fun newMessageId(mailbox: Mailbox): String
+
+    /** Sends one email and returns its Message-ID. */
+    suspend fun send(
+        mailbox: Mailbox, to: String, subject: String, body: String, contactId: Long, language: String, inReplyTo: String?, messageId: String,
+    ): String
+}
+
+class EmailGateway(private val config: MailConfig, private val tokens: UnsubscribeTokens) : MailSender {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /** Without timeouts a stalled SMTP server would hold the sending loop forever. */
@@ -104,10 +115,9 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
      * Envoie un email texte brut (meilleure délivrabilité que du HTML en prospection, et pas de pixel de suivi).
      * Renvoie le Message-ID, qui sert à rattacher les réponses à l'inscription.
      */
-    /** Chosen before the send and stored with the draft, so a reply can always be matched to it. */
-    fun newMessageId(mailbox: Mailbox): String = "<${UUID.randomUUID()}@${mailbox.address.substringAfter('@')}>"
+    override fun newMessageId(mailbox: Mailbox): String = "<${UUID.randomUUID()}@${mailbox.address.substringAfter('@')}>"
 
-    suspend fun send(
+    override suspend fun send(
         mailbox: Mailbox,
         to: String,
         subject: String,

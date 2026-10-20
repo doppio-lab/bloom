@@ -56,7 +56,7 @@ class Orchestrator(
     private val research: ResearchAgent,
     private val classifier: ReplyClassifierAgent,
     private val coach: WeeklyCoachAgent,
-    private val gateway: EmailGateway,
+    private val gateway: MailSender,
     private val poller: ImapPoller,
     private val mail: MailConfig,
     private val policy: SendingPolicy,
@@ -168,32 +168,43 @@ class Orchestrator(
         return SequenceEngine.addBusinessDays(anchor.atZone(zone).toLocalDate(), step.delayBusinessDays, policy).atStartOfDay(zone).toInstant()
     }
 
+    /**
+     * One pass sends at most one email per mailbox that is under its daily cap and past the minimum gap
+     * since its last send. Drafts leave in queue order, whichever mailbox takes them.
+     */
     suspend fun sendApproved(now: Instant = Instant.now()) {
         if (!SequenceEngine.inWindow(now, policy)) return
         val startOfDay = now.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant()
-        val draft = repo.nextToSend(now) ?: return
-
-        // Une seule boîte disponible par passage : on respecte l'écart minimal entre deux envois.
-        val mailbox = mail.mailboxes.firstOrNull { mb ->
-            repo.sentTodayBy(mb.address, startOfDay) < policy.maxPerMailboxPerDay &&
-                (repo.lastSentAt(mb.address)?.let { Duration.between(it, now).seconds >= policy.minSecondsBetweenSends } ?: true)
-        } ?: return
-
-        val enrollment = repo.enrollment(draft.enrollmentId) ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return }
-        if (enrollment.status != EnrollmentStatus.ACTIVE) {
-            repo.decideDraft(draft.id, DraftStatus.REJECTED); return
+        for (mailbox in mail.mailboxes) {
+            val available = repo.sentTodayBy(mailbox.address, startOfDay) < policy.maxPerMailboxPerDay &&
+                (repo.lastSentAt(mailbox.address)?.let { Duration.between(it, now).seconds >= policy.minSecondsBetweenSends } ?: true)
+            if (!available) continue
+            // A draft that turns out unsendable (sequence stopped, contact opposed) is rejected and the next one is tried
+            var attempted = false
+            while (!attempted) {
+                val draft = repo.nextToSend(now) ?: return
+                attempted = sendOne(draft, mailbox, now)
+            }
         }
-        val contact = repo.contact(enrollment.contactId) ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return }
-        val to = contact.email ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return }
+    }
+
+    /** True when SMTP was called for [draft] (whatever the outcome), false when the draft was rejected instead. */
+    private suspend fun sendOne(draft: lab.doppio.bloom.core.model.Draft, mailbox: Mailbox, now: Instant): Boolean {
+        val enrollment = repo.enrollment(draft.enrollmentId) ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return false }
+        if (enrollment.status != EnrollmentStatus.ACTIVE) {
+            repo.decideDraft(draft.id, DraftStatus.REJECTED); return false
+        }
+        val contact = repo.contact(enrollment.contactId) ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return false }
+        val to = contact.email ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return false }
         if (repo.isSuppressed(to)) {
             repo.decideDraft(draft.id, DraftStatus.REJECTED)
             repo.setEnrollmentStatus(enrollment.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE)
-            return
+            return false
         }
 
         // Réservé avant l'appel SMTP : après un crash, ce brouillon ne repart jamais tout seul.
         val messageId = gateway.newMessageId(mailbox)
-        if (!repo.claimForSending(draft.id, messageId, mailbox.address)) return
+        if (!repo.claimForSending(draft.id, messageId, mailbox.address)) return false
         val thread = repo.threadMessageId(enrollment.id)
         try {
             // Bounded: the socket timeouts cover one stalled call, this covers the whole exchange
@@ -214,7 +225,7 @@ class Orchestrator(
             val status = repo.recordSendFailure(draft.id, "Délai d'envoi dépassé", now, retryable = false)
             log.warn("Envoi du brouillon ${draft.id} sans réponse du serveur, statut $status")
             repo.logEvent("EMAIL_FAILED", contact.accountId, contact.id, draft.id)
-            return
+            return true
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -222,10 +233,11 @@ class Orchestrator(
             val status = repo.recordSendFailure(draft.id, e.message ?: e.javaClass.simpleName, now, retryable = isRetryableSmtpFailure(e))
             log.warn("Envoi du brouillon ${draft.id} en échec, statut $status", e)
             if (status == DraftStatus.FAILED) repo.logEvent("EMAIL_FAILED", contact.accountId, contact.id, draft.id)
-            return
+            return true
         }
         repo.recordSent(draft, threadMessageId = thread ?: messageId, now = now)
         repo.logEvent("EMAIL_SENT", contact.accountId, contact.id, draft.id)
+        return true
     }
 
     /** Une tâche LinkedIn ou téléphone faite à la main fait avancer la séquence. */
