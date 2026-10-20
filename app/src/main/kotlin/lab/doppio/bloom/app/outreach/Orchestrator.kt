@@ -297,15 +297,17 @@ class Orchestrator(
             classifier.classify(mail.subject, mail.body, accountId)
         }
 
-        // Arrêt de toutes les séquences du contact, quelle que soit l'intention ; une absence ne fait que
+        // Arrêt des séquences en cours du contact, quelle que soit l'intention ; une absence ne fait que
         // repousser la suite à la date de retour (ou deux semaines), rien ne resterait en pause sinon
-        val enrollments = contact?.let { repo.enrollmentsOfContact(it.id) }.orEmpty()
-            .filter { it.status == EnrollmentStatus.ACTIVE || it.status == EnrollmentStatus.PAUSED }
-        if (result.intent == ReplyIntent.OUT_OF_OFFICE) {
-            val back = result.followUpOn?.atStartOfDay(zone)?.toInstant() ?: mail.receivedAt.plus(14, ChronoUnit.DAYS)
-            enrollments.forEach { repo.postponeEnrollment(it.id, back) }
-        } else {
-            enrollments.forEach { repo.setEnrollmentStatus(it.id, SequenceEngine.onReply(result.intent)) }
+        if (contact != null) {
+            if (result.intent == ReplyIntent.OUT_OF_OFFICE) {
+                val back = result.followUpOn?.atStartOfDay(zone)?.toInstant() ?: mail.receivedAt.plus(14, ChronoUnit.DAYS)
+                repo.enrollmentsOfContact(contact.id)
+                    .filter { it.status == EnrollmentStatus.ACTIVE || it.status == EnrollmentStatus.PAUSED }
+                    .forEach { repo.postponeEnrollment(it.id, back) }
+            } else {
+                repo.stopActiveSequences(contact.id, SequenceEngine.onReply(result.intent))
+            }
         }
         when (result.intent) {
             ReplyIntent.UNSUBSCRIBE -> {

@@ -708,6 +708,16 @@ class Repository {
         }
     }
 
+    /**
+     * Stops the contact's running sequences (ACTIVE or PAUSED) with [status]. Finished ones (COMPLETED,
+     * REPLIED, already stopped) keep their status: they are history. Returns how many were stopped.
+     */
+    suspend fun stopActiveSequences(contactId: ContactId, status: EnrollmentStatus): Int = dbQuery {
+        Enrollments.update({
+            (Enrollments.contactId eq contactId) and (Enrollments.status inList listOf(EnrollmentStatus.ACTIVE.name, EnrollmentStatus.PAUSED.name))
+        }) { it[this.status] = status.name }
+    }
+
     suspend fun isSuppressed(email: String): Boolean = dbQuery {
         val e = email.lowercase()
         val domain = "@" + e.substringAfter('@')

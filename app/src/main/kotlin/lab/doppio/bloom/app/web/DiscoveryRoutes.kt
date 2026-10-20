@@ -18,6 +18,7 @@ import lab.doppio.bloom.core.discovery.Csv
 import lab.doppio.bloom.core.discovery.Targeting
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.Contact
+import lab.doppio.bloom.core.model.EnrollmentStatus
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Offer
@@ -58,21 +59,26 @@ internal fun emailOrNull(raw: String?): String? {
     return normalizeEmail(raw) ?: throw IllegalArgumentException("Adresse email invalide : « ${raw.trim()} »")
 }
 
-/** Inscrit un contact dans la séquence de l'offre recommandée. Renvoie vrai si c'est fait. */
-suspend fun enrollContact(ctx: AppContext, contact: Contact): Boolean {
-    val email = contact.email ?: return false
-    if (ctx.repo.isSuppressed(email)) return false
-    if (ctx.repo.enrollmentsOfContact(contact.id).isNotEmpty()) return false
+/**
+ * Inscrit un contact dans la séquence de l'offre [requested], sinon celle du dossier ou recommandée.
+ * Renvoie l'inscription, ou null quand rien ne démarre : pas d'email, opposition, séquence déjà en cours,
+ * ou dossier qui conclut qu'aucune offre ne convient (sauf offre choisie explicitement).
+ */
+suspend fun enrollContact(ctx: AppContext, contact: Contact, requested: Offer? = null): Long? {
+    val email = contact.email ?: return null
+    if (ctx.repo.isSuppressed(email)) return null
+    if (ctx.repo.enrollmentsOfContact(contact.id).any { it.status == EnrollmentStatus.ACTIVE || it.status == EnrollmentStatus.PAUSED }) return null
+    val dossier = ctx.repo.dossier(contact.accountId)
     // The researcher found no offer that fits: no sequence starts on its own
-    if (ctx.repo.dossier(contact.accountId)?.noFit == true) return false
-    val offer = ctx.repo.dossier(contact.accountId)?.offer
+    if (requested == null && dossier?.noFit == true) return null
+    val offer = requested ?: dossier?.offer
         ?: ctx.repo.accountsByScore(500).firstOrNull { it.account.id == contact.accountId }?.recommendedOffer
         ?: Offer.DISCOVERY
-    val seq = ctx.repo.sequenceFor(offer) ?: ctx.repo.sequenceFor(Offer.DISCOVERY) ?: return false
-    ctx.repo.enroll(contact.id, seq.id)
+    val seq = ctx.repo.sequenceFor(offer) ?: ctx.repo.sequenceFor(Offer.DISCOVERY) ?: return null
+    val id = ctx.repo.enroll(contact.id, seq.id)
     ctx.repo.logEvent("ENROLLED", contact.accountId, contact.id)
     ctx.orchestrator.planSoon()
-    return true
+    return id
 }
 
 @Serializable data class DismissDemand(val key: String)
@@ -182,7 +188,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
         val saved = contact.copy(id = id)
 
         if (saved.email != null) {
-            val enrolled = req.enroll && enrollContact(ctx, saved)
+            val enrolled = req.enroll && enrollContact(ctx, saved) != null
             return@post call.respond(HttpStatusCode.Created, NewContactResult(id, enrolled, if (enrolled) "Séquence lancée" else "Contact ajouté"))
         }
         val finder = ctx.dropcontact

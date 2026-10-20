@@ -22,6 +22,7 @@ import lab.doppio.bloom.core.model.Deal
 import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.Draft
 import lab.doppio.bloom.core.model.DraftStatus
+import lab.doppio.bloom.core.model.EnrollmentStatus
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Signal
@@ -129,15 +130,13 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
 
     post("/contacts/{id}/enroll") {
         val contact = repo.contact(call.parameters["id"]!!.toLong()) ?: return@post call.respond(HttpStatusCode.NotFound)
-        require(contact.email == null || !repo.isSuppressed(contact.email!!)) { "Ce contact s'est opposé à la prospection" }
-        val dossier = repo.dossier(contact.accountId)
-        val requested = call.receive<EnrollRequest>().offer
-        require(requested != null || dossier?.noFit != true) { "Le dossier conclut qu'aucune offre ne convient : choisir l'offre explicitement" }
-        val offer = requested ?: dossier?.offer ?: Offer.DISCOVERY
-        val seq = repo.sequenceFor(offer) ?: repo.sequenceFor(Offer.DISCOVERY)!!
-        val id = repo.enroll(contact.id, seq.id)
-        repo.logEvent("ENROLLED", contact.accountId, contact.id)
-        ctx.orchestrator.planSoon()
+        require(contact.email != null) { "Ce contact n'a pas d'email" }
+        require(!repo.isSuppressed(contact.email!!)) { "Ce contact s'est opposé à la prospection" }
+        val requested = call.receiveOrDefault(EnrollRequest()).offer
+        require(requested != null || repo.dossier(contact.accountId)?.noFit != true) { "Le dossier conclut qu'aucune offre ne convient : choisir l'offre explicitement" }
+        // Same path as the discovery flow: one open sequence per contact, offer from the dossier unless chosen
+        val id = enrollContact(ctx, contact, requested)
+            ?: return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "ce contact est déjà en séquence"))
         call.respond(HttpStatusCode.Created, mapOf("enrollmentId" to id))
     }
 
@@ -223,7 +222,7 @@ fun Route.unsubscribeRoutes(tokens: UnsubscribeTokens, repo: Repository) {
         val contactId = tokens.verify(token) ?: return false
         val contact = repo.contact(contactId)
         contact?.email?.let { repo.suppress(it, "lien de désinscription") }
-        contact?.let { c -> repo.enrollmentsOfContact(c.id).forEach { repo.setEnrollmentStatus(it.id, lab.doppio.bloom.core.model.EnrollmentStatus.STOPPED_UNSUBSCRIBE) } }
+        contact?.let { repo.stopActiveSequences(it.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE) }
         repo.logEvent("UNSUBSCRIBED", contact?.accountId, contactId)
         return true
     }
