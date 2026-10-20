@@ -177,7 +177,8 @@ class SiteResearchTools internal constructor(
     val signals = mutableListOf<Signal>()
     private val maxPages = 6
 
-    private val sameSite = Regex("^https?://([a-z0-9-]+\\.)*${Regex.escape(domain)}(/.*)?$", RegexOption.IGNORE_CASE)
+    // https only: the researcher must not be sent to a plain-text page an attacker could tamper with
+    private val sameSite = Regex("^https://([a-z0-9-]+\\.)*${Regex.escape(domain)}(/.*)?$", RegexOption.IGNORE_CASE)
 
     @Tool
     @LLMDescription("Lit une page du site de l'entreprise et renvoie son texte visible (tronqué) et ses liens internes")

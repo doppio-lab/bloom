@@ -31,4 +31,13 @@ class SiteResearchToolsTest {
         assertTrue(answer.startsWith("Refusé"), answer)
         assertTrue(t.recorded.isEmpty())
     }
+
+    @Test
+    fun `only https pages of the company domain and its subdomains are read`() = runTest {
+        val t = tools()
+        assertTrue(t.readPage("http://exemple.fr/x").startsWith("Refusé"), "plain http must be refused")
+        assertTrue(t.readPage("https://exemple.fr.evil.com/x").startsWith("Refusé"), "a look-alike domain must be refused")
+        assertTrue(page in t.readPage("https://exemple.fr/x"))
+        assertTrue(page in t.readPage("https://blog.exemple.fr/x"))
+    }
 }
