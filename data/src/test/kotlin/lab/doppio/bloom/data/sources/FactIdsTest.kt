@@ -4,6 +4,7 @@ import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
 import lab.doppio.bloom.core.discovery.Posting
+import lab.doppio.bloom.core.model.FactKind
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -30,5 +31,15 @@ class FactIdsTest {
         val second = source.result(1, listOf(posting), now = Instant.parse("2026-10-11T02:00:00Z"))
         assertEquals(first.facts.map { it.id }, second.facts.map { it.id })
         assertTrue(first.facts.single().statement.contains("01/10/2026"), "the statement keeps the publication date: ${first.facts.single().statement}")
+    }
+
+    @Test
+    fun `un fait est daté de l'instant passé par la source`() {
+        val now = Instant.parse("2026-10-10T02:00:00Z")
+        assertEquals(now.toString(), fact(1, FactKind.WEB_PAGE, "Page lue", "https://example.fr", now = now).retrievedAt)
+
+        val posting = Posting("Développeur Android", "https://jobs.example.fr/2", null, null, dateIsFirstPublication = false)
+        val result = JobBoardSource(HttpClient(MockEngine { respond("") })).result(1, listOf(posting), now = now)
+        assertEquals(now.toString(), result.facts.single().retrievedAt)
     }
 }

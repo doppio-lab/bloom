@@ -67,8 +67,8 @@ object FactIds {
 /** Publication date as written in a statement: stable from one night to the next, unlike an age in days. */
 internal fun publishedOn(at: Instant): String = at.atZone(ZoneId.of("Europe/Paris")).toLocalDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
 
-fun fact(accountId: AccountId, kind: FactKind, statement: String, sourceUrl: String, excerpt: String? = null) =
-    Fact(FactIds.of(sourceUrl, statement), accountId, kind, statement, sourceUrl, Instant.now().toString(), excerpt?.take(500))
+fun fact(accountId: AccountId, kind: FactKind, statement: String, sourceUrl: String, excerpt: String? = null, now: Instant = Instant.now()) =
+    Fact(FactIds.of(sourceUrl, statement), accountId, kind, statement, sourceUrl, now.toString(), excerpt?.take(500))
 
 data class AppMeta(val appId: Long, val name: String, val sellerName: String?, val sellerUrl: String?, val genreId: Int?)
 
@@ -122,11 +122,11 @@ class AppStoreSource(private val http: HttpClient, private val country: String =
         )
 
         if (avg != null && count != null) {
-            facts += fact(accountId, FactKind.APP_METADATA, "$name : note moyenne App Store ${"%.1f".format(avg).replace('.', ',')} sur $count notes ($country)", storeUrl)
+            facts += fact(accountId, FactKind.APP_METADATA, "$name : note moyenne App Store ${"%.1f".format(avg).replace('.', ',')} sur $count notes ($country)", storeUrl, now = now)
         }
         if (releaseDate != null) {
             val days = Duration.between(releaseDate, now).toDays()
-            val f = fact(accountId, FactKind.APP_METADATA, "$name : dernière version $version publiée le ${publishedOn(releaseDate)}", storeUrl)
+            val f = fact(accountId, FactKind.APP_METADATA, "$name : dernière version $version publiée le ${publishedOn(releaseDate)}", storeUrl, now = now)
             facts += f
             if (days > 120) {
                 signals += Signal(accountId, SignalType.RELEASE_STALL, ((days - 120) / 240.0).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
@@ -144,6 +144,7 @@ class AppStoreSource(private val http: HttpClient, private val country: String =
                 accountId, FactKind.APP_REVIEW,
                 "$name : moyenne des ${recent.size} avis des 90 derniers jours ${"%.1f".format(recentAvg).replace('.', ',')}, contre ${"%.1f".format(avg).replace('.', ',')} en moyenne globale",
                 rssUrl,
+                now = now,
             )
             facts += f
             if (drop >= 0.4) signals += Signal(accountId, SignalType.RATING_DROP, (drop / 1.5).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
@@ -159,6 +160,7 @@ class AppStoreSource(private val http: HttpClient, private val country: String =
                     (versions?.let { " (version la plus citée : $it)" } ?: ""),
                 rssUrl,
                 excerpt = complaints.take(3).joinToString(" | ") { "${it.rating}/5 « ${it.title} » ${it.content.take(140)}" },
+                now = now,
             )
             facts += f
             if (share >= 0.15) signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, (share * 2).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
@@ -315,13 +317,14 @@ class FranceTravailSource(
                 "Offre d'emploi « $title »" + (created?.let { " publiée le ${publishedOn(it)}" } ?: ""),
                 url,
                 excerpt = description.take(400),
+                now = now,
             )
             facts += f
             signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, now.toString(), listOf(f.id))
             if (HiringRules.mentionsKmp(title + description)) signals += Signal(accountId, SignalType.HIRING_KMP, 0.9, now.toString(), listOf(f.id))
             HiringRules.stuckStrength(age)?.let { signals += Signal(accountId, SignalType.HIRING_STUCK, it, now.toString(), listOf(f.id)) }
             if (HiringRules.mentionsCrossPlatform(title + description)) {
-                facts += fact(accountId, FactKind.JOB_POSTING, "L'offre « $title » mentionne une stack cross-platform (Flutter ou React Native)", url)
+                facts += fact(accountId, FactKind.JOB_POSTING, "L'offre « $title » mentionne une stack cross-platform (Flutter ou React Native)", url, now = now)
             }
         }
         return SourceResult(facts, signals)

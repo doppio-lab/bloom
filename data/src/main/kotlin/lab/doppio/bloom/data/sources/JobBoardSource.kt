@@ -58,6 +58,7 @@ class JobBoardSource(private val http: HttpClient) {
                 "Offre d'emploi « ${p.title} »" + (published?.let { " publiée le ${publishedOn(it)}" } ?: ""),
                 p.url,
                 excerpt = p.location,
+                now = now,
             )
             facts += f
             signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, now.toString(), listOf(f.id))

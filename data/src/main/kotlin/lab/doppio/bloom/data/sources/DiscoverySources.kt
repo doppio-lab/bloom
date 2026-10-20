@@ -99,6 +99,7 @@ class BodaccSource(
                         "${n.name} : augmentation de capital publiée au BODACC le ${day(n.publishedOn)}, capital porté à ${euros(n.capitalEur ?: 0)}",
                         n.url,
                         excerpt = n.description,
+                        now = at,
                     )
                     val strength = ((n.capitalEur ?: 0) / 1_000_000.0).coerceIn(0.4, 1.0)
                     SourceResult(listOf(f), listOf(Signal(accountId, SignalType.FUNDING, strength, startOfDay(n.publishedOn, at).toString(), listOf(f.id))))
@@ -146,6 +147,7 @@ private fun tenderLead(t: Tender, prefix: String) = Lead(
             "${t.buyer} : appel d'offres publié le ${day(t.publishedOn)}" + (deadline?.let { ", réponse avant le $it" } ?: ""),
             t.url,
             excerpt = t.subject,
+            now = at,
         )
         // Observed now, not at publication: the tender was checked as still open, so its weight should not have decayed already
         SourceResult(listOf(f), listOf(Signal(accountId, SignalType.PUBLIC_TENDER, 1.0, at.toString(), listOf(f.id))))
@@ -236,6 +238,7 @@ class PressSource(
                             "${round.company} : levée de ${round.amount} annoncée le ${published.atZone(paris).toLocalDate().format(frDate)}",
                             item.link,
                             excerpt = item.title,
+                            now = at,
                         )
                         SourceResult(listOf(f), listOf(Signal(accountId, SignalType.FUNDING, 0.8, published.toString(), listOf(f.id))))
                     },
@@ -303,6 +306,7 @@ class GitHubSource(
                         "${org.name ?: org.login} : dépôt public Kotlin Multiplatform mis à jour ces 60 derniers jours",
                         repoUrl,
                         excerpt = org.url,
+                        now = at,
                     )
                     SourceResult(listOf(f), listOf(Signal(accountId, SignalType.KMP_ADOPTION, 0.8, at.toString(), listOf(f.id))))
                 },
