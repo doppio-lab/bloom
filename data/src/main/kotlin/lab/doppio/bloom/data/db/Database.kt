@@ -24,12 +24,33 @@ object Db {
      */
     @Synchronized
     fun tryHoldSingleInstanceLock(): Boolean {
-        if (lockConnection?.isValid(2) == true) return true
+        if (lockHeld()) return true
         val c = config ?: error("Db.connect first")
         val conn = java.sql.DriverManager.getConnection(c.url, c.user, c.password)
         val held = conn.createStatement().use { st -> st.executeQuery("SELECT pg_try_advisory_lock($SINGLE_INSTANCE_LOCK)").use { it.next() && it.getBoolean(1) } }
         if (held) lockConnection = conn else conn.close()
         return held
+    }
+
+    /**
+     * Whether this process still holds the lock. The lock lives with its connection: when the server drops
+     * it (restart, network cut) the lock is gone too, so the loops must re-check this on every tick instead
+     * of trusting the first answer. A dead connection is closed and forgotten so the next try reconnects.
+     */
+    @Synchronized
+    fun lockHeld(): Boolean {
+        val conn = lockConnection ?: return false
+        if (runCatching { conn.isValid(2) }.getOrDefault(false)) return true
+        runCatching { conn.close() }
+        lockConnection = null
+        return false
+    }
+
+    /** Gives the lock back (shutdown, tests). Closing the connection releases the advisory lock. */
+    @Synchronized
+    fun releaseSingleInstanceLock() {
+        runCatching { lockConnection?.close() }
+        lockConnection = null
     }
 
     private const val SINGLE_INSTANCE_LOCK = 0x626c6f6f6dL // "bloom"
