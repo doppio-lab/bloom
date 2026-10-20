@@ -164,7 +164,14 @@ class ResearchAgent(
  * le code vérifie qu'elles existent mot pour mot avant d'en faire des faits.
  */
 @LLMDescription("Outils pour lire le site public d'une entreprise et enregistrer des citations vérifiées")
-class SiteResearchTools(private val accountId: Long, private val domain: String, private val web: WebPageSource) : ToolSet {
+class SiteResearchTools internal constructor(
+    private val accountId: Long,
+    private val domain: String,
+    /** Returns the visible text of a page, or null when it cannot be read. Injectable so tests need no HTTP. */
+    private val reader: suspend (String) -> String?,
+) : ToolSet {
+    constructor(accountId: Long, domain: String, web: WebPageSource) : this(accountId, domain, { url -> web.read(accountId, url)?.second })
+
     private val pages = mutableMapOf<String, String>()
     val recorded = mutableListOf<Fact>()
     val signals = mutableListOf<Signal>()
@@ -180,7 +187,7 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
     ): String {
         if (!sameSite.matches(url)) return "Refusé : seules les pages de $domain sont autorisées."
         if (pages.size >= maxPages && url !in pages) return "Limite de $maxPages pages atteinte. Termine ton analyse."
-        val (_, text) = web.read(accountId, url) ?: return "Page illisible : $url"
+        val text = reader(url) ?: return "Page illisible : $url"
         pages[url] = text
         return text.take(5_000)
     }
@@ -203,13 +210,15 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
         if (!page.replace(Regex("\\s+"), " ").contains(normalized, ignoreCase = true)) {
             return "Refusé : citation introuvable mot pour mot sur la page. Copie le texte exact."
         }
-        val f = fact(accountId, FactKind.WEB_PAGE, "$meaning (« $normalized »)", url, excerpt = normalized)
+        // The statement is the verbatim quote only: a figure the model adds in [meaning] must never
+        // become a sourced fact for the writer and MessageGuard. The meaning stays in the conversation.
+        val f = fact(accountId, FactKind.WEB_PAGE, normalized, url, excerpt = normalized)
         recorded += f
         when (category.uppercase()) {
             "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, 0.6, Instant.now().toString(), listOf(f.id))
             "MOBILE_PROJECT" -> signals += Signal(accountId, SignalType.PRODUCT_LAUNCH, 0.6, Instant.now().toString(), listOf(f.id))
             "APP_ISSUE" -> signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, 0.4, Instant.now().toString(), listOf(f.id))
         }
-        return "Enregistré sous l'identifiant ${f.id}."
+        return "Enregistré sous l'identifiant ${f.id} (ce que tu en retiens : ${meaning.trim()})."
     }
 }
