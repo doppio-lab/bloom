@@ -419,13 +419,37 @@ class Repository {
             }
     }
 
+    /**
+     * Saves the signals that are new. The sources rebuild the same signal from the same facts on every
+     * run, so one observed within 24 hours of an identical one (account, type, fact ids) is skipped.
+     */
     suspend fun saveSignals(signals: List<Signal>) = dbQuery {
         signals.forEach { s ->
+            val observedAt = Instant.parse(s.observedAt)
+            val encodedFactIds = s.factIds.encode()
+            val seen = Signals.selectAll().where {
+                (Signals.accountId eq s.accountId) and (Signals.type eq s.type.name) and (Signals.factIds eq encodedFactIds) and
+                    (Signals.observedAt greaterEq observedAt.minus(1, ChronoUnit.DAYS)) and (Signals.observedAt lessEq observedAt.plus(1, ChronoUnit.DAYS))
+            }.any()
+            if (seen) return@forEach
             Signals.insert {
                 it[accountId] = s.accountId; it[type] = s.type.name; it[strength] = s.strength
-                it[observedAt] = Instant.parse(s.observedAt); it[factIds] = s.factIds.encode()
+                it[this.observedAt] = observedAt; it[factIds] = encodedFactIds
             }
         }
+    }
+
+    /** Signals older than what [signalsOf] reads are dead weight for the score: dropped. */
+    suspend fun purgeOldSignals(olderThanDays: Long = 180, now: Instant = Instant.now()): Int = dbQuery {
+        Signals.deleteWhere { Signals.observedAt.less(now.minus(olderThanDays, ChronoUnit.DAYS)) }
+    }
+
+    /**
+     * Discovery keys checked longer ago than the longest recheck window (365 days for job offers and the
+     * added sources, see [wasSeen]) are never consulted again: dropped.
+     */
+    suspend fun purgeOldDiscoverySeen(olderThanDays: Long = 365, now: Instant = Instant.now()): Int = dbQuery {
+        DiscoverySeen.deleteWhere { DiscoverySeen.checkedAt.less(now.minus(olderThanDays, ChronoUnit.DAYS)) }
     }
 
     suspend fun signalsOf(accountId: AccountId, maxAgeDays: Long = 180): List<Signal> = dbQuery {
