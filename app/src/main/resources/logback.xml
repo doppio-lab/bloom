@@ -1,6 +1,7 @@
 <configuration>
     <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
-        <encoder><pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern></encoder>
+        <!-- Line breaks are stripped from messages: a crafted subject or address cannot forge a log line -->
+        <encoder><pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %replace(%msg){'[\r\n]+', ' '}%n</pattern></encoder>
     </appender>
     <!-- LOG_LEVEL=DEBUG to see Bloom's own debug output -->
     <logger name="lab.doppio" level="${LOG_LEVEL:-INFO}"/>
