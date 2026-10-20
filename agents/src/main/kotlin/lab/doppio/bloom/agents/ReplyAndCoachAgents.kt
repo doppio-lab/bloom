@@ -131,9 +131,10 @@ class MetricsTools(private val repo: Repository) : ToolSet {
         val sentByAccount = events.filter { it.first == "EMAIL_SENT" }.mapNotNull { it.second }.toSet()
         val positiveByAccount = events.filter { it.first == "REPLY_POSITIVE" }.mapNotNull { it.second }.toSet()
         val rows = repo.accountsByScore(500).filter { it.account.id in sentByAccount }
-        return rows.groupBy { it.recommendedOffer }.entries.joinToString("\n") { (offer, list) ->
+        // Grouped by the strongest signal of the account, as the tool promises, not by the recommended offer
+        return rows.groupBy { repo.dominantSignal(it.account.id) }.entries.joinToString("\n") { (signal, list) ->
             val pos = list.count { it.account.id in positiveByAccount }
-            "${offer ?: "sans offre"} : ${list.size} comptes contactés, $pos réponses positives"
+            "${signal?.name ?: "sans signal"} : ${list.size} comptes contactés, $pos réponses positives"
         }.ifBlank { "Pas encore de données." }
     }
 
