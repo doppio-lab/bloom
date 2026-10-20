@@ -160,8 +160,11 @@ class FakeDraftRepository : DraftRepository {
         sent += draft to threadMessageId
         drafts[draft.id] = draft.copy(status = DraftStatus.SENT)
     }
-    override suspend fun recordSendFailure(id: Long, error: String, now: Instant?, maxAttempts: Int): DraftStatus {
+    /** The [retryable] flag of each recorded failure, in order. */
+    val retryableFlags = mutableListOf<Boolean>()
+    override suspend fun recordSendFailure(id: Long, error: String, now: Instant?, maxAttempts: Int, retryable: Boolean): DraftStatus {
         failures += id to error
+        retryableFlags += retryable
         drafts[id] = drafts.getValue(id).copy(status = failureStatus)
         return failureStatus
     }

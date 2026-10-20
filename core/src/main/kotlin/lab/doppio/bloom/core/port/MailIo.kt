@@ -21,6 +21,13 @@ interface MailSender {
     ): String
 }
 
+/**
+ * The server refused the message before accepting it (a reply to MAIL FROM, RCPT TO or DATA with nothing sent), so
+ * it can be sent again later. Any other error of [MailSender.send], a timeout after DATA among them, may already
+ * have delivered the message: the draft must not leave again with a new Message-ID.
+ */
+class SendRefused(message: String?, cause: Throwable? = null) : Exception(message, cause)
+
 /** Reads the replies that landed in the sending mailboxes. Nothing is deleted. */
 interface Inbox {
     /** Unread messages of every mailbox. */

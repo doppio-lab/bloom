@@ -1,6 +1,7 @@
 package lab.doppio.bloom.app.outreach
 
 import jakarta.mail.Message
+import jakarta.mail.SendFailedException
 import jakarta.mail.Session
 import jakarta.mail.Transport
 import jakarta.mail.internet.InternetAddress
@@ -9,6 +10,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import lab.doppio.bloom.core.model.Mailbox
 import lab.doppio.bloom.core.port.MailSender
+import lab.doppio.bloom.core.port.SendRefused
 import org.slf4j.LoggerFactory
 import java.util.Properties
 import java.util.UUID
@@ -74,7 +76,18 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
             msg.setHeader("In-Reply-To", inReplyTo)
             msg.setHeader("References", inReplyTo)
         }
-        Transport.send(msg)
+        try {
+            Transport.send(msg)
+        } catch (e: SendFailedException) {
+            throw if (isRefusedBeforeAcceptance(e)) SendRefused(e.message, e) else e
+        }
         messageId
     }
 }
+
+/**
+ * True only when the SMTP server refused the message before accepting it: a SendFailedException with no
+ * address it was sent to (SMTPSendFailedException, SMTPAddressFailedException). Any other error, a timeout
+ * after DATA was accepted among them, may already have delivered the message.
+ */
+internal fun isRefusedBeforeAcceptance(e: Throwable): Boolean = e is SendFailedException && e.validSentAddresses.isNullOrEmpty()

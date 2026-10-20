@@ -15,6 +15,7 @@ import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.DraftRepository
 import lab.doppio.bloom.core.port.EventRepository
 import lab.doppio.bloom.core.port.MailSender
+import lab.doppio.bloom.core.port.SendRefused
 import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.port.SequenceRepository
 import lab.doppio.bloom.core.sequence.SequenceEngine
@@ -79,8 +80,9 @@ class SendNextApproved(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val status = draftRepo.recordSendFailure(draft.id, e.message ?: e.javaClass.simpleName, now)
-            log.warn("Envoi du brouillon ${draft.id} refusé, statut $status", e)
+            // Only a refusal received before acceptance is retried: after a timeout the message may have left
+            val status = draftRepo.recordSendFailure(draft.id, e.message ?: e.javaClass.simpleName, now, retryable = e is SendRefused)
+            log.warn("Envoi du brouillon ${draft.id} en échec, statut $status", e)
             if (status == DraftStatus.FAILED) eventRepo.logEvent(EventType.EMAIL_FAILED, contact.accountId, contact.id, draft.id)
             return
         }

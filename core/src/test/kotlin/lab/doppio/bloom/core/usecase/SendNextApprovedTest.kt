@@ -6,6 +6,7 @@ import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EnrollmentStatus
 import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.SendingPolicy
+import lab.doppio.bloom.core.port.SendRefused
 import java.time.Instant
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -84,12 +85,22 @@ class SendNextApprovedTest {
     }
 
     @Test
-    fun `an SMTP failure is recorded and nothing is marked sent`() = runTest {
-        sender.failure = RuntimeException("550 refused")
+    fun `an SMTP refusal before acceptance is recorded as retryable and nothing is marked sent`() = runTest {
+        sender.failure = SendRefused("550 refused")
         send()()
         assertEquals(listOf(draft.id to "550 refused"), drafts.failures)
+        assertEquals(listOf(true), drafts.retryableFlags)
         assertTrue(drafts.sent.isEmpty())
         assertTrue(events.events.isEmpty())
+    }
+
+    @Test
+    fun `any other send error, a timeout after DATA among them, is not retried because the email may have left`() = runTest {
+        sender.failure = java.net.SocketTimeoutException("read timed out")
+        send()()
+        assertEquals(listOf(draft.id to "read timed out"), drafts.failures)
+        assertEquals(listOf(false), drafts.retryableFlags)
+        assertTrue(drafts.sent.isEmpty())
     }
 
     @Test

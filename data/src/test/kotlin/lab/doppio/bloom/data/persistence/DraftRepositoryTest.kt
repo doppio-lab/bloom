@@ -97,6 +97,18 @@ class DraftRepositoryTest {
     }
 
     @Test
+    fun `une erreur non réessayable passe le brouillon en FAILED dès le premier essai`() = runTest {
+        val now = Instant.parse("2026-10-13T08:00:00Z")
+        val d = approvedDraft()
+        drafts.claimForSending(d.id, "<1@x>", "me@x")
+
+        assertEquals(DraftStatus.FAILED, drafts.recordSendFailure(d.id, "read timed out", now, retryable = false))
+
+        assertEquals(DraftStatus.FAILED, drafts.draft(d.id)!!.status)
+        assertNull(drafts.nextToSend(now.plus(1, ChronoUnit.HOURS)), "a human checks the sent folder, it never leaves again by itself")
+    }
+
+    @Test
     fun `une étape ne peut avoir qu'un brouillon ouvert`() = runTest {
         val d = approvedDraft()
         assertFailsWith<Exception> { drafts.createDraft(d.copy(id = 0, status = DraftStatus.PENDING_REVIEW)) }
