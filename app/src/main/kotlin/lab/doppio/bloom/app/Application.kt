@@ -163,8 +163,9 @@ class AppContext {
     val research = ResearchAgent(llm, repo, tracker, appStore = appStore, registry = registry, jobs = jobs, web = WebPageSource(http))
 
     /**
-     * Sources added to discovery, chosen by DISCOVERY_SOURCES. The press feeds are left out of the default:
-     * their reuse terms have to be checked by the owner before the source is turned on.
+     * Sources added to discovery, chosen by DISCOVERY_SOURCES. The press feeds are part of the default;
+     * their reuse terms have to be checked by the owner, who removes "press" from the list in case of doubt
+     * (see .env.example).
      */
     private val enabledSources = env("DISCOVERY_SOURCES", "bodacc,boamp,ted,codeur,press,github,jobboards").split(',').map { it.trim().lowercase() }.toSet()
     private val discoverySources = listOfNotNull(
