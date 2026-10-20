@@ -60,8 +60,11 @@ object MessageGuard {
     /** Nombres toujours autorisés : durées des offres, petits entiers de langage courant. */
     private val alwaysAllowedNumbers = setOf("1", "2", "3", "15", "20", "30")
 
+    /** Marker plus the space that precedes it, so "paiement [F:a2]." gives "paiement." and "minutes ? [F:a2]" keeps its space. */
+    private val citationWithSpaceRegex = Regex(" ?" + citationRegex.pattern)
+
     fun stripCitations(text: String): String =
-        citationRegex.replace(text, "").replace(Regex(" {2,}"), " ").replace(Regex(" +([.,;:!?])"), "$1").trim()
+        citationWithSpaceRegex.replace(text, "").replace(Regex(" {2,}"), " ").trim()
 
     fun check(input: GuardInput): List<Violation> {
         val v = mutableListOf<Violation>()

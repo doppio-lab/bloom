@@ -137,6 +137,13 @@ class GuardTest {
     @Test
     fun `les citations sont retirées avant envoi`() {
         assertEquals("Crash au paiement.", MessageGuard.stripCitations("Crash au paiement [F:a2]."))
+        assertEquals("crash au paiement.", MessageGuard.stripCitations("crash au paiement [F:ab12]."))
+    }
+
+    @Test
+    fun `retirer les citations ne touche pas à l'espace avant la ponctuation française`() {
+        assertEquals("Ça vaut un échange de 15 minutes ?", MessageGuard.stripCitations("Ça vaut un échange de 15 minutes ? [F:ab12]"))
+        assertEquals("Un crash : au paiement ! Vraiment ?", MessageGuard.stripCitations("Un crash : au paiement ! Vraiment ?"))
     }
 }
 
