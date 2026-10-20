@@ -55,6 +55,16 @@ class DiscoveryRulesTest {
     }
 
     @Test
+    fun `les mots-clés d'exclusion se comparent mot à mot`() {
+        assertNull(Exclusions.reason("Fresnel"))
+        assertNull(Exclusions.reason("Talentsoft"))
+        assertNotNull(Exclusions.reason("Esn Lyon"))
+        assertNotNull(Exclusions.reason("Agence Digitale Nantes"))
+        // "conseil" as a whole word still matches: a local authority is not a prospect either.
+        assertNotNull(Exclusions.reason("Conseil départemental"))
+    }
+
+    @Test
     fun `le secteur vient du code NAF ou du genre App Store`() {
         assertEquals(Sector.BANK_INSURANCE, SectorMapping.fromNaf("64.19Z"))
         assertEquals(Sector.RETAIL, SectorMapping.fromNaf("47.64Z"))

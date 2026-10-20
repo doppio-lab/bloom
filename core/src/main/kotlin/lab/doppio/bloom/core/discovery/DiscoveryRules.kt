@@ -76,6 +76,10 @@ object Exclusions {
         "consulting", "conseil", "esn", "ssii", "interim", "intérim", "recrutement", "recruitment", "staffing", "talent",
         "freelance", "portage", "agence digitale", "digital agency",
     )
+    /** Keywords as token sequences, matched on whole words: "esn" must not exclude "Fresnel". */
+    private val keywordTokens: List<Pair<String, List<String>>> by lazy {
+        keywords.map { it to CompanyNames.tokens(it) }.filter { it.second.isNotEmpty() }
+    }
     /** NAF : intérim et placement (78), conseil en gestion (70.22Z). */
     private val nafPrefixes = listOf("78.", "70.22")
 
@@ -85,8 +89,7 @@ object Exclusions {
         (normalizedNames + extra.map { CompanyNames.tokens(it).joinToString(" ") }).firstOrNull { n ->
             joined == n || joined.startsWith("$n ") || Regex("\\b${Regex.escape(n)}\\b").containsMatchIn(joined) && n.length >= 5
         }?.let { return "liste d'exclusion : $it" }
-        val lower = name.lowercase()
-        keywords.firstOrNull { it in lower }?.let { return "mot-clé : $it" }
+        keywordTokens.firstOrNull { (_, k) -> tokens.windowed(k.size).any { it == k } }?.let { return "mot-clé : ${it.first}" }
         if (naf != null && nafPrefixes.any { naf.startsWith(it) }) return "code NAF $naf (intérim ou conseil)"
         return null
     }
