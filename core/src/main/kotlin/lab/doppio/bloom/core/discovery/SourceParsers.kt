@@ -158,7 +158,7 @@ object GitHub {
     }
 }
 
-// --- Job boards: Greenhouse, Lever, Ashby -----------------------------------------------------------
+// --- Job boards: Greenhouse, Lever, Ashby, SmartRecruiters -----------------------------------------------------------
 
 enum class BoardProvider { GREENHOUSE, LEVER, ASHBY, SMARTRECRUITERS }
 
