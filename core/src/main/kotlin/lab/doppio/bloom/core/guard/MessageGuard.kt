@@ -66,7 +66,9 @@ object MessageGuard {
     fun check(input: GuardInput): List<Violation> {
         val v = mutableListOf<Violation>()
         val plain = stripCitations(input.body)
-        val lower = (input.subject.orEmpty() + "\n" + plain).lowercase()
+        // Subject and body together: a number or a link in the subject reaches the prospect just the same.
+        val full = input.subject.orEmpty() + "\n" + plain
+        val lower = full.lowercase()
 
         // 1. Typographie et ton
         if ('—' in lower || " – " in lower) {
@@ -116,7 +118,7 @@ object MessageGuard {
         }
         // Whole numbers only: "12" must not pass because a fact mentions "412".
         val sourcedNumbers = numberRegex.findAll(provenanceText).map { it.value.normalizeNumber() }.toSet()
-        numberRegex.findAll(plain).map { it.value.normalizeNumber() }.distinct()
+        numberRegex.findAll(full).map { it.value.normalizeNumber() }.distinct()
             .filter { it !in alwaysAllowedNumbers && it !in sourcedNumbers }
             .forEach { v += Violation("chiffre-non-sourcé", Severity.BLOCK, "« $it » n'apparaît dans aucun fait cité") }
 
@@ -140,10 +142,10 @@ object MessageGuard {
         }
 
         // 6. Délivrabilité
-        if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(plain)) {
+        if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(full)) {
             v += Violation("lien", Severity.BLOCK, "pas de lien dans le premier email (délivrabilité)")
         }
-        urlRegex.findAll(plain).map { it.value }.filterNot { "doppio-lab.com" in it }.forEach {
+        urlRegex.findAll(full).map { it.value }.filterNot { "doppio-lab.com" in it }.forEach {
             v += Violation("lien", Severity.BLOCK, "lien externe non autorisé : $it")
         }
 

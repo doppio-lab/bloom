@@ -105,6 +105,15 @@ class GuardTest {
     }
 
     @Test
+    fun `l'objet est soumis aux mêmes règles de chiffres et de liens que le corps`() {
+        val body = "Bonjour, crash au paiement [F:a2]. Un échange ?"
+        val number = MessageGuard.check(input(body, subject = "40 % de crashs au paiement"))
+        assertTrue(number.any { it.rule == "chiffre-non-sourcé" }, number.joinToString())
+        val link = MessageGuard.check(input(body, subject = "Voir https://x.y"))
+        assertTrue(link.any { it.rule == "lien" }, link.joinToString())
+    }
+
+    @Test
     fun `un premier email sans preuve est bloqué`() {
         val v = MessageGuard.check(input("Bonjour, on fait des apps natives. Un échange ?"))
         assertTrue(v.any { it.rule == "sans-preuve" })
