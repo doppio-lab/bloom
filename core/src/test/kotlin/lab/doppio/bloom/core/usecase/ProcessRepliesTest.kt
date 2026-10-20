@@ -103,6 +103,28 @@ class ProcessRepliesTest {
     }
 
     @Test
+    fun `an unsubscribe from another address also suppresses the address we wrote to`() = runTest {
+        val e = sequences.addEnrollment(contact.id)
+        // The reply is threaded to our email by its Message-ID, whoever sends it
+        drafts.messageIdToEnrollment["<orig@doppio.test>"] = e.id
+        classifier.intent = ReplyIntent.UNSUBSCRIBE
+        inbox.mails = listOf(inbound(1, from = "assistant@client.test", inReplyTo = listOf("<orig@doppio.test>")))
+        process()()
+        assertTrue("assistant@client.test" in replies.suppressed)
+        assertTrue(contact.email!! in replies.suppressed, "the contact cannot be enrolled again at the address we used")
+        assertEquals(2, replies.suppressed.size)
+    }
+
+    @Test
+    fun `an unsubscribe from the contact's own address is suppressed once`() = runTest {
+        sequences.addEnrollment(contact.id)
+        classifier.intent = ReplyIntent.UNSUBSCRIBE
+        inbox.mails = listOf(inbound(1, from = contact.email!!.uppercase()))
+        process()()
+        assertEquals(1, replies.suppressed.size)
+    }
+
+    @Test
     fun `a reply stops running sequences only, finished ones keep their status`() = runTest {
         val active = sequences.addEnrollment(contact.id, EnrollmentStatus.ACTIVE)
         val paused = sequences.addEnrollment(contact.id, EnrollmentStatus.PAUSED)

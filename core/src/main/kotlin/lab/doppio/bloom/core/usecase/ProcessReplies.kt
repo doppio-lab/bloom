@@ -91,7 +91,12 @@ class ProcessReplies(
             contact?.let { stop(it.id, SequenceEngine.onReply(result.intent)) }
         }
         when (result.intent) {
-            ReplyIntent.UNSUBSCRIBE -> replyRepo.suppress(mail.from, UseCaseMessages.suppressedByReply(result.summary))
+            ReplyIntent.UNSUBSCRIBE -> {
+                replyRepo.suppress(mail.from, UseCaseMessages.suppressedByReply(result.summary))
+                // The reply may come from an alias or an assistant: the address we wrote to must be closed too
+                contact?.email?.takeIf { !it.equals(mail.from, ignoreCase = true) }
+                    ?.let { replyRepo.suppress(it, UseCaseMessages.suppressedByReply(result.summary)) }
+            }
             ReplyIntent.BOUNCE -> contact?.email?.let { replyRepo.suppress(it, UseCaseMessages.SUPPRESSED_BOUNCE) }
             else -> {}
         }
