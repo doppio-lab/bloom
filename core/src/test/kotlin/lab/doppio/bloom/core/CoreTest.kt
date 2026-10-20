@@ -96,6 +96,15 @@ class GuardTest {
     }
 
     @Test
+    fun `l'espace insécable des citations françaises est un séparateur de milliers`() {
+        val fact = Fact("a4", 1, FactKind.WEB_PAGE, "Base installée", "https://example.fr/presse", "2026-10-10T08:00:00Z", excerpt = "100\u00A0000 utilisateurs")
+        listOf("100 000 utilisateurs", "100\u202F000 utilisateurs", "100\u00A0000 utilisateurs").forEach { phrase ->
+            val v = MessageGuard.check(input("Bonjour, $phrase [F:a4]. Un échange ?").copy(availableFacts = facts + fact))
+            assertTrue(v.none { it.rule == "chiffre-non-sourcé" }, "$phrase : $v")
+        }
+    }
+
+    @Test
     fun `un premier email sans preuve est bloqué`() {
         val v = MessageGuard.check(input("Bonjour, on fait des apps natives. Un échange ?"))
         assertTrue(v.any { it.rule == "sans-preuve" })

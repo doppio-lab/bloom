@@ -51,7 +51,9 @@ object MessageGuard {
     )
     private val emojiRegex = Regex("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{1F000}-\\x{1F2FF}]")
     private val urlRegex = Regex("""https?://\S+|www\.\S+""")
-    private val numberRegex = Regex("""\d+(?:[  .,]\d+)*""")
+    // Thousands separators: space, no-break space (U+00A0, French quotes), narrow no-break space (U+202F), dot, comma.
+    private val numberSeparators = "[ \u00A0\u202F.,]"
+    private val numberRegex = Regex("\\d+(?:$numberSeparators\\d+)*")
 
     private val ambiguousNames = setOf("routine", "proton")
 
@@ -157,5 +159,5 @@ object MessageGuard {
 
     fun isPublishable(violations: List<Violation>): Boolean = violations.none { it.severity == Severity.BLOCK }
 
-    private fun String.normalizeNumber(): String = replace(Regex("[  .,]"), "")
+    private fun String.normalizeNumber(): String = replace(Regex(numberSeparators), "")
 }
