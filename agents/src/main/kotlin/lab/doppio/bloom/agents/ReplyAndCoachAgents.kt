@@ -40,12 +40,9 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
 
     data class Result(val intent: ReplyIntent, val confidence: Double, val followUpOn: LocalDate?, val referral: String?, val summary: String, val suggestedReply: String?)
 
-    /** Mots qui déclenchent l'opposition sans attendre le LLM, par prudence. */
-    private val hardStop = Regex("(?i)(désinscri|unsubscribe|ne plus me contacter|retirez[- ]moi|\\bstop\\b|remove me|opt[- ]out)")
-
     suspend fun classify(subject: String?, body: String, accountId: Long?, today: LocalDate = LocalDate.now()): Result {
-        val trimmed = body.lines().takeWhile { line -> !line.startsWith(">") && !line.contains("a écrit") && !line.contains("wrote:") }.joinToString("\n").take(4_000)
-        if (hardStop.containsMatchIn(trimmed.take(400))) {
+        val trimmed = ReplyText.stripQuotedHistory(body)
+        if (ReplyText.isHardStop(trimmed)) {
             return Result(ReplyIntent.UNSUBSCRIBE, 1.0, null, null, "Demande d'arrêt détectée par mot-clé", null)
         }
         val c = tracker.track("reply-classifier", accountId, llm.fast) {
@@ -68,6 +65,24 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
             suggestedReply = c.suggestedReply.ifBlank { null },
         )
     }
+}
+
+/** Deterministic pre-processing of a reply, before any LLM call. */
+internal object ReplyText {
+    /**
+     * Mots qui déclenchent l'opposition sans attendre le LLM, par prudence.
+     * No bare "stop": it suppressed interested replies such as "on travaille non-stop sur l'app".
+     */
+    private val hardStop = Regex(
+        "(?i)(désinscri|unsubscribe|ne plus me contacter|ne plus recevoir|merci de ne plus|retirez[- ]moi|remove me|opt[- ]out)",
+    )
+
+    /** Keeps only what the prospect wrote: the quoted thread below is our own email. */
+    fun stripQuotedHistory(body: String): String =
+        body.lines().takeWhile { line -> !line.startsWith(">") && !line.contains("a écrit") && !line.contains("wrote:") }.joinToString("\n").take(4_000)
+
+    /** True when the start of the reply asks to stop: the code decides, not the LLM. */
+    fun isHardStop(trimmed: String): Boolean = hardStop.containsMatchIn(trimmed.take(400))
 }
 
 /** Outils de lecture des métriques pour le coach hebdomadaire. Lecture seule. */
