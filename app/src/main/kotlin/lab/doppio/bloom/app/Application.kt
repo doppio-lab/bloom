@@ -2,6 +2,7 @@ package lab.doppio.bloom.app
 
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopping
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.UserIdPrincipal
@@ -17,6 +18,9 @@ import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.serialization.json.Json
@@ -129,6 +133,25 @@ class AppContext {
     private val tracker = RunTracker(repo, dailyTokenBudget = optionalEnv("LLM_DAILY_TOKEN_BUDGET")?.toLong() ?: 0)
     /** Portée des tâches de fond déclenchées depuis le dashboard (découverte, recherche). */
     val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Portée des boucles de l'orchestrateur (planification, envoi, relève, nuit). */
+    val loops = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /**
+     * Stops the loops and the background jobs, waits up to 10 s for them (a send in progress finishes
+     * or is reconciled at the next start), then closes the database pool.
+     */
+    fun shutdown() {
+        loops.cancel()
+        background.cancel()
+        runBlocking {
+            withTimeoutOrNull(10_000) {
+                loops.coroutineContext[Job]?.join()
+                background.coroutineContext[Job]?.join()
+            } ?: org.slf4j.LoggerFactory.getLogger("bloom").warn("Des tâches de fond n'ont pas fini dans les 10 s")
+        }
+        Db.close()
+    }
     val policy = SendingPolicy(maxPerMailboxPerDay = env("MAX_PER_MAILBOX_PER_DAY", "25").toInt())
 
     val mail = MailConfig(
@@ -199,11 +222,13 @@ fun main() {
     val ctx = AppContext()
     org.slf4j.LoggerFactory.getLogger("bloom").info("LLM : {}", ctx.llm.describe())
     runBlocking { ctx.repo.ensureSequences(DefaultSequences.all()) }
-    ctx.orchestrator.start(CoroutineScope(SupervisorJob() + Dispatchers.Default))
+    ctx.orchestrator.start(ctx.loops)
     embeddedServer(Netty, port = env("PORT", "8080").toInt()) { module(ctx) }.start(wait = true)
 }
 
 fun Application.module(ctx: AppContext) {
+    // SIGTERM (docker stop, systemd): the loops stop before the pool, nothing is left half done
+    monitor.subscribe(ApplicationStopping) { ctx.shutdown() }
     install(CallLogging)
     install(ContentNegotiation) { json(Json { encodeDefaults = true; ignoreUnknownKeys = true }) }
     install(StatusPages) { bloomErrors(this@module.environment.log) }

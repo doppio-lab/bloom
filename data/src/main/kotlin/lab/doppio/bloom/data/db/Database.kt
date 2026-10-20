@@ -17,6 +17,7 @@ data class DbConfig(val url: String, val user: String, val password: String, val
 object Db {
     private var config: DbConfig? = null
     private var lockConnection: java.sql.Connection? = null
+    private var dataSource: HikariDataSource? = null
 
     /**
      * Only one instance may run the background loops, or emails would leave twice. Holds a Postgres
@@ -68,7 +69,17 @@ object Db {
             },
         )
         Flyway.configure().dataSource(ds).locations("classpath:db/migration").load().migrate()
+        dataSource = ds
         return Database.connect(ds)
+    }
+
+    /** At shutdown: releases the instance lock and the pool. Safe to call more than once. */
+    @Synchronized
+    fun close() {
+        runCatching { lockConnection?.close() }
+        lockConnection = null
+        runCatching { dataSource?.close() }
+        dataSource = null
     }
 }
 
