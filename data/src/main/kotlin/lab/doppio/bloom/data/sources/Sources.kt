@@ -422,7 +422,7 @@ class WebPageSource(private val http: HttpClient) {
 
     /** Renvoie le texte visible d'une page, tronqué. Le fait créé contient l'URL exacte lue. */
     suspend fun read(accountId: AccountId, url: String, maxChars: Int = 6_000): Pair<Fact, String>? {
-        val html = runCatching { limiter.run { http.get(url).bodyAsText() } }.getOrNull() ?: return null
+        val html = runCatching { limiter.run { http.fetchPublic(url) } }.getOrNull() ?: return null
         val doc = Jsoup.parse(html, url)
         doc.select("script, style, nav, footer, noscript, svg").remove()
         val title = doc.title().ifBlank { url }

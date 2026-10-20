@@ -1,9 +1,7 @@
 package lab.doppio.bloom.data.sources
 
 import io.ktor.client.HttpClient
-import io.ktor.client.request.get
-import io.ktor.client.statement.bodyAsText
-import io.ktor.http.isSuccess
+import io.ktor.http.ContentType
 import lab.doppio.bloom.core.discovery.BoardRef
 import lab.doppio.bloom.core.discovery.HiringRules
 import lab.doppio.bloom.core.discovery.JobBoards
@@ -24,12 +22,12 @@ import java.time.Instant
 class JobBoardSource(private val http: HttpClient) {
     private val limiter = RateLimiter(Duration.ofSeconds(1))
 
-    private suspend fun fetch(url: String): String? = runCatching {
-        limiter.run { http.get(url).takeIf { it.status.isSuccess() }?.bodyAsText() }
+    private suspend fun fetch(url: String, accepted: List<ContentType> = TEXT_CONTENT_TYPES): String? = runCatching {
+        limiter.run { http.fetchPublic(url, accepted) }
     }.getOrNull()
 
     suspend fun postings(ref: BoardRef): List<Posting> {
-        val body = fetch(JobBoards.apiUrl(ref)) ?: return emptyList()
+        val body = fetch(JobBoards.apiUrl(ref), JSON_CONTENT_TYPES) ?: return emptyList()
         return runCatching { JobBoards.parse(ref.provider, sourcesJson.parseToJsonElement(body)) }.getOrDefault(emptyList())
     }
 
