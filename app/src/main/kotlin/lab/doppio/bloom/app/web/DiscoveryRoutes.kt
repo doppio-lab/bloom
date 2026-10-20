@@ -207,7 +207,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
     /** Blacklist an account: it leaves every list, its sequences stop, and discovery never brings it back. */
     post("/accounts/{id}/exclude") {
         val id = call.parameters["id"]!!.toLong()
-        val reason = runCatching { call.receive<ExcludeRequest>().reason }.getOrDefault("").ifBlank { "écarté à la main" }
+        val reason = call.receiveOrDefault(ExcludeRequest("")).reason.ifBlank { "écarté à la main" }
         repo.excludeAccount(id, reason)
         repo.logEvent("ACCOUNT_EXCLUDED", id)
         call.respond(HttpStatusCode.OK, mapOf("status" to "écarté"))

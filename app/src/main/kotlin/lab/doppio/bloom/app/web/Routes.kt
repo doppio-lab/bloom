@@ -155,7 +155,7 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
 
     post("/drafts/{id}/approve") {
         val id = call.parameters["id"]!!.toLong()
-        val req = runCatching { call.receive<DecisionRequest>() }.getOrDefault(DecisionRequest())
+        val req = call.receiveOrDefault(DecisionRequest())
         val draft = repo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
         // A draft already decided elsewhere (other user, blacklist, sent) is never approved again
         if (draft.status != DraftStatus.PENDING_REVIEW) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to NOT_PENDING))

@@ -42,6 +42,7 @@ import lab.doppio.bloom.app.outreach.MailConfig
 import lab.doppio.bloom.app.outreach.Mailbox
 import lab.doppio.bloom.app.outreach.Orchestrator
 import lab.doppio.bloom.app.outreach.UnsubscribeTokens
+import lab.doppio.bloom.app.web.CsrfGuard
 import lab.doppio.bloom.app.web.apiRoutes
 import lab.doppio.bloom.app.web.bloomErrors
 import lab.doppio.bloom.app.web.discoveryRoutes
@@ -235,6 +236,7 @@ fun Application.module(ctx: AppContext) {
     // SIGTERM (docker stop, systemd): the loops stop before the pool, nothing is left half done
     monitor.subscribe(ApplicationStopping) { ctx.shutdown() }
     install(CallLogging)
+    install(CsrfGuard)
     install(ContentNegotiation) { json(Json { encodeDefaults = true; ignoreUnknownKeys = true }) }
     install(StatusPages) { bloomErrors(this@module.environment.log) }
     val adminPassword = requireSecret(System::getenv, "ADMIN_PASSWORD")
