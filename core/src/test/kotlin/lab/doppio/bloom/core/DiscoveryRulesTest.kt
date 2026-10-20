@@ -31,6 +31,13 @@ class DiscoveryRulesTest {
     }
 
     @Test
+    fun `un nom court n'absorbe pas un nom qui le prolonge`() {
+        assertTrue(CompanyNames.sameCompany("Doctolib", "Doctolib SAS"))
+        assertFalse(CompanyNames.sameCompany("Alan", "Alan Allman Associates"))
+        assertFalse(CompanyNames.sameCompany("Free", "Freebox"))
+    }
+
+    @Test
     fun `le domaine est extrait de l'url du vendeur`() {
         assertEquals("decathlon.fr", CompanyNames.domainOf("https://www.decathlon.fr/app?x=1"))
         assertNull(CompanyNames.domainOf("https://apps.apple.com/fr/app/id1"))
