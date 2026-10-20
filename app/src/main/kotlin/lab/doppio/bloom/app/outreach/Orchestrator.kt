@@ -264,10 +264,16 @@ class Orchestrator(
             classifier.classify(mail.subject, mail.body, accountId)
         }
 
-        // Arrêt de toutes les séquences du contact, quelle que soit l'intention
+        // Arrêt de toutes les séquences du contact, quelle que soit l'intention ; une absence ne fait que
+        // repousser la suite à la date de retour (ou deux semaines), rien ne resterait en pause sinon
         val enrollments = contact?.let { repo.enrollmentsOfContact(it.id) }.orEmpty()
             .filter { it.status == EnrollmentStatus.ACTIVE || it.status == EnrollmentStatus.PAUSED }
-        enrollments.forEach { repo.setEnrollmentStatus(it.id, SequenceEngine.onReply(result.intent)) }
+        if (result.intent == ReplyIntent.OUT_OF_OFFICE) {
+            val back = result.followUpOn?.atStartOfDay(zone)?.toInstant() ?: mail.receivedAt.plus(14, ChronoUnit.DAYS)
+            enrollments.forEach { repo.postponeEnrollment(it.id, back) }
+        } else {
+            enrollments.forEach { repo.setEnrollmentStatus(it.id, SequenceEngine.onReply(result.intent)) }
+        }
         when (result.intent) {
             ReplyIntent.UNSUBSCRIBE -> repo.suppress(mail.from, "réponse : ${result.summary}")
             ReplyIntent.BOUNCE -> contact?.email?.let { repo.suppress(it, "rebond") }
@@ -282,6 +288,7 @@ class Orchestrator(
             ReplyIntent.UNSUBSCRIBE -> repo.logEvent("UNSUBSCRIBED", accountId, contact?.id)
             ReplyIntent.BOUNCE -> repo.logEvent("BOUNCED", accountId, contact?.id)
             ReplyIntent.INTERESTED, ReplyIntent.MEETING_REQUEST, ReplyIntent.REFERRAL -> repo.logEvent("REPLY_POSITIVE", accountId, contact?.id)
+            ReplyIntent.OUT_OF_OFFICE -> repo.logEvent("REPLY_OUT_OF_OFFICE", accountId, contact?.id)
             else -> {}
         }
         repo.logEvent("REPLY_RECEIVED", accountId, contact?.id, payload = """{"intent":"${result.intent}"}""")

@@ -692,6 +692,20 @@ class Repository {
 
     suspend fun markReplyHandled(id: Long) = dbQuery { Replies.update({ Replies.id eq id }) { it[handled] = true } }
 
+    /**
+     * The contact is away until [until]: the sequence stays active and its next step is counted from that
+     * date (SequenceEngine anchors the delay on lastActionAt), and an open draft leaves no sooner.
+     */
+    suspend fun postponeEnrollment(enrollmentId: Long, until: Instant) = dbQuery {
+        Enrollments.update({ Enrollments.id eq enrollmentId }) {
+            it[status] = EnrollmentStatus.ACTIVE.name
+            it[lastActionAt] = until
+        }
+        Drafts.update({ (Drafts.enrollmentId eq enrollmentId) and (Drafts.status inList listOf(DraftStatus.PENDING_REVIEW.name, DraftStatus.APPROVED.name)) }) {
+            it[sendAfter] = until
+        }
+    }
+
     suspend fun isSuppressed(email: String): Boolean = dbQuery {
         val e = email.lowercase()
         val domain = "@" + e.substringAfter('@')
