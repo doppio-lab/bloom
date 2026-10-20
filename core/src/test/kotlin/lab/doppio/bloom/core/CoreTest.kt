@@ -87,6 +87,15 @@ class GuardTest {
     }
 
     @Test
+    fun `un chiffre contenu dans un autre chiffre du fait reste inventé`() {
+        val fact = Fact("a3", 1, FactKind.APP_METADATA, "Note App Store", "https://apps.apple.com/fr/app/id123", "2026-10-10T08:00:00Z", excerpt = "note moyenne 3,1 sur 412 notes")
+        val blocked = MessageGuard.check(input("Bonjour, 12 crashs par jour sur l'app [F:a3]. Un échange ?").copy(availableFacts = facts + fact))
+        assertTrue(blocked.any { it.rule == "chiffre-non-sourcé" }, blocked.joinToString())
+        val allowed = MessageGuard.check(input("Bonjour, 412 notes sur l'app [F:a3]. Un échange ?").copy(availableFacts = facts + fact))
+        assertTrue(allowed.none { it.rule == "chiffre-non-sourcé" }, allowed.joinToString())
+    }
+
+    @Test
     fun `un premier email sans preuve est bloqué`() {
         val v = MessageGuard.check(input("Bonjour, on fait des apps natives. Un échange ?"))
         assertTrue(v.any { it.rule == "sans-preuve" })

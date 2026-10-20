@@ -111,9 +111,11 @@ object MessageGuard {
             cited.mapNotNull { factsById[it] }.forEach { append(it.statement).append(' ').append(it.excerpt.orEmpty()).append(' ') }
             reference?.let { append(it.proof) }
             append(' ').append(input.offer.label)
-        }.normalizeNumbers()
+        }
+        // Whole numbers only: "12" must not pass because a fact mentions "412".
+        val sourcedNumbers = numberRegex.findAll(provenanceText).map { it.value.normalizeNumber() }.toSet()
         numberRegex.findAll(plain).map { it.value.normalizeNumber() }.distinct()
-            .filter { it !in alwaysAllowedNumbers && it !in provenanceText }
+            .filter { it !in alwaysAllowedNumbers && it !in sourcedNumbers }
             .forEach { v += Violation("chiffre-non-sourcé", Severity.BLOCK, "« $it » n'apparaît dans aucun fait cité") }
 
         // 5. Références clients : seulement celles qui ont une raison d'être citées
@@ -156,5 +158,4 @@ object MessageGuard {
     fun isPublishable(violations: List<Violation>): Boolean = violations.none { it.severity == Severity.BLOCK }
 
     private fun String.normalizeNumber(): String = replace(Regex("[  .,]"), "")
-    private fun String.normalizeNumbers(): String = numberRegex.replace(this) { it.value.normalizeNumber() }
 }
