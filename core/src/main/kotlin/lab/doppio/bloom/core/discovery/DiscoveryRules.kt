@@ -2,6 +2,7 @@ package lab.doppio.bloom.core.discovery
 
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.model.Offer
+import lab.doppio.bloom.core.model.Persona
 import lab.doppio.bloom.core.model.Sector
 import java.net.URLEncoder
 import java.text.Normalizer
@@ -152,15 +153,15 @@ object Targeting {
         Offer.TRAINING_ANTHROPIC -> TargetPersona(listOf("CTO", "Head of AI", "Engineering Manager"), "celui qui pilote les projets LLM")
     }
 
-    fun personaFromRole(role: String): lab.doppio.bloom.core.model.Persona {
+    fun personaFromRole(role: String): Persona {
         val r = role.lowercase()
         return when {
-            Regex("\\bcto\\b|chief technology|directeur technique|vp eng").containsMatchIn(r) -> lab.doppio.bloom.core.model.Persona.CTO
-            Regex("head of mobile|lead mobile|responsable mobile|mobile lead|lead (ios|android)").containsMatchIn(r) -> lab.doppio.bloom.core.model.Persona.HEAD_OF_MOBILE
-            Regex("engineering manager|manager .*ing|responsable .*dév").containsMatchIn(r) -> lab.doppio.bloom.core.model.Persona.ENGINEERING_MANAGER
-            Regex("\\bceo\\b|fondat|founder|président|directeur général").containsMatchIn(r) -> lab.doppio.bloom.core.model.Persona.CEO_FOUNDER
-            Regex("\\bcpo\\b|product|produit").containsMatchIn(r) -> lab.doppio.bloom.core.model.Persona.PRODUCT_LEAD
-            else -> lab.doppio.bloom.core.model.Persona.OTHER
+            Regex("\\bcto\\b|chief technology|directeur technique|vp eng").containsMatchIn(r) -> Persona.CTO
+            Regex("head of mobile|lead mobile|responsable mobile|mobile lead|lead (ios|android)").containsMatchIn(r) -> Persona.HEAD_OF_MOBILE
+            Regex("engineering manager|manager .*ing|responsable .*dév").containsMatchIn(r) -> Persona.ENGINEERING_MANAGER
+            Regex("\\bceo\\b|fondat|founder|président|directeur général").containsMatchIn(r) -> Persona.CEO_FOUNDER
+            Regex("\\bcpo\\b|product|produit").containsMatchIn(r) -> Persona.PRODUCT_LEAD
+            else -> Persona.OTHER
         }
     }
 
