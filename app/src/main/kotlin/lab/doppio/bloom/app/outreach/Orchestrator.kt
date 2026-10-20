@@ -8,6 +8,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
 import lab.doppio.bloom.agents.ReplyClassifierAgent
 import lab.doppio.bloom.agents.ResearchAgent
 import lab.doppio.bloom.agents.WeeklyCoachAgent
@@ -40,6 +42,9 @@ import kotlin.time.Duration.Companion.seconds
  *  - nuit : recherche et rescoring des comptes ; lundi : note du coach ; mensuel : purge RGPD.
  */
 private const val MAX_REJECTIONS_PER_STEP = 3
+
+/** Passes after which a reply that keeps failing is marked seen and given up. */
+private const val MAX_REPLY_FAILURES = 3
 
 /** Upper bound of one SMTP send and of one IMAP pass over every mailbox. */
 private val SEND_TIMEOUT = 60.seconds
@@ -231,9 +236,13 @@ class Orchestrator(
         repo.logEvent("${draft.channel}_TASK_DONE", c?.accountId, c?.id, draftId)
     }
 
+    /** Failed attempts per inbound message (see [processReplies]); forgotten on restart, which only retries. */
+    private val replyFailures = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
     /**
      * Each message is marked seen only once processed. One that fails stays unread and is retried at the
-     * next pass; one already recorded (marking it seen failed last time) is skipped.
+     * next pass, up to [MAX_REPLY_FAILURES] times, then it is marked seen and logged so it stops blocking
+     * the pass; one already recorded (marking it seen failed last time) is skipped.
      */
     suspend fun processReplies() {
         val processed = mutableMapOf<String, MutableList<Long>>()
@@ -241,10 +250,20 @@ class Orchestrator(
             try {
                 if (!repo.replyRecorded(mail.key)) processReply(mail)
                 processed.getOrPut(mail.mailbox) { mutableListOf() } += mail.uid
+                replyFailures.remove(mail.key)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                log.warn("Réponse non traitée, relue à la prochaine passe : ${mail.key}", e)
+                val failures = replyFailures.merge(mail.key, 1, Int::plus) ?: 1
+                if (failures < MAX_REPLY_FAILURES) {
+                    log.warn("Réponse non traitée ($failures), relue à la prochaine passe : ${mail.key}", e)
+                } else {
+                    log.error("Réponse illisible après $failures essais, marquée lue : ${mail.key}", e)
+                    val payload = buildJsonObject { put("key", mail.key); put("from", mail.from) }.toString()
+                    repo.logEvent("REPLY_UNREADABLE", payload = payload)
+                    processed.getOrPut(mail.mailbox) { mutableListOf() } += mail.uid
+                    replyFailures.remove(mail.key)
+                }
             }
         }
         processed.forEach { (mailbox, uids) ->
