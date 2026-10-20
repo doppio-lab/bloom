@@ -13,6 +13,7 @@ import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Parameters
 import io.ktor.serialization.kotlinx.json.json
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
@@ -35,6 +36,7 @@ import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
 import org.jsoup.Jsoup
+import org.slf4j.LoggerFactory
 import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
@@ -83,7 +85,7 @@ class RateLimiter(private val minInterval: Duration) {
     private var last = Instant.EPOCH
     suspend fun <T> run(block: suspend () -> T): T = mutex.withLock {
         val wait = Duration.between(Instant.now(), last.plus(minInterval)).toMillis()
-        if (wait > 0) kotlinx.coroutines.delay(wait)
+        if (wait > 0) delay(wait)
         last = Instant.now()
         block()
     }
@@ -252,10 +254,13 @@ class FranceTravailSource(
     private val clientId: String,
     private val clientSecret: String,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+    private val tokenMutex = Mutex()
     private var token: String? = null
     private var tokenExpiry: Instant = Instant.EPOCH
 
-    private suspend fun accessToken(): String {
+    /** Searches run concurrently: the lock makes them share one token instead of each asking for its own. */
+    private suspend fun accessToken(): String = tokenMutex.withLock {
         token?.takeIf { Instant.now().isBefore(tokenExpiry) }?.let { return it }
         val res = http.submitForm(
             url = "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire",
@@ -279,11 +284,19 @@ class FranceTravailSource(
      */
     suspend fun search(motsCles: String, publieeDepuis: Int? = null, maxPages: Int = 3): List<JsonObject> = buildList {
         for (page in 0 until maxPages) {
-            val res = http.get("https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search") {
+            suspend fun request() = http.get("https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search") {
                 header("Authorization", "Bearer ${accessToken()}")
                 parameter("motsCles", motsCles)
                 publieeDepuis?.let { parameter("publieeDepuis", it) }
                 parameter("range", "${page * 150}-${page * 150 + 149}")
+            }
+            var res = request()
+            // Throttled: wait what the API asks (5 s at most) and try the page once more instead of dropping it
+            if (res.status.value == 429) {
+                val wait = res.headers["Retry-After"]?.toLongOrNull()?.coerceIn(0, 5) ?: 5
+                log.warn("France Travail limite le débit (429), nouvel essai dans {} s", wait)
+                delay(wait * 1000)
+                res = request()
             }
             // Rejected credentials must be visible: silently reading zero offers hid a misconfiguration
             if (res.status.value == 401 || res.status.value == 403) error("France Travail a refusé les identifiants (HTTP ${res.status.value})")
