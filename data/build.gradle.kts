@@ -8,7 +8,6 @@ dependencies {
     api(libs.exposed.core)
     api(libs.exposed.jdbc)
     api(libs.exposed.java.time)
-    implementation(libs.exposed.json)
     implementation(libs.postgres)
     implementation(libs.hikari)
     implementation(libs.flyway.core)
