@@ -572,12 +572,18 @@ class Repository {
 
     // --- Envoi : réserver, envoyer, constater. Un brouillon réservé n'est jamais renvoyé. ------------
 
-    /** Oldest approved email whose retry delay has passed. */
+    /** Oldest approved email whose day has come and whose retry delay has passed. */
     suspend fun nextToSend(now: Instant = Instant.now()): Draft? = dbQuery {
         Drafts.selectAll().where {
             (Drafts.status eq DraftStatus.APPROVED.name) and (Drafts.channel eq Channel.EMAIL.name) and
-                (Drafts.nextAttemptAt.isNull() or Drafts.nextAttemptAt.lessEq(now))
+                (Drafts.nextAttemptAt.isNull() or Drafts.nextAttemptAt.lessEq(now)) and
+                (Drafts.sendAfter.isNull() or Drafts.sendAfter.lessEq(now))
         }.orderBy(Drafts.createdAt).limit(1).firstOrNull()?.toDraft()
+    }
+
+    /** The step's due day: a draft prepared (and approved) earlier waits for it. */
+    suspend fun setSendAfter(id: Long, sendAfter: Instant) = dbQuery {
+        Drafts.update({ Drafts.id eq id }) { it[this.sendAfter] = sendAfter }
     }
 
     /**

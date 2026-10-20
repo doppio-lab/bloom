@@ -136,7 +136,9 @@ class Orchestrator(
                     val key = e.id to action.step.index
                     if (writerBackoff[key]?.second?.isAfter(now) == true) continue
                     try {
-                        writer.draft(e, seq, action.step)
+                        val draftId = writer.draft(e, seq, action.step)
+                        // Drafted a day early so it can be reviewed, but it leaves no sooner than its due day
+                        repo.setSendAfter(draftId, dueDayOf(e, action.step))
                         writerBackoff.remove(key)
                     } catch (ex: CancellationException) {
                         throw ex
@@ -151,6 +153,12 @@ class Orchestrator(
                 is NextAction.WaitUntil -> {}
             }
         }
+    }
+
+    /** Start of the day the step is due: its delay in business days from the previous action. */
+    private fun dueDayOf(e: lab.doppio.bloom.core.model.Enrollment, step: lab.doppio.bloom.core.model.SequenceStep): Instant {
+        val anchor = e.lastActionAt?.let(Instant::parse) ?: Instant.parse(e.enrolledAt)
+        return SequenceEngine.addBusinessDays(anchor.atZone(zone).toLocalDate(), step.delayBusinessDays, policy).atStartOfDay(zone).toInstant()
     }
 
     suspend fun sendApproved(now: Instant = Instant.now()) {
