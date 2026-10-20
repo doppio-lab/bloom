@@ -2,10 +2,12 @@ package lab.doppio.bloom.app.outreach
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeout
 import lab.doppio.bloom.agents.ReplyClassifierAgent
 import lab.doppio.bloom.agents.ResearchAgent
 import lab.doppio.bloom.agents.WeeklyCoachAgent
@@ -27,6 +29,7 @@ import java.time.ZoneId
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Boucles de fond. Chaque boucle est idempotente : un redémarrage ne double ni un envoi ni un brouillon.
@@ -37,6 +40,10 @@ import kotlin.time.Duration.Companion.minutes
  *  - nuit : recherche et rescoring des comptes ; lundi : note du coach ; mensuel : purge RGPD.
  */
 private const val MAX_REJECTIONS_PER_STEP = 3
+
+/** Upper bound of one SMTP send and of one IMAP pass over every mailbox. */
+private val SEND_TIMEOUT = 60.seconds
+private val POLL_TIMEOUT = 120.seconds
 
 class Orchestrator(
     private val repo: Repository,
@@ -174,16 +181,25 @@ class Orchestrator(
         if (!repo.claimForSending(draft.id, messageId, mailbox.address)) return
         val thread = repo.threadMessageId(enrollment.id)
         try {
-            gateway.send(
-                mailbox = mailbox,
-                to = to,
-                subject = draft.subject.orEmpty(),
-                body = MessageGuard.stripCitations(draft.body),
-                contactId = contact.id,
-                language = contact.language,
-                inReplyTo = thread,
-                messageId = messageId,
-            )
+            // Bounded: the socket timeouts cover one stalled call, this covers the whole exchange
+            withTimeout(SEND_TIMEOUT) {
+                gateway.send(
+                    mailbox = mailbox,
+                    to = to,
+                    subject = draft.subject.orEmpty(),
+                    body = MessageGuard.stripCitations(draft.body),
+                    contactId = contact.id,
+                    language = contact.language,
+                    inReplyTo = thread,
+                    messageId = messageId,
+                )
+            }
+        } catch (e: TimeoutCancellationException) {
+            // Not a real cancellation: the draft must be settled like any other failed send
+            val status = repo.recordSendFailure(draft.id, "Délai d'envoi dépassé", now, retryable = false)
+            log.warn("Envoi du brouillon ${draft.id} sans réponse du serveur, statut $status")
+            repo.logEvent("EMAIL_FAILED", contact.accountId, contact.id, draft.id)
+            return
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -213,7 +229,7 @@ class Orchestrator(
      */
     suspend fun processReplies() {
         val processed = mutableMapOf<String, MutableList<Long>>()
-        for (mail in poller.poll()) {
+        for (mail in withTimeout(POLL_TIMEOUT) { poller.poll() }) {
             try {
                 if (!repo.replyRecorded(mail.key)) processReply(mail)
                 processed.getOrPut(mail.mailbox) { mutableListOf() } += mail.uid

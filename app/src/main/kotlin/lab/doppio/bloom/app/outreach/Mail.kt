@@ -21,6 +21,9 @@ import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
 
+/** Socket timeouts (connect, read, write) of the SMTP and IMAP sessions, in milliseconds. */
+private const val SOCKET_TIMEOUT_MS = "30000"
+
 data class Mailbox(val address: String, val password: String, val displayName: String)
 
 data class MailConfig(
@@ -56,14 +59,20 @@ class UnsubscribeTokens(private val secret: String) {
 class EmailGateway(private val config: MailConfig, private val tokens: UnsubscribeTokens) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    /** Without timeouts a stalled SMTP server would hold the sending loop forever. */
+    internal fun smtpProperties(): Properties = Properties().apply {
+        put("mail.smtp.host", config.smtpHost)
+        put("mail.smtp.port", config.smtpPort.toString())
+        put("mail.smtp.auth", "true")
+        put("mail.smtp.starttls.enable", "true")
+        put("mail.smtp.starttls.required", "true")
+        put("mail.smtp.connectiontimeout", SOCKET_TIMEOUT_MS)
+        put("mail.smtp.timeout", SOCKET_TIMEOUT_MS)
+        put("mail.smtp.writetimeout", SOCKET_TIMEOUT_MS)
+    }
+
     private fun session(mailbox: Mailbox): Session = Session.getInstance(
-        Properties().apply {
-            put("mail.smtp.host", config.smtpHost)
-            put("mail.smtp.port", config.smtpPort.toString())
-            put("mail.smtp.auth", "true")
-            put("mail.smtp.starttls.enable", "true")
-            put("mail.smtp.starttls.required", "true")
-        },
+        smtpProperties(),
         object : jakarta.mail.Authenticator() {
             override fun getPasswordAuthentication() = jakarta.mail.PasswordAuthentication(mailbox.address, mailbox.password)
         },
@@ -162,8 +171,14 @@ class ImapPoller(private val config: MailConfig) {
         }
     }
 
+    internal fun imapProperties(): Properties = Properties().apply {
+        put("mail.store.protocol", "imaps")
+        put("mail.imaps.connectiontimeout", SOCKET_TIMEOUT_MS)
+        put("mail.imaps.timeout", SOCKET_TIMEOUT_MS)
+    }
+
     private fun <T> withInbox(mb: Mailbox, mode: Int, block: (Folder) -> T): T {
-        val session = Session.getInstance(Properties().apply { put("mail.store.protocol", "imaps") })
+        val session = Session.getInstance(imapProperties())
         val store = session.getStore("imaps")
         store.connect(config.imapHost, mb.address, mb.password)
         try {
