@@ -70,6 +70,8 @@ object Exclusions {
         "scalian", "astek", "groupe open", "umanis", "keyrus", "davidson", "hardis", "neosoft", "amaris", "consort",
         "alteca", "cooptalis", "free work", "freework", "lincoln", "nexton", "smile", "wavestone", "doppio",
     )
+    /** Same normalization as the account name, otherwise "groupe open" or "creme de la creme" can never match. */
+    private val normalizedNames: Set<String> by lazy { names.map { CompanyNames.tokens(it).joinToString(" ") }.toSet() }
     private val keywords = listOf(
         "consulting", "conseil", "esn", "ssii", "interim", "intérim", "recrutement", "recruitment", "staffing", "talent",
         "freelance", "portage", "agence digitale", "digital agency",
@@ -80,7 +82,7 @@ object Exclusions {
     fun reason(name: String, naf: String? = null, extra: Set<String> = emptySet()): String? {
         val tokens = CompanyNames.tokens(name)
         val joined = tokens.joinToString(" ")
-        (names + extra.map { CompanyNames.tokens(it).joinToString(" ") }).firstOrNull { n ->
+        (normalizedNames + extra.map { CompanyNames.tokens(it).joinToString(" ") }).firstOrNull { n ->
             joined == n || joined.startsWith("$n ") || Regex("\\b${Regex.escape(n)}\\b").containsMatchIn(joined) && n.length >= 5
         }?.let { return "liste d'exclusion : $it" }
         val lower = name.lowercase()

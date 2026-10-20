@@ -48,6 +48,13 @@ class DiscoveryRulesTest {
     }
 
     @Test
+    fun `la liste d'exclusion est comparée après normalisation du nom`() {
+        // "groupe", "de" and "la" are stripped from the account name, so the list must be stripped the same way.
+        assertNotNull(Exclusions.reason("Groupe Open"))
+        assertNotNull(Exclusions.reason("Crème de la Crème SAS"))
+    }
+
+    @Test
     fun `le secteur vient du code NAF ou du genre App Store`() {
         assertEquals(Sector.BANK_INSURANCE, SectorMapping.fromNaf("64.19Z"))
         assertEquals(Sector.RETAIL, SectorMapping.fromNaf("47.64Z"))
