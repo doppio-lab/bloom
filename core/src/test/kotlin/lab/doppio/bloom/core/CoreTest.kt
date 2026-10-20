@@ -181,6 +181,20 @@ class SequenceEngineTest {
     }
 
     @Test
+    fun `le brouillon est préparé un jour ouvré avant le créneau, pas la veille calendaire`() {
+        // Jeudi 15 octobre 2026, 14h Paris : créneau mardi 20 8h30 ; lundi 19 férié, donc préparation dès vendredi 16 8h30.
+        val holidayMonday = SendingPolicy(holidays = setOf("2026-10-19"))
+        val e = Enrollment(1, 1, 1, EnrollmentStatus.ACTIVE, 0, null, "2026-10-15T06:00:00Z")
+        val next = SequenceEngine.next(e, seq, holidayMonday, Instant.parse("2026-10-15T12:00:00Z"))
+        assertEquals(NextAction.WaitUntil(Instant.parse("2026-10-16T06:30:00Z")), next)
+
+        // Envoi le lundi seulement : créneau lundi 19 8h30, préparation dès vendredi 16 8h30 (pas dimanche).
+        val mondays = SendingPolicy(days = setOf(1))
+        val friday = Enrollment(1, 1, 1, EnrollmentStatus.ACTIVE, 0, null, "2026-10-16T06:00:00Z")
+        assertIs<NextAction.PrepareDraft>(SequenceEngine.next(friday, seq, mondays, Instant.parse("2026-10-16T12:00:00Z")))
+    }
+
+    @Test
     fun `le créneau saute le week-end et les jours hors fenêtre`() {
         val friday = Instant.parse("2026-10-16T12:00:00Z")
         val slot = SequenceEngine.nextSendingSlot(friday, policy)
