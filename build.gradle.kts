@@ -9,7 +9,10 @@ subprojects {
         extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
             jvmToolchain(21)
             compilerOptions {
+                // Flip to true once data/.../sources/Sources.kt:419 no longer
+                // warns (unnecessary safe call); it is the only warning left
                 allWarningsAsErrors.set(false)
+                extraWarnings.set(true)
                 freeCompilerArgs.add("-Xjsr305=strict")
             }
         }
