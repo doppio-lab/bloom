@@ -1,9 +1,13 @@
 package lab.doppio.bloom.core.usecase
 
 import kotlinx.coroutines.test.runTest
+import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EnrollmentStatus
 import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.ReplyIntent
+import lab.doppio.bloom.core.model.SendingPolicy
+import java.time.Instant
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -18,7 +22,7 @@ class ProcessRepliesTest {
     private val events = FakeEventRepository()
     private val contact = contacts.add()
 
-    private fun process() = ProcessReplies(inbox, classifier, replies, drafts, sequences, contacts, events, StopContactSequences(sequences))
+    private fun process() = ProcessReplies(inbox, classifier, replies, drafts, sequences, contacts, events, StopContactSequences(sequences), PostponeContactSequences(sequences, drafts, SendingPolicy()))
 
     @Test
     fun `a bounce suppresses the contact of the original email, found by its message id`() = runTest {
@@ -42,6 +46,31 @@ class ProcessRepliesTest {
         assertTrue(contact.email!! in replies.suppressed)
         assertEquals(EnrollmentStatus.STOPPED_UNSUBSCRIBE, sequences.status(e.id))
         assertEquals(listOf(EventType.UNSUBSCRIBED, EventType.REPLY_RECEIVED), events.types)
+    }
+
+    @Test
+    fun `an out-of-office reply resumes the sequence after the return date instead of pausing it for good`() = runTest {
+        val e = sequences.addEnrollment(contact.id)
+        val open = drafts.add(e.id, DraftStatus.APPROVED, step = 0)
+        classifier.intent = ReplyIntent.OUT_OF_OFFICE
+        classifier.followUpOn = LocalDate.parse("2026-11-16")
+        inbox.mails = listOf(inbound(1))
+        process()()
+        assertEquals(EnrollmentStatus.ACTIVE, sequences.status(e.id))
+        // Midnight of Monday 16 Nov 2026 in Paris (UTC+1): the next step is counted from there
+        assertEquals("2026-11-15T23:00:00Z", sequences.enrollments.getValue(e.id).lastActionAt)
+        assertEquals(mapOf(open.id to Instant.parse("2026-11-15T23:00:00Z")), drafts.sendAfter, "an open draft leaves no sooner")
+        assertEquals(listOf(EventType.REPLY_OUT_OF_OFFICE, EventType.REPLY_RECEIVED), events.types)
+    }
+
+    @Test
+    fun `an out-of-office reply without a return date postpones by two weeks, a paused sequence is resumed`() = runTest {
+        val e = sequences.addEnrollment(contact.id, EnrollmentStatus.PAUSED)
+        classifier.intent = ReplyIntent.OUT_OF_OFFICE
+        inbox.mails = listOf(inbound(1))
+        process()()
+        assertEquals(EnrollmentStatus.ACTIVE, sequences.status(e.id))
+        assertEquals(WEDNESDAY_MORNING.plusSeconds(14 * 24 * 3600).toString(), sequences.enrollments.getValue(e.id).lastActionAt)
     }
 
     @Test

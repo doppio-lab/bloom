@@ -89,6 +89,14 @@ class ExposedDraftRepository(private val clock: Clock = Clock.systemDefaultZone(
         }.orderBy(DraftsTable.createdAt).limit(1).firstOrNull()?.toDraft()
     }
 
+    override suspend fun holdOpenDrafts(enrollmentId: Long, sendAfter: Instant) {
+        dbQuery {
+            DraftsTable.update({ (DraftsTable.enrollmentId eq enrollmentId) and (DraftsTable.status inList listOf(DraftStatus.PENDING_REVIEW.name, DraftStatus.APPROVED.name)) }) {
+                it[this.sendAfter] = sendAfter
+            }
+        }
+    }
+
     override suspend fun setSendAfter(id: Long, sendAfter: Instant) {
         dbQuery { DraftsTable.update({ DraftsTable.id eq id }) { it[this.sendAfter] = sendAfter } }
     }

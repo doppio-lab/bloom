@@ -25,6 +25,9 @@ interface DraftRepository {
     /** Oldest approved email whose day has come and whose retry delay has passed. [now] defaults to the clock. */
     suspend fun nextToSend(now: Instant? = null): Draft?
 
+    /** Drafts of the enrollment still waiting for review or for their send (not yet claimed) leave no sooner than [sendAfter]. */
+    suspend fun holdOpenDrafts(enrollmentId: Long, sendAfter: Instant)
+
     /** The step's due day: a draft prepared (and approved) earlier waits for it before it can leave. */
     suspend fun setSendAfter(id: Long, sendAfter: Instant)
 

@@ -1,6 +1,7 @@
 package lab.doppio.bloom.data.persistence.sequence
 
 import java.time.Clock
+import java.time.Instant
 import kotlinx.serialization.builtins.ListSerializer
 import lab.doppio.bloom.core.model.ContactId
 import lab.doppio.bloom.core.model.Enrollment
@@ -70,6 +71,15 @@ class ExposedSequenceRepository(private val clock: Clock = Clock.systemDefaultZo
 
     override suspend fun threadMessageId(enrollmentId: Long): String? = dbQuery {
         EnrollmentsTable.selectAll().where { EnrollmentsTable.id eq enrollmentId }.firstOrNull()?.get(EnrollmentsTable.threadMessageId)
+    }
+
+    override suspend fun postponeEnrollment(enrollmentId: Long, until: Instant) {
+        dbQuery {
+            EnrollmentsTable.update({ EnrollmentsTable.id eq enrollmentId }) {
+                it[status] = EnrollmentStatus.ACTIVE.name
+                it[lastActionAt] = until
+            }
+        }
     }
 
     override suspend fun setEnrollmentStatus(enrollmentId: Long, status: EnrollmentStatus) {

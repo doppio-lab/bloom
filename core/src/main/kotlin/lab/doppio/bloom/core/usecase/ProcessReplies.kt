@@ -30,6 +30,7 @@ class ProcessReplies(
     private val contactRepo: ContactRepository,
     private val eventRepo: EventRepository,
     private val stop: StopContactSequences,
+    private val postpone: PostponeContactSequences,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -62,8 +63,12 @@ class ProcessReplies(
             classifier.classify(mail.subject, mail.body, accountId)
         }
 
-        // Arrêt de toutes les séquences du contact, quelle que soit l'intention
-        contact?.let { stop(it.id, SequenceEngine.onReply(result.intent)) }
+        // Arrêt de toutes les séquences du contact, quelle que soit l'intention ; une absence ne fait que repousser la suite
+        if (result.intent == ReplyIntent.OUT_OF_OFFICE) {
+            contact?.let { postpone(it.id, result.followUpOn, mail.receivedAt) }
+        } else {
+            contact?.let { stop(it.id, SequenceEngine.onReply(result.intent)) }
+        }
         when (result.intent) {
             ReplyIntent.UNSUBSCRIBE -> replyRepo.suppress(mail.from, UseCaseMessages.suppressedByReply(result.summary))
             ReplyIntent.BOUNCE -> contact?.email?.let { replyRepo.suppress(it, UseCaseMessages.SUPPRESSED_BOUNCE) }
@@ -78,6 +83,7 @@ class ProcessReplies(
             ReplyIntent.UNSUBSCRIBE -> eventRepo.logEvent(EventType.UNSUBSCRIBED, accountId, contact?.id)
             ReplyIntent.BOUNCE -> eventRepo.logEvent(EventType.BOUNCED, accountId, contact?.id)
             ReplyIntent.INTERESTED, ReplyIntent.MEETING_REQUEST, ReplyIntent.REFERRAL -> eventRepo.logEvent(EventType.REPLY_POSITIVE, accountId, contact?.id)
+            ReplyIntent.OUT_OF_OFFICE -> eventRepo.logEvent(EventType.REPLY_OUT_OF_OFFICE, accountId, contact?.id)
             else -> {}
         }
         eventRepo.logEvent(EventType.REPLY_RECEIVED, accountId, contact?.id, payload = ReplyReceivedPayload(result.intent).toJson())

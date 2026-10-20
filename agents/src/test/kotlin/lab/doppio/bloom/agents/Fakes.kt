@@ -123,6 +123,7 @@ class FakeDraftRepository : DraftRepository {
     override suspend fun claimForSending(id: Long, messageId: String, mailbox: String): Boolean = TODO()
     override suspend fun recordSent(draft: Draft, threadMessageId: String, now: Instant?) = TODO()
     override suspend fun setSendAfter(id: Long, sendAfter: Instant) = TODO()
+    override suspend fun holdOpenDrafts(enrollmentId: Long, sendAfter: Instant) = TODO()
     override suspend fun recordSendFailure(id: Long, error: String, now: Instant?, maxAttempts: Int, retryable: Boolean): DraftStatus = TODO()
     override suspend fun reconcileInterruptedSends(): Int = TODO()
     override suspend fun sentTodayBy(mailbox: String, since: Instant): Int = TODO()

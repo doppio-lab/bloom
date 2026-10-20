@@ -94,6 +94,9 @@ class FakeSequenceRepository : SequenceRepository {
     override suspend fun setEnrollmentStatus(enrollmentId: Long, status: EnrollmentStatus) {
         enrollments[enrollmentId] = enrollments.getValue(enrollmentId).copy(status = status)
     }
+    override suspend fun postponeEnrollment(enrollmentId: Long, until: Instant) {
+        enrollments[enrollmentId] = enrollments.getValue(enrollmentId).copy(status = EnrollmentStatus.ACTIVE, lastActionAt = until.toString())
+    }
 }
 
 class FakeContactRepository : ContactRepository {
@@ -152,6 +155,9 @@ class FakeDraftRepository : DraftRepository {
     /** The due day of each draft, set by the planner. */
     val sendAfter = mutableMapOf<Long, Instant>()
     override suspend fun setSendAfter(id: Long, sendAfter: Instant) { this.sendAfter[id] = sendAfter }
+    override suspend fun holdOpenDrafts(enrollmentId: Long, sendAfter: Instant) {
+        drafts.values.filter { it.enrollmentId == enrollmentId && it.status in setOf(DraftStatus.PENDING_REVIEW, DraftStatus.APPROVED) }.forEach { this.sendAfter[it.id] = sendAfter }
+    }
     override suspend fun nextToSend(now: Instant?): Draft? = drafts.values.firstOrNull { it.status == DraftStatus.APPROVED && it.channel == Channel.EMAIL }
     override suspend fun claimForSending(id: Long, messageId: String, mailbox: String): Boolean {
         if (!claimWins) return false
@@ -296,10 +302,10 @@ class FakeInbox(var mails: List<InboundMail> = emptyList()) : Inbox {
 fun inbound(uid: Long, from: String = "jane@client.test", body: String = "Merci", bounce: Boolean = false, inReplyTo: List<String> = emptyList()) =
     InboundMail("a@doppio.test", from, "Re: Sujet", body, inReplyTo, WEDNESDAY_MORNING, bounce, uid, "<m$uid@client.test>")
 
-class FakeClassifier(var intent: ReplyIntent = ReplyIntent.NOT_INTERESTED, var failure: Exception? = null) : ReplyClassifier {
+class FakeClassifier(var intent: ReplyIntent = ReplyIntent.NOT_INTERESTED, var failure: Exception? = null, var followUpOn: LocalDate? = null) : ReplyClassifier {
     override suspend fun classify(subject: String?, body: String, accountId: Long?): ReplyClassification {
         failure?.let { throw it }
-        return ReplyClassification(intent, 0.9, null, null, "résumé", null)
+        return ReplyClassification(intent, 0.9, followUpOn, null, "résumé", null)
     }
 }
 
