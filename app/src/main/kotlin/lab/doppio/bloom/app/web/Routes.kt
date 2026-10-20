@@ -12,6 +12,7 @@ import io.ktor.server.routing.route
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.app.AppContext
+import lab.doppio.bloom.app.outreach.UnsubscribeTokens
 import lab.doppio.bloom.core.guard.GuardInput
 import lab.doppio.bloom.core.guard.MessageGuard
 import lab.doppio.bloom.core.model.Account
@@ -27,6 +28,7 @@ import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.data.db.AccountRow
 import lab.doppio.bloom.data.db.Dossier
 import lab.doppio.bloom.data.db.ReplyRow
+import lab.doppio.bloom.data.db.Repository
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -212,31 +214,41 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     }
 }
 
-fun Route.unsubscribeRoutes(ctx: AppContext) {
+fun Route.unsubscribeRoutes(ctx: AppContext) = unsubscribeRoutes(ctx.tokens, ctx.repo)
+
+private const val UNSUBSCRIBE_PAGE = "<!doctype html><meta charset=utf-8><title>Désinscription</title><body style='font-family:system-ui;max-width:32rem;margin:4rem auto'>"
+
+/** Public, no account: the one-click POST of RFC 8058 and the page a person reaches from the email link. */
+fun Route.unsubscribeRoutes(tokens: UnsubscribeTokens, repo: Repository) {
     suspend fun unsubscribe(token: String): Boolean {
-        val contactId = ctx.tokens.verify(token) ?: return false
-        val contact = ctx.repo.contact(contactId)
-        contact?.email?.let { ctx.repo.suppress(it, "lien de désinscription") }
-        contact?.let { c -> ctx.repo.enrollmentsOfContact(c.id).forEach { ctx.repo.setEnrollmentStatus(it.id, lab.doppio.bloom.core.model.EnrollmentStatus.STOPPED_UNSUBSCRIBE) } }
-        ctx.repo.logEvent("UNSUBSCRIBED", contact?.accountId, contactId)
+        val contactId = tokens.verify(token) ?: return false
+        val contact = repo.contact(contactId)
+        contact?.email?.let { repo.suppress(it, "lien de désinscription") }
+        contact?.let { c -> repo.enrollmentsOfContact(c.id).forEach { repo.setEnrollmentStatus(it.id, lab.doppio.bloom.core.model.EnrollmentStatus.STOPPED_UNSUBSCRIBE) } }
+        repo.logEvent("UNSUBSCRIBED", contact?.accountId, contactId)
         return true
     }
 
-    // Lien cliqué par une personne : on confirme sans demander de compte ni de motif
+    // Lien ouvert par une personne (ou par le scanner de liens de sa messagerie) : on demande un clic de
+    // confirmation, seul le POST désinscrit
     get("/u/{token}") {
-        val ok = unsubscribe(call.parameters["token"]!!)
+        val token = call.parameters["token"]!!
+        if (tokens.verify(token) == null) return@get call.respondText("Lien invalide.", ContentType.Text.Html, HttpStatusCode.BadRequest)
         call.respondText(
-            if (ok) "<!doctype html><meta charset=utf-8><title>Désinscription</title><body style='font-family:system-ui;max-width:32rem;margin:4rem auto'>" +
-                "<h1>C'est fait.</h1><p>Vous ne recevrez plus de message de Doppio Lab. Désolé pour le dérangement.</p></body>"
-            else "Lien invalide.",
+            UNSUBSCRIBE_PAGE + "<h1>Ne plus recevoir nos messages</h1>" +
+                "<p>Un clic et vous ne recevrez plus rien de Doppio Lab.</p>" +
+                "<form method=\"post\"><button type=\"submit\" style='font:inherit;padding:.6rem 1.2rem'>Confirmer la désinscription</button></form></body>",
             ContentType.Text.Html,
-            if (ok) HttpStatusCode.OK else HttpStatusCode.BadRequest,
         )
     }
-    // RFC 8058 : POST en un clic depuis le client mail
+    // Désinscription effective : bouton de la page ci-dessus, ou POST en un clic du client mail (RFC 8058)
     post("/u/{token}") {
         val ok = unsubscribe(call.parameters["token"]!!)
-        call.respond(if (ok) HttpStatusCode.OK else HttpStatusCode.BadRequest)
+        if (!ok) return@post call.respondText("Lien invalide.", ContentType.Text.Html, HttpStatusCode.BadRequest)
+        call.respondText(
+            UNSUBSCRIBE_PAGE + "<h1>C'est fait.</h1><p>Vous ne recevrez plus de message de Doppio Lab. Désolé pour le dérangement.</p></body>",
+            ContentType.Text.Html,
+        )
     }
 }
 

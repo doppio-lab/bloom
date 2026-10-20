@@ -15,6 +15,7 @@ import jakarta.mail.search.FlagTerm
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.slf4j.LoggerFactory
+import java.security.MessageDigest
 import java.time.Instant
 import java.util.Properties
 import java.util.UUID
@@ -66,7 +67,8 @@ class UnsubscribeTokens(private val secret: String) {
 
     fun verify(token: String): Long? {
         val id = token.substringBefore('.').toLongOrNull() ?: return null
-        return id.takeIf { tokenFor(id) == token }
+        // Constant time: a byte by byte comparison would leak how much of the MAC is right
+        return id.takeIf { MessageDigest.isEqual(tokenFor(id).toByteArray(), token.toByteArray()) }
     }
 }
 
