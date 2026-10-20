@@ -149,6 +149,9 @@ class FakeDraftRepository : DraftRepository {
         drafts[id] = drafts.getValue(id).copy(status = status, subject = editedSubject ?: drafts.getValue(id).subject, body = editedBody ?: drafts.getValue(id).body)
     }
     override suspend fun humanEditedExamples(limit: Int): List<Draft> = emptyList()
+    /** The due day of each draft, set by the planner. */
+    val sendAfter = mutableMapOf<Long, Instant>()
+    override suspend fun setSendAfter(id: Long, sendAfter: Instant) { this.sendAfter[id] = sendAfter }
     override suspend fun nextToSend(now: Instant?): Draft? = drafts.values.firstOrNull { it.status == DraftStatus.APPROVED && it.channel == Channel.EMAIL }
     override suspend fun claimForSending(id: Long, messageId: String, mailbox: String): Boolean {
         if (!claimWins) return false

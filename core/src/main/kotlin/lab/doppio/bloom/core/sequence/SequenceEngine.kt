@@ -53,6 +53,13 @@ object SequenceEngine {
         return if (now >= prepareFrom) NextAction.PrepareDraft(step) else NextAction.WaitUntil(prepareFrom)
     }
 
+    /** Start of the day a step is due: its delay in business days from the previous action. A draft never leaves before it. */
+    fun dueAt(enrollment: Enrollment, step: SequenceStep, policy: SendingPolicy): Instant {
+        val zone = ZoneId.of(policy.timezone)
+        val anchor = enrollment.lastActionAt?.let(Instant::parse) ?: Instant.parse(enrollment.enrolledAt)
+        return addBusinessDays(anchor.atZone(zone).toLocalDate(), step.delayBusinessDays, policy).atStartOfDay(zone).toInstant()
+    }
+
     /** Effet d'une réponse entrante sur l'inscription. Toute réponse humaine arrête la séquence automatique. */
     fun onReply(intent: ReplyIntent): EnrollmentStatus = when (intent) {
         ReplyIntent.UNSUBSCRIBE -> EnrollmentStatus.STOPPED_UNSUBSCRIBE

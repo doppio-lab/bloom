@@ -65,7 +65,9 @@ class PlanDrafts(
                     val key = e.id to action.step.index
                     if (writerBackoff[key]?.second?.isAfter(now) == true) continue
                     try {
-                        writer.draft(e, seq, action.step)
+                        val draftId = writer.draft(e, seq, action.step)
+                        // Drafted a day early so it can be reviewed, but it leaves no sooner than its due day
+                        draftRepo.setSendAfter(draftId, SequenceEngine.dueAt(e, action.step, policy))
                         writerBackoff.remove(key)
                     } catch (ex: CancellationException) {
                         throw ex

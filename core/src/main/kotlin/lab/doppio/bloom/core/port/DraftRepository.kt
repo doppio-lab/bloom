@@ -22,8 +22,11 @@ interface DraftRepository {
     /** Exemples de messages corrigés à la main : servent d'exemples de style à l'agent rédacteur. */
     suspend fun humanEditedExamples(limit: Int = 5): List<Draft>
 
-    /** Oldest approved email whose retry delay has passed. [now] defaults to the clock. */
+    /** Oldest approved email whose day has come and whose retry delay has passed. [now] defaults to the clock. */
     suspend fun nextToSend(now: Instant? = null): Draft?
+
+    /** The step's due day: a draft prepared (and approved) earlier waits for it before it can leave. */
+    suspend fun setSendAfter(id: Long, sendAfter: Instant)
 
     /**
      * Claims an approved draft before SMTP is called, with the Message-ID it will carry. Committed on its own,

@@ -36,6 +36,13 @@ class PlanDraftsTest {
     }
 
     @Test
+    fun `a drafted step is held until the start of its due day`() = runTest {
+        plan()()
+        // Step 0 has no delay: due the day the enrollment was made (Sunday 1 Nov 2026, Paris time)
+        assertEquals(mapOf(1L to Instant.parse("2026-10-31T23:00:00Z")), drafts.sendAfter)
+    }
+
+    @Test
     fun `a step that already has an open draft is not written twice`() = runTest {
         drafts.add(enrollment.id, DraftStatus.PENDING_REVIEW, step = 0)
         plan()()

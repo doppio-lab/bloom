@@ -109,6 +109,17 @@ class DraftRepositoryTest {
     }
 
     @Test
+    fun `un brouillon approuvé la veille ne part pas avant son jour`() = runTest {
+        val now = Instant.parse("2026-10-13T08:00:00Z")
+        val d = approvedDraft()
+        assertEquals(d.id, drafts.nextToSend(now)?.id, "no send_after: the queue order alone decides")
+
+        drafts.setSendAfter(d.id, now.plus(1, ChronoUnit.DAYS))
+        assertNull(drafts.nextToSend(now))
+        assertEquals(d.id, drafts.nextToSend(now.plus(1, ChronoUnit.DAYS))?.id)
+    }
+
+    @Test
     fun `une étape ne peut avoir qu'un brouillon ouvert`() = runTest {
         val d = approvedDraft()
         assertFailsWith<Exception> { drafts.createDraft(d.copy(id = 0, status = DraftStatus.PENDING_REVIEW)) }

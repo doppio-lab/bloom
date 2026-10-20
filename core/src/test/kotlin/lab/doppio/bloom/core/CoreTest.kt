@@ -201,6 +201,16 @@ class SequenceEngineTest {
     }
 
     @Test
+    fun `une étape est due au début du jour ouvré qui suit son délai`() {
+        val e = Enrollment(1, 1, 1, EnrollmentStatus.ACTIVE, 1, "2026-10-12T08:00:00Z", "2026-10-01T08:00:00Z")
+        // Lundi 12 octobre + 2 jours ouvrés = mercredi 14, minuit à Paris (UTC+2)
+        assertEquals(Instant.parse("2026-10-13T22:00:00Z"), SequenceEngine.dueAt(e, seq.steps[1], policy))
+        // Le délai saute le week-end : vendredi 16 + 2 jours ouvrés = mardi 20
+        val friday = e.copy(lastActionAt = "2026-10-16T08:00:00Z")
+        assertEquals(Instant.parse("2026-10-19T22:00:00Z"), SequenceEngine.dueAt(friday, seq.steps[1], policy))
+    }
+
+    @Test
     fun `le créneau saute le week-end et les jours hors fenêtre`() {
         val friday = Instant.parse("2026-10-16T12:00:00Z")
         val slot = SequenceEngine.nextSendingSlot(friday, policy)
