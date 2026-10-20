@@ -94,7 +94,9 @@ object Exclusions {
         val tokens = CompanyNames.tokens(name)
         val joined = tokens.joinToString(" ")
         (normalizedNames + extra.map { CompanyNames.tokens(it).joinToString(" ") }).firstOrNull { n ->
-            joined == n || joined.startsWith("$n ") || Regex("\\b${Regex.escape(n)}\\b").containsMatchIn(joined) && n.length >= 5
+            // A short entry ("open" from "groupe open", "atos") only matches the whole name:
+            // "Open Banking" is not Groupe Open. Longer entries also match as a prefix or a whole word.
+            joined == n || n.length >= 5 && (joined.startsWith("$n ") || Regex("\\b${Regex.escape(n)}\\b").containsMatchIn(joined))
         }?.let { return "liste d'exclusion : $it" }
         keywordTokens.firstOrNull { (_, k) -> tokens.windowed(k.size).any { it == k } }?.let { return "mot-clé : ${it.first}" }
         if (naf != null && nafPrefixes.any { naf.startsWith(it) }) return "code NAF $naf (intérim ou conseil)"

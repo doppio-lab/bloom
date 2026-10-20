@@ -62,6 +62,15 @@ class DiscoveryRulesTest {
     }
 
     @Test
+    fun `une entrée courte de la liste d'exclusion ne s'applique qu'au nom entier`() {
+        // "groupe open" normalizes to "open": it must not swallow every company whose name starts with Open.
+        assertNotNull(Exclusions.reason("Groupe Open"))
+        assertNotNull(Exclusions.reason("Groupe Open SA"))
+        assertNull(Exclusions.reason("Open Banking Ltd"))
+        assertNull(Exclusions.reason("Openclassrooms"))
+    }
+
+    @Test
     fun `les mots-clés d'exclusion se comparent mot à mot`() {
         assertNull(Exclusions.reason("Fresnel"))
         assertNull(Exclusions.reason("Talentsoft"))
