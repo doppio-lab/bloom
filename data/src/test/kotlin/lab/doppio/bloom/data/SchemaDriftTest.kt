@@ -44,6 +44,8 @@ class SchemaDriftTest {
     @Test
     fun `les tables Exposed décrivent exactement le schéma des migrations`() {
         TestDatabase.reset()
+        // The replacement lives in the exposed-migration artifact; not worth a dependency for one check.
+        @Suppress("DEPRECATION")
         val statements = transaction { SchemaUtils.statementsRequiredToActualizeScheme(*tables, withLogs = false) }
         assertEquals(emptyList(), statements.filterNot { acceptedTimestampDrift.matches(it) })
     }

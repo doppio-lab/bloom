@@ -439,7 +439,7 @@ class WebPageSource(client: HttpClient) {
         val doc = Jsoup.parse(html, url)
         doc.select("script, style, nav, footer, noscript, svg").remove()
         val title = doc.title().ifBlank { url }
-        val text = doc.body()?.text().orEmpty().take(maxChars)
+        val text = doc.body().text().take(maxChars)
         val f = fact(accountId, FactKind.WEB_PAGE, "Page lue : $title", url, excerpt = text.take(500))
         return f to text
     }
