@@ -12,6 +12,9 @@ import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.Draft
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.Enrollment
+import lab.doppio.bloom.core.model.Fact
+import lab.doppio.bloom.core.model.Offer
+import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.model.Sequence
 import lab.doppio.bloom.core.model.SequenceStep
 import lab.doppio.bloom.core.references.ReferenceLibrary
@@ -77,39 +80,17 @@ class WriterAgent(
             }
         }
 
-        var attempt = 0
-        var output: DraftOutput
-        var violations: List<Violation>
-        var feedback = ""
-        do {
-            output = tracker.track("writer", account.id, llm.writer) {
-                val r = llm.executor.executeStructured<DraftOutput>(
-                    prompt = prompt("draft-${enrollment.id}-${step.index}-$attempt") {
-                        system(Prompts.writer(contact.language, senderName))
-                        user(context + feedback)
-                    },
-                    model = llm.writer,
-                ).getOrThrow()
-                r.data to r
-            }
-            violations = MessageGuard.check(
-                GuardInput(
-                    channel = step.channel,
-                    stepIndex = step.index,
-                    subject = output.subject.takeIf { step.channel == Channel.EMAIL },
-                    body = output.body,
-                    citedFactIds = output.citedFactIds,
-                    availableFacts = facts,
-                    referenceKey = output.referenceKey.ifBlank { null },
-                    sector = account.sector,
-                    offer = sequence.offer,
-                    language = contact.language,
-                ),
-            )
-            feedback = "\n\nTon brouillon précédent :\n${output.body}\n\nIl a été refusé par le contrôle qualité :\n" +
-                violations.joinToString("\n") { "- $it" } + "\nCorrige uniquement ces points."
-            attempt++
-        } while (!MessageGuard.isPublishable(violations) && attempt <= maxRepairs)
+        val (output, violations, attempts) = compose(
+            promptId = "draft-${enrollment.id}-${step.index}",
+            accountId = account.id,
+            context = context,
+            channel = step.channel,
+            stepIndex = step.index,
+            facts = facts,
+            sector = account.sector,
+            offer = sequence.offer,
+            language = contact.language,
+        )
 
         val draftId = repo.createDraft(
             Draft(
@@ -125,7 +106,57 @@ class WriterAgent(
                 guardReport = violations.map { it.toString() },
             ),
         )
-        repo.logEvent("DRAFT_CREATED", account.id, contact.id, draftId, """{"attempts":$attempt,"publishable":${MessageGuard.isPublishable(violations)}}""")
+        repo.logEvent("DRAFT_CREATED", account.id, contact.id, draftId, """{"attempts":$attempts,"publishable":${MessageGuard.isPublishable(violations)}}""")
         return draftId
+    }
+
+    internal data class Composition(val output: DraftOutput, val violations: List<Violation>, val attempts: Int)
+
+    /** The write, check, repair loop. Free of the repository so it can run against a fake model. */
+    internal suspend fun compose(
+        promptId: String,
+        accountId: Long,
+        context: String,
+        channel: Channel,
+        stepIndex: Int,
+        facts: List<Fact>,
+        sector: Sector,
+        offer: Offer,
+        language: String,
+    ): Composition {
+        var attempt = 0
+        var output: DraftOutput
+        var violations: List<Violation>
+        var feedback = ""
+        do {
+            output = tracker.track("writer", accountId, llm.writer) {
+                val r = llm.executor.executeStructured<DraftOutput>(
+                    prompt = prompt("$promptId-$attempt") {
+                        system(Prompts.writer(language, senderName))
+                        user(context + feedback)
+                    },
+                    model = llm.writer,
+                ).getOrThrow()
+                r.data to r
+            }
+            violations = MessageGuard.check(
+                GuardInput(
+                    channel = channel,
+                    stepIndex = stepIndex,
+                    subject = output.subject.takeIf { channel == Channel.EMAIL },
+                    body = output.body,
+                    citedFactIds = output.citedFactIds,
+                    availableFacts = facts,
+                    referenceKey = output.referenceKey.ifBlank { null },
+                    sector = sector,
+                    offer = offer,
+                    language = language,
+                ),
+            )
+            feedback = "\n\nTon brouillon précédent :\n${output.body}\n\nIl a été refusé par le contrôle qualité :\n" +
+                violations.joinToString("\n") { "- $it" } + "\nCorrige uniquement ces points."
+            attempt++
+        } while (!MessageGuard.isPublishable(violations) && attempt <= maxRepairs)
+        return Composition(output, violations, attempt)
     }
 }

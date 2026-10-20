@@ -65,51 +65,24 @@ data class LlmConfig(
  * Provider and per-task model selection. The writer and the researcher need judgement,
  * the reply classifier has to be fast and cheap.
  */
-class Llm(config: LlmConfig) {
-    val provider: LlmProvider = config.provider
+class Llm private constructor(
+    val provider: LlmProvider,
+    rawExecutor: PromptExecutor,
+    val research: LLModel,
+    val fast: LLModel,
+) {
+    constructor(config: LlmConfig) : this(parts(config))
+
+    private constructor(parts: Parts) : this(parts.provider, parts.executor, parts.research, parts.fast)
 
     /** Every call goes through [MeteredExecutor] so the tracker sees its tokens, even when the call fails later. */
-    val executor: PromptExecutor
-    val research: LLModel
-    val writer: LLModel
-    val fast: LLModel
-
-    init {
-        when (config.provider) {
-            LlmProvider.ANTHROPIC -> {
-                val key = requireNotNull(config.apiKey) { "ANTHROPIC_API_KEY est obligatoire avec LLM_PROVIDER=anthropic" }
-                executor = MeteredExecutor(MultiLLMPromptExecutor(AnthropicLLMClient(key)))
-                research = config.model?.let { AnthropicModels.Sonnet_5.copy(id = it) } ?: AnthropicModels.Sonnet_5
-                fast = config.fastModel?.let { AnthropicModels.Haiku_4_5.copy(id = it) } ?: AnthropicModels.Haiku_4_5
-            }
-            LlmProvider.OLLAMA -> {
-                executor = MeteredExecutor(
-                    MultiLLMPromptExecutor(
-                        OllamaClient(
-                            baseUrl = config.baseUrl ?: DEFAULT_OLLAMA_URL,
-                            // Otherwise Ollama keeps its small default window and truncates the pages read by the researcher
-                            contextWindowStrategy = ContextWindowStrategy.Companion.Fixed(config.contextLength),
-                        ),
-                    ),
-                )
-                research = localModel(LLMProvider.Ollama, config.model ?: DEFAULT_OLLAMA_MODEL, config.contextLength, OLLAMA_CAPABILITIES)
-                // One model by default: loading two in memory costs more than the small one saves
-                fast = config.fastModel?.let { localModel(LLMProvider.Ollama, it, config.contextLength, OLLAMA_CAPABILITIES) } ?: research
-            }
-            LlmProvider.OPENAI -> {
-                val id = requireNotNull(config.model) { "LLM_MODEL est obligatoire avec LLM_PROVIDER=openai" }
-                val settings = config.baseUrl?.let { OpenAIClientSettings(baseUrl = it) } ?: OpenAIClientSettings()
-                // Local compatible servers need no key, but the header must be present
-                executor = MeteredExecutor(MultiLLMPromptExecutor(OpenAILLMClient(config.apiKey ?: "not-needed", settings)))
-                research = localModel(LLMProvider.OpenAI, id, config.contextLength, OPENAI_CAPABILITIES)
-                fast = config.fastModel?.let { localModel(LLMProvider.OpenAI, it, config.contextLength, OPENAI_CAPABILITIES) } ?: research
-            }
-        }
-        writer = research
-    }
+    val executor: PromptExecutor = MeteredExecutor(rawExecutor)
+    val writer: LLModel = research
 
     /** Summary logged at startup, without secrets. */
     fun describe(): String = "${provider.name.lowercase()} (principal : ${research.id}, rapide : ${fast.id})"
+
+    private class Parts(val provider: LlmProvider, val executor: PromptExecutor, val research: LLModel, val fast: LLModel)
 
     companion object {
         const val DEFAULT_OLLAMA_URL = "http://localhost:11434"
@@ -122,6 +95,50 @@ class Llm(config: LlmConfig) {
             LLMCapability.Temperature, LLMCapability.Tools, LLMCapability.ToolChoice, LLMCapability.Completion,
             LLMCapability.Schema.JSON.Standard, LLMCapability.OpenAIEndpoint.Completions,
         )
+
+        /** An Llm over any executor (Koog's mock executor, a hand-written fake): the agents never notice. */
+        internal fun forTesting(executor: PromptExecutor, main: LLModel, fast: LLModel = main, provider: LlmProvider = LlmProvider.OPENAI): Llm =
+            Llm(provider, executor, main, fast)
+
+        private fun parts(config: LlmConfig): Parts = when (config.provider) {
+            LlmProvider.ANTHROPIC -> {
+                val key = requireNotNull(config.apiKey) { "ANTHROPIC_API_KEY est obligatoire avec LLM_PROVIDER=anthropic" }
+                Parts(
+                    provider = config.provider,
+                    executor = MultiLLMPromptExecutor(AnthropicLLMClient(key)),
+                    research = config.model?.let { AnthropicModels.Sonnet_5.copy(id = it) } ?: AnthropicModels.Sonnet_5,
+                    fast = config.fastModel?.let { AnthropicModels.Haiku_4_5.copy(id = it) } ?: AnthropicModels.Haiku_4_5,
+                )
+            }
+            LlmProvider.OLLAMA -> {
+                val research = localModel(LLMProvider.Ollama, config.model ?: DEFAULT_OLLAMA_MODEL, config.contextLength, OLLAMA_CAPABILITIES)
+                Parts(
+                    provider = config.provider,
+                    executor = MultiLLMPromptExecutor(
+                        OllamaClient(
+                            baseUrl = config.baseUrl ?: DEFAULT_OLLAMA_URL,
+                            // Otherwise Ollama keeps its small default window and truncates the pages read by the researcher
+                            contextWindowStrategy = ContextWindowStrategy.Companion.Fixed(config.contextLength),
+                        ),
+                    ),
+                    research = research,
+                    // One model by default: loading two in memory costs more than the small one saves
+                    fast = config.fastModel?.let { localModel(LLMProvider.Ollama, it, config.contextLength, OLLAMA_CAPABILITIES) } ?: research,
+                )
+            }
+            LlmProvider.OPENAI -> {
+                val id = requireNotNull(config.model) { "LLM_MODEL est obligatoire avec LLM_PROVIDER=openai" }
+                val settings = config.baseUrl?.let { OpenAIClientSettings(baseUrl = it) } ?: OpenAIClientSettings()
+                val research = localModel(LLMProvider.OpenAI, id, config.contextLength, OPENAI_CAPABILITIES)
+                Parts(
+                    provider = config.provider,
+                    // Local compatible servers need no key, but the header must be present
+                    executor = MultiLLMPromptExecutor(OpenAILLMClient(config.apiKey ?: "not-needed", settings)),
+                    research = research,
+                    fast = config.fastModel?.let { localModel(LLMProvider.OpenAI, it, config.contextLength, OPENAI_CAPABILITIES) } ?: research,
+                )
+            }
+        }
 
         private fun localModel(provider: LLMProvider, id: String, contextLength: Long, capabilities: List<LLMCapability>) =
             LLModel(provider = provider, id = id, capabilities = capabilities, contextLength = contextLength)
