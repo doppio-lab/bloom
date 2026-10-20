@@ -49,11 +49,13 @@ class JobBoardSource(private val http: HttpClient) {
         val facts = mutableListOf<Fact>()
         val signals = mutableListOf<Signal>()
         postings.filter { HiringRules.isMobile(it.title) }.take(max).forEach { p ->
-            // An age is stated only when the board gives the first publication date
-            val age = p.publishedAt?.takeIf { p.dateIsFirstPublication }?.let { Duration.between(it, now).toDays() }
+            // A date is stated only when the board gives the first publication date. The date, not the age:
+            // the id derives from the statement, so an age would mint a new fact every night
+            val published = p.publishedAt?.takeIf { p.dateIsFirstPublication }
+            val age = published?.let { Duration.between(it, now).toDays() }
             val f = fact(
                 accountId, FactKind.JOB_POSTING,
-                "Offre d'emploi « ${p.title} »" + (age?.let { " publiée il y a $it jours" } ?: ""),
+                "Offre d'emploi « ${p.title} »" + (published?.let { " publiée le ${publishedOn(it)}" } ?: ""),
                 p.url,
                 excerpt = p.location,
             )

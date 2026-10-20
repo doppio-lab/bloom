@@ -39,7 +39,9 @@ import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
+import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 /**
@@ -56,10 +58,14 @@ fun defaultHttpClient(): HttpClient = HttpClient(CIO) {
 }
 
 object FactIds {
+    /** Full SHA-1 of the source and the statement: the id is a global primary key, 32 bits would collide. */
     fun of(sourceUrl: String, statement: String): String =
         MessageDigest.getInstance("SHA-1").digest("$sourceUrl|$statement".toByteArray())
-            .joinToString("") { "%02x".format(it) }.take(8)
+            .joinToString("") { "%02x".format(it) }
 }
+
+/** Publication date as written in a statement: stable from one night to the next, unlike an age in days. */
+internal fun publishedOn(at: Instant): String = at.atZone(ZoneId.of("Europe/Paris")).toLocalDate().format(DateTimeFormatter.ofPattern("dd/MM/yyyy"))
 
 fun fact(accountId: AccountId, kind: FactKind, statement: String, sourceUrl: String, excerpt: String? = null) =
     Fact(FactIds.of(sourceUrl, statement), accountId, kind, statement, sourceUrl, Instant.now().toString(), excerpt?.take(500))
@@ -120,7 +126,7 @@ class AppStoreSource(private val http: HttpClient, private val country: String =
         }
         if (releaseDate != null) {
             val days = Duration.between(releaseDate, now).toDays()
-            val f = fact(accountId, FactKind.APP_METADATA, "$name : dernière version $version publiée il y a $days jours", storeUrl)
+            val f = fact(accountId, FactKind.APP_METADATA, "$name : dernière version $version publiée le ${publishedOn(releaseDate)}", storeUrl)
             facts += f
             if (days > 120) {
                 signals += Signal(accountId, SignalType.RELEASE_STALL, ((days - 120) / 240.0).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
@@ -303,9 +309,10 @@ class FranceTravailSource(
             val url = o["origineOffre"]?.jsonObject?.get("urlOrigine").str()
                 ?: "https://candidat.francetravail.fr/offres/recherche/detail/$id"
             val age = created?.let { Duration.between(it, now).toDays() }
+            // The date, not the age: the id derives from the statement, so an age would mint a new fact every night
             val f = fact(
                 accountId, FactKind.JOB_POSTING,
-                "Offre d'emploi « $title »" + (age?.let { " publiée il y a $it jours" } ?: ""),
+                "Offre d'emploi « $title »" + (created?.let { " publiée le ${publishedOn(it)}" } ?: ""),
                 url,
                 excerpt = description.take(400),
             )
