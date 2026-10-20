@@ -79,7 +79,9 @@ object MessageGuard {
     fun check(input: GuardInput): List<Violation> {
         val v = mutableListOf<Violation>()
         val plain = stripCitations(input.body)
-        val lower = (input.subject.orEmpty() + "\n" + plain).lowercase()
+        // Subject and body together: a number or a link in the subject reaches the prospect just the same.
+        val full = input.subject.orEmpty() + "\n" + plain
+        val lower = full.lowercase()
 
         // 1. Typographie et ton
         if ('—' in lower || " – " in lower) {
@@ -133,7 +135,7 @@ object MessageGuard {
         // ("5.2" as 52), as each of its digit runs (5 and 2), and without leading zeros (05 as 5).
         val knownNumbers = (digitRun.findAll(provenanceText.normalizeNumbers()) + digitRun.findAll(provenanceText))
             .flatMap { sequenceOf(it.value, it.value.trimStart('0')) }.toSet()
-        val written = numberRegex.findAll(plain).map { it.value.normalizeNumber() } +
+        val written = numberRegex.findAll(full).map { it.value.normalizeNumber() } +
             numberWordRegex.findAll(plain.lowercase()).map { numberWords.getValue(it.value) }
         written.distinct()
             .filter { it !in GuardLimits.ALWAYS_ALLOWED_NUMBERS && it !in knownNumbers }
@@ -159,10 +161,10 @@ object MessageGuard {
         }
 
         // 6. Délivrabilité
-        if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(plain)) {
+        if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(full)) {
             v += Violation("lien", Severity.BLOCK, GuardMessages.NO_LINK_IN_FIRST_EMAIL)
         }
-        urlRegex.findAll(plain).map { it.value }.filterNot { Brand.DOMAIN in it }.forEach {
+        urlRegex.findAll(full).map { it.value }.filterNot { Brand.DOMAIN in it }.forEach {
             v += Violation("lien", Severity.BLOCK, GuardMessages.externalLink(it))
         }
 
