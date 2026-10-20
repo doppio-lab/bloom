@@ -3,6 +3,8 @@ package lab.doppio.bloom.data.sources.facts
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.jsonObject
 import lab.doppio.bloom.core.model.SignalType
@@ -97,6 +99,22 @@ class FranceTravailSourceTest {
     fun `no content and server errors end the search quietly`() = runTest {
         assertEquals(emptyList(), source(http { Reply("", HttpStatusCode.NoContent) }).search("a"))
         assertEquals(emptyList(), source(http { failure() }).search("a"))
+    }
+
+    @Test
+    fun `a throttled page is asked again after the delay instead of being dropped`() = runTest {
+        val http = http { n -> if (n == 0) failure(HttpStatusCode.TooManyRequests) else json(results(offer("1"))) }
+        val offers = source(http).search("a")
+        assertEquals(listOf("1"), offers.map { it["id"]!!.toString().trim('"') })
+        assertEquals(2, http.requests.count { "offres/search" in it.url.toString() }, "one retry after the 429")
+    }
+
+    @Test
+    fun `concurrent searches share one token`() = runTest {
+        val http = http()
+        val source = source(http)
+        (1..5).map { async { source.search("mot $it", maxPages = 1) } }.awaitAll()
+        assertEquals(1, tokenCalls)
     }
 
     @Test
