@@ -73,6 +73,8 @@ class Orchestrator(
     /** True once this instance holds the loops' lock. */
     @Volatile private var leader = false
 
+    val isLeader: Boolean get() = leader
+
     fun start(scope: CoroutineScope) {
         jobs = scope
         scope.launch {
@@ -349,8 +351,10 @@ class Orchestrator(
         // Every tick: the Codeur feed only keeps the latest projects, a nightly read would miss most of them
         runCatching { discovery.pollDemands() }.onFailure { log.warn("Lecture de Codeur en échec", it) }
 
-        if (now.hour in 2..4) job("discovery", today) {
-            runDiscovery()
+        // A manual run in progress ("Chercher maintenant") would make the night job a no-op marked done:
+        // the job is not claimed, the next tick retries while the window lasts
+        if (now.hour in 2..4 && !discoveryRunning) job("discovery", today) {
+            runDiscovery() ?: error("Découverte déjà en cours, lancée depuis le dashboard")
             if (repo.claimJob("research", today)) runJob("research") { researchBatch() }
         }
         if (now.hour >= 5) job("research", today) { researchBatch() }

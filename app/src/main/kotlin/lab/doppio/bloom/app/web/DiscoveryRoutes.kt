@@ -113,6 +113,8 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
 
     /** Lancer la découverte sans attendre la nuit. Elle tourne en tâche de fond (plusieurs minutes). */
     post("/discovery/run") {
+        // Only the instance that runs the loops discovers: two runs at once would merge the same accounts twice
+        if (!ctx.orchestrator.isLeader) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to "cette instance ne tient pas les tâches de fond, réessayer dans une minute"))
         if (ctx.orchestrator.discoveryRunning) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to "déjà en cours"))
         ctx.background.launch {
             runCatching { ctx.orchestrator.runDiscovery(); ctx.orchestrator.researchBatch() }
