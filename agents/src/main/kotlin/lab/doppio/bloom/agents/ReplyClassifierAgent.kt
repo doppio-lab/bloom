@@ -47,6 +47,7 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
                     user(Prompts.replyInput(subject, trimmed))
                 },
                 model = llm.fast,
+                fixingParser = llm.fixingParser,
             ).getOrThrow()
             r.data to r
         }

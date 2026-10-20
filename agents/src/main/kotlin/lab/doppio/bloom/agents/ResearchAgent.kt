@@ -147,6 +147,7 @@ class ResearchAgent(
                     user(Prompts.synthesisInput(account, facts))
                 },
                 model = llm.research,
+                fixingParser = llm.fixingParser,
             ).getOrThrow()
             r.data to r
         }

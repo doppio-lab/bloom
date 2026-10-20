@@ -6,6 +6,7 @@ import ai.koog.prompt.executor.clients.openai.OpenAIClientSettings
 import ai.koog.prompt.executor.clients.openai.OpenAILLMClient
 import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import ai.koog.prompt.executor.model.PromptExecutor
+import ai.koog.prompt.executor.model.StructureFixingParser
 import ai.koog.prompt.executor.ollama.client.ContextWindowStrategy
 import ai.koog.prompt.executor.ollama.client.OllamaClient
 import ai.koog.prompt.llm.LLMCapability
@@ -61,10 +62,15 @@ class Llm(
     val fast: LLModel,
     val writer: LLModel = research,
 ) {
+    /** Repairs a malformed structured answer with the fast model, [FIXING_RETRIES] times at most, instead of failing the run. */
+    val fixingParser: StructureFixingParser = StructureFixingParser(model = fast, retries = FIXING_RETRIES)
+
     /** Summary logged at startup, without secrets. */
     fun describe(): String = "$label (principal : ${research.id}, rapide : ${fast.id})"
 
     companion object {
+        const val FIXING_RETRIES = 2
+
         /** Builds the real executor and models for the configured provider. */
         fun from(config: LlmConfig): Llm {
             val executor: PromptExecutor

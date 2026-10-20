@@ -69,6 +69,19 @@ class WriterAgentTest {
     }
 
     @Test
+    fun `a malformed answer is repaired by the fixing model instead of failing the run`() = runTest {
+        // The first answer is prose around the JSON; the second one answers the fixing prompt
+        val executor = CannedExecutor("Voici le brouillon :\n$good", good)
+        writer(executor).draft(enrollment, sequence, step)
+
+        assertEquals(2, executor.calls, "one draft call, one fixing call, no guard repair")
+        val draft = draftRepo.created.single()
+        assertEquals("Crash au paiement", draft.subject)
+        assertTrue(draft.guardReport.none { it.startsWith("[BLOCK]") }, draft.guardReport.toString())
+        assertTrue(runRepo.runs.single().success)
+    }
+
+    @Test
     fun `the repair loop stops after maxRepairs and files the blocked draft for review`() = runTest {
         val executor = CannedExecutor(bad)
         writer(executor, maxRepairs = 2).draft(enrollment, sequence, step)
