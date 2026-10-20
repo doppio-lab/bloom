@@ -167,7 +167,7 @@ object MessageGuard {
         if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(full)) {
             v += Violation("lien", Severity.BLOCK, GuardMessages.NO_LINK_IN_FIRST_EMAIL)
         }
-        urlRegex.findAll(full).map { it.value }.filterNot { Brand.DOMAIN in it }.forEach {
+        urlRegex.findAll(full).map { it.value }.filterNot { isOwnDomain(it) }.forEach {
             v += Violation("lien", Severity.BLOCK, GuardMessages.externalLink(it))
         }
 
@@ -182,6 +182,15 @@ object MessageGuard {
     }
 
     fun isPublishable(violations: List<Violation>): Boolean = violations.none { it.severity == Severity.BLOCK }
+
+    /** True only when the host of the URL is [Brand.DOMAIN] or one of its subdomains, whatever the path or query says. */
+    private fun isOwnDomain(url: String): Boolean {
+        val host = url.lowercase()
+            .replaceFirst(Regex("^https?://"), "")
+            .substringBefore('/').substringBefore('?').substringBefore('#')
+            .substringAfterLast('@').substringBefore(':')
+        return host == Brand.DOMAIN || host.endsWith(".${Brand.DOMAIN}")
+    }
 
     private fun String.normalizeNumber(): String = replace(Regex(numberSeparators), "")
     private fun String.normalizeNumbers(): String = numberRegex.replace(this) { it.value.normalizeNumber() }
