@@ -417,7 +417,8 @@ class CompanyRegistrySource(private val http: HttpClient) {
 // Pages web publiques de l'entreprise (site, page carrières, blog tech)
 // ---------------------------------------------------------------------------------------------
 
-class WebPageSource(private val http: HttpClient) {
+class WebPageSource(client: HttpClient) {
+    private val http = client.withoutRedirects()
     private val limiter = RateLimiter(Duration.ofSeconds(1))
 
     /** Renvoie le texte visible d'une page, tronqué. Le fait créé contient l'URL exacte lue. */

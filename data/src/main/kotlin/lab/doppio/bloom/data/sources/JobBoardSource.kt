@@ -19,7 +19,8 @@ import java.time.Instant
  * they are addressed by company, so this enriches accounts we already know instead of finding new ones.
  * What it adds over France Travail: the exact publication date, hence how long a mobile role has been open.
  */
-class JobBoardSource(private val http: HttpClient) {
+class JobBoardSource(client: HttpClient) {
+    private val http = client.withoutRedirects()
     private val limiter = RateLimiter(Duration.ofSeconds(1))
 
     private suspend fun fetch(url: String, accepted: List<ContentType> = TEXT_CONTENT_TYPES): String? = runCatching {
