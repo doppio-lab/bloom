@@ -114,6 +114,15 @@ class GuardTest {
     }
 
     @Test
+    fun `seul le domaine doppio-lab point com est autorisé dans les liens`() {
+        fun followUp(body: String) = MessageGuard.check(input(body).copy(stepIndex = 1))
+        val evil = followUp("Bonjour, crash au paiement [F:a2]. Voir https://evil.io/?ref=doppio-lab.com et dites-moi ?")
+        assertTrue(evil.any { it.rule == "lien" }, evil.joinToString())
+        val own = followUp("Bonjour, crash au paiement [F:a2]. Voir https://www.doppio-lab.com/cas et dites-moi ?")
+        assertTrue(own.none { it.rule == "lien" }, own.joinToString())
+    }
+
+    @Test
     fun `un premier email sans preuve est bloqué`() {
         val v = MessageGuard.check(input("Bonjour, on fait des apps natives. Un échange ?"))
         assertTrue(v.any { it.rule == "sans-preuve" })

@@ -148,7 +148,7 @@ object MessageGuard {
         if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(full)) {
             v += Violation("lien", Severity.BLOCK, "pas de lien dans le premier email (délivrabilité)")
         }
-        urlRegex.findAll(full).map { it.value }.filterNot { "doppio-lab.com" in it }.forEach {
+        urlRegex.findAll(full).map { it.value }.filterNot { isOwnDomain(it) }.forEach {
             v += Violation("lien", Severity.BLOCK, "lien externe non autorisé : $it")
         }
 
@@ -163,6 +163,15 @@ object MessageGuard {
     }
 
     fun isPublishable(violations: List<Violation>): Boolean = violations.none { it.severity == Severity.BLOCK }
+
+    /** True only when the host of the URL is doppio-lab.com or one of its subdomains, whatever the path or query says. */
+    private fun isOwnDomain(url: String): Boolean {
+        val host = url.lowercase()
+            .replaceFirst(Regex("^https?://"), "")
+            .substringBefore('/').substringBefore('?').substringBefore('#')
+            .substringAfterLast('@').substringBefore(':')
+        return host == "doppio-lab.com" || host.endsWith(".doppio-lab.com")
+    }
 
     private fun String.normalizeNumber(): String = replace(Regex(numberSeparators), "")
 }
