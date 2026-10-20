@@ -40,6 +40,7 @@ import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNotNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.lessEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.neq
 import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
@@ -365,12 +366,31 @@ class Repository {
         Contacts.update({ Contacts.id eq contactId }) { it[lastInboundAt] = Instant.now() }
     }
 
-    /** RGPD : purge des contacts sans échange depuis 3 ans (recommandation CNIL). Les oppositions restent. */
+    /**
+     * RGPD : purge des contacts sans échange depuis 3 ans (recommandation CNIL). Les oppositions restent.
+     * Everything the contact left behind goes with it: replies keep their row when an enrollment is deleted
+     * (ON DELETE SET NULL) and events have no foreign key, so both are deleted here explicitly.
+     */
     suspend fun purgeStaleContacts(now: Instant = Instant.now()): Int = dbQuery {
         val limit = now.minus(3 * 365L, ChronoUnit.DAYS)
-        Contacts.deleteWhere {
-            (Contacts.createdAt.less(limit)) and (Contacts.lastInboundAt.isNull() or Contacts.lastInboundAt.less(limit))
+        val contactIds = Contacts.selectAll()
+            .where { (Contacts.createdAt.less(limit)) and (Contacts.lastInboundAt.isNull() or Contacts.lastInboundAt.less(limit)) }
+            .map { it[Contacts.id] }
+        if (contactIds.isEmpty()) return@dbQuery 0
+        val enrollmentIds = Enrollments.selectAll().where { Enrollments.contactId inList contactIds }.map { it[Enrollments.id] }
+        if (enrollmentIds.isNotEmpty()) {
+            Replies.deleteWhere { Replies.enrollmentId inList enrollmentIds }
+            Drafts.deleteWhere { Drafts.enrollmentId inList enrollmentIds }
+            Enrollments.deleteWhere { Enrollments.id inList enrollmentIds }
         }
+        Events.deleteWhere { Events.contactId inList contactIds }
+        Contacts.deleteWhere { Contacts.id inList contactIds }
+    }
+
+    /** RGPD : the text of a reply is only needed to classify it. After 12 months only the intent and the summary stay. */
+    suspend fun purgeOldReplyBodies(now: Instant = Instant.now()): Int = dbQuery {
+        val limit = now.minus(365, ChronoUnit.DAYS)
+        Replies.update({ (Replies.receivedAt.less(limit)) and (Replies.body neq "") }) { it[body] = "" }
     }
 
     /** RGPD : officer names read from the registry more than 3 years ago are deleted, like contacts. */
