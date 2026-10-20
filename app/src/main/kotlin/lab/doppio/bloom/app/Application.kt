@@ -61,11 +61,26 @@ import lab.doppio.bloom.data.discovery.DiscoveryService
 import lab.doppio.bloom.data.sources.defaultHttpClient
 import kotlinx.coroutines.runBlocking
 
-private fun env(name: String, default: String? = null): String =
-    System.getenv(name) ?: default ?: error("Variable d'environnement manquante : $name")
+/** A blank value in .env (KEY=) counts as an absent key: the default applies, or the start stops. */
+internal fun envValue(lookup: (String) -> String?, name: String, default: String? = null): String =
+    lookup(name)?.takeIf { it.isNotBlank() } ?: default ?: error("Variable d'environnement manquante : $name")
+
+private fun env(name: String, default: String? = null): String = envValue(System::getenv, name, default)
 
 /** An empty value in .env (KEY=) counts as an absent key. */
 private fun optionalEnv(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
+
+/** The example values shipped in .env.example: never accepted as a secret. */
+private val PLACEHOLDER_SECRETS = setOf("change-me", "une-longue-chaine-aleatoire")
+
+/** A secret that must be set: not blank, not the example value, at least 16 characters. */
+internal fun requireSecret(lookup: (String) -> String?, name: String): String {
+    val value = lookup(name)?.trim().orEmpty()
+    if (value.isEmpty()) error("Variable d'environnement manquante : $name")
+    if (value in PLACEHOLDER_SECRETS) error("$name : remplacer la valeur d'exemple de .env.example par un secret")
+    if (value.length < 16) error("$name : au moins 16 caractères")
+    return value
+}
 
 /**
  * DRY_RUN decides whether emails leave: only "true" or "false" are accepted. Anything else ("yes",
@@ -117,7 +132,7 @@ class AppContext {
             Mailbox(address.trim(), password.trim(), name.trim())
         },
         publicBaseUrl = env("PUBLIC_BASE_URL", "http://localhost:8080"),
-        unsubscribeSecret = env("UNSUBSCRIBE_SECRET"),
+        unsubscribeSecret = requireSecret(System::getenv, "UNSUBSCRIBE_SECRET"),
         legalFooterFr = env(
             "LEGAL_FOOTER_FR",
             "Doppio Lab (Advisely), Paris. Vos coordonnées professionnelles proviennent de sources publiques " +
@@ -192,7 +207,7 @@ fun Application.module(ctx: AppContext) {
             call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "erreur interne"))
         }
     }
-    val adminPassword = env("ADMIN_PASSWORD")
+    val adminPassword = requireSecret(System::getenv, "ADMIN_PASSWORD")
     install(Authentication) {
         basic("admin") {
             realm = "Doppio Bloom"
