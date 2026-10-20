@@ -16,6 +16,7 @@ dependencies {
     implementation(libs.ktor.server.auth)
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.status.pages)
+    implementation(libs.ktor.server.rate.limit)
     implementation(libs.ktor.serialization.json)
     implementation(libs.angus.mail)
     implementation(libs.jsoup)

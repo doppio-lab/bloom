@@ -13,6 +13,10 @@ import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.plugins.origin
+import io.ktor.server.plugins.ratelimit.RateLimit
+import io.ktor.server.plugins.ratelimit.RateLimitName
+import io.ktor.server.plugins.ratelimit.rateLimit
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -63,6 +67,7 @@ import lab.doppio.bloom.data.discovery.DiscoveryConfig
 import lab.doppio.bloom.data.discovery.DiscoveryService
 import lab.doppio.bloom.data.sources.defaultHttpClient
 import kotlinx.coroutines.runBlocking
+import kotlin.time.Duration.Companion.seconds
 
 /** A blank value in .env (KEY=) counts as an absent key: the default applies, or the start stops. */
 internal fun envValue(lookup: (String) -> String?, name: String, default: String? = null): String =
@@ -233,19 +238,38 @@ fun Application.module(ctx: AppContext) {
     install(ContentNegotiation) { json(Json { encodeDefaults = true; ignoreUnknownKeys = true }) }
     install(StatusPages) { bloomErrors(this@module.environment.log) }
     val adminPassword = requireSecret(System::getenv, "ADMIN_PASSWORD")
+    val failedLogins = FailedAuthLimiter(maxPerMinute = 20)
     install(Authentication) {
         basic("admin") {
             realm = "Doppio Bloom"
-            validate { if (it.name == "doppio" && it.password == adminPassword) UserIdPrincipal(it.name) else null }
+            validate { credentials ->
+                val host = request.origin.remoteHost
+                if (!failedLogins.allow(host)) return@validate null
+                if (credentials.name == "doppio" && secretsMatch(adminPassword, credentials.password)) {
+                    UserIdPrincipal(credentials.name)
+                } else {
+                    failedLogins.recordFailure(host)
+                    null
+                }
+            }
+        }
+    }
+    install(RateLimit) {
+        // Per remote host: the dashboard polls a few endpoints, far below this
+        register(RateLimitName("admin")) {
+            rateLimiter(limit = 300, refillPeriod = 60.seconds)
+            requestKey { call -> call.request.origin.remoteHost }
         }
     }
     routing {
         // Public : la désinscription doit marcher sans compte, en un clic
         unsubscribeRoutes(ctx)
-        authenticate("admin") {
-            staticResources("/", "static")
-            apiRoutes(ctx)
-            discoveryRoutes(ctx)
+        rateLimit(RateLimitName("admin")) {
+            authenticate("admin") {
+                staticResources("/", "static")
+                apiRoutes(ctx)
+                discoveryRoutes(ctx)
+            }
         }
         get("/health") { call.respondText("ok") }
     }
