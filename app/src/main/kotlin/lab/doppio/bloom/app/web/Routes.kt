@@ -103,8 +103,7 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     post("/accounts") {
         val req = call.receive<NewAccount>()
         val contacts = req.contacts.map { it.copy(email = emailOrNull(it.email)) }
-        val id = repo.upsertAccount(req.account)
-        contacts.forEach { repo.addContact(it.copy(accountId = id)) }
+        val id = repo.createAccountWithContacts(req.account, contacts)
         // The research takes minutes: it runs in the background, the dossier appears when it is done
         if (req.researchNow) launchResearch(ctx, id)
         call.respond(HttpStatusCode.Created, mapOf("id" to id.toString(), "research" to if (req.researchNow) "lancée" else "non demandée"))

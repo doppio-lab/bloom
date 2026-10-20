@@ -50,6 +50,8 @@ import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.sum
 import org.jetbrains.exposed.sql.upsert
+import org.jetbrains.exposed.sql.transactions.experimental.newSuspendedTransaction
+import kotlinx.coroutines.Dispatchers
 import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -714,6 +716,16 @@ class Repository {
 
     suspend fun suppress(value: String, reason: String) = dbQuery {
         Suppressions.insertIgnore { it[this.value] = value.lowercase(); it[this.reason] = reason }
+    }
+
+    /**
+     * One transaction for an account and its contacts: when a contact is refused (duplicate email...)
+     * no account is left behind without it. The nested calls join the surrounding transaction.
+     */
+    suspend fun createAccountWithContacts(a: Account, contacts: List<Contact>): AccountId = newSuspendedTransaction(Dispatchers.IO) {
+        val id = upsertAccount(a)
+        contacts.forEach { addContact(it.copy(accountId = id)) }
+        id
     }
 
     // --- Pipeline ------------------------------------------------------------------------------
