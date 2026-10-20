@@ -67,6 +67,17 @@ private fun env(name: String, default: String? = null): String =
 /** An empty value in .env (KEY=) counts as an absent key. */
 private fun optionalEnv(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
 
+/**
+ * DRY_RUN decides whether emails leave: only "true" or "false" are accepted. Anything else ("yes",
+ * "1", a blank) stops the start instead of being read as false. Absent: true, nothing leaves.
+ */
+internal fun parseDryRun(raw: String?): Boolean = when (raw?.trim()?.lowercase()) {
+    null -> true
+    "true" -> true
+    "false" -> false
+    else -> error("DRY_RUN : valeur attendue true ou false, reçu « $raw »")
+}
+
 /** Câblage manuel : pas de framework d'injection pour une douzaine de composants. */
 class AppContext {
     val repo = Repository()
@@ -116,7 +127,7 @@ class AppContext {
             "LEGAL_FOOTER_EN",
             "Doppio Lab (Advisely), Paris, France. Your business contact details come from public sources and are used only for this contact.",
         ),
-        dryRun = env("DRY_RUN", "true").toBoolean(),
+        dryRun = parseDryRun(System.getenv("DRY_RUN")),
     )
     val tokens = UnsubscribeTokens(mail.unsubscribeSecret)
     private val gateway = EmailGateway(mail, tokens)
