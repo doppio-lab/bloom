@@ -51,7 +51,7 @@ class GuardMessagesPinTest {
 
     @Test
     fun `length of emails and LinkedIn notes`() {
-        val long = "mot ".repeat(121) + "[F:a1] ?"
+        val long = "mot ".repeat(121) + "[F:a1]?"
         assertEquals(listOf("[BLOCK] longueur : 121 mots, maximum 120 pour cette étape"), check(long))
         assertEquals(listOf("[BLOCK] longueur : 121 mots, maximum 80 pour cette étape"), check(long, step = 1))
         assertEquals(

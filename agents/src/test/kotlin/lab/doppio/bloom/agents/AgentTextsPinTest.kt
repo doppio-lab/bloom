@@ -93,7 +93,7 @@ class AgentTextsPinTest {
                 "\nMessages déjà envoyés dans ce fil (ne pas répéter) :\n" +
                 "- Crash : Bonjour merci\n" +
                 "\nExemples de messages corrigés et validés par l'équipe (imite ce ton) :\n" +
-                "---\nSalut, on parle?\n",
+                "---\nSalut, on parle ?\n",
             executor.userText(0),
         )
     }

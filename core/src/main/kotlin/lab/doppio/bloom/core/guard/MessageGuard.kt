@@ -73,8 +73,11 @@ object MessageGuard {
     )
     private val numberWordRegex = Regex("""(?<![\p{L}-])(?:${numberWords.keys.joinToString("|")})(?![\p{L}-])""")
 
+    /** Marker plus the space that precedes it, so "paiement [F:a2]." gives "paiement." and "minutes ? [F:a2]" keeps its space. */
+    private val citationWithSpaceRegex = Regex(" ?" + citationRegex.pattern)
+
     fun stripCitations(text: String): String =
-        citationRegex.replace(text, "").replace(Regex(" {2,}"), " ").replace(Regex(" +([.,;:!?])"), "$1").trim()
+        citationWithSpaceRegex.replace(text, "").replace(Regex(" {2,}"), " ").trim()
 
     fun check(input: GuardInput): List<Violation> {
         val v = mutableListOf<Violation>()
