@@ -42,7 +42,10 @@ object TestOrchestrator {
         unsubscribeSecret = "secret-long-enough-0", legalFooterFr = "fr", legalFooterEn = "en", dryRun = false,
     )
 
-    fun build(repo: Repository, sender: MailSender, config: MailConfig, policy: SendingPolicy = SendingPolicy(), inbox: MailInbox = ImapPoller(config)): Orchestrator {
+    fun build(
+        repo: Repository, sender: MailSender, config: MailConfig, policy: SendingPolicy = SendingPolicy(), inbox: MailInbox = ImapPoller(config),
+        instanceLock: () -> Boolean = { true }, lockStillHeld: () -> Boolean = { true },
+    ): Orchestrator {
         val http = defaultHttpClient()
         val llm = Llm(LlmConfig(LlmProvider.OLLAMA))
         val tracker = RunTracker(repo)
@@ -52,7 +55,7 @@ object TestOrchestrator {
             repo, WriterAgent(llm, repo, tracker, "test"), ResearchAgent(llm, repo, tracker, appStore, registry, null, WebPageSource(http)),
             ReplyClassifierAgent(llm, tracker), WeeklyCoachAgent(llm, repo, tracker),
             sender, inbox, config, policy, DiscoveryService(repo, appStore, registry, null),
-            instanceLock = { true },
+            instanceLock = instanceLock, lockStillHeld = lockStillHeld,
         )
     }
 }

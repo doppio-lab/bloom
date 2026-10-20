@@ -63,6 +63,7 @@ class Orchestrator(
     private val discovery: lab.doppio.bloom.data.discovery.DiscoveryService,
     private val nightlyResearchBudget: Int = 25,
     private val instanceLock: () -> Boolean = { lab.doppio.bloom.data.db.Db.tryHoldSingleInstanceLock() },
+    private val lockStillHeld: () -> Boolean = { lab.doppio.bloom.data.db.Db.lockHeld() },
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val zone = ZoneId.of(policy.timezone)
@@ -79,11 +80,10 @@ class Orchestrator(
         jobs = scope
         scope.launch {
             // Une seule instance fait tourner les boucles : sinon chaque email partirait deux fois
-            while (!runCatching { instanceLock() }.getOrDefault(false)) {
+            while (!becomeLeader()) {
                 log.warn("Une autre instance de Bloom tient les boucles de fond : nouvel essai dans 30 s")
                 delay(30_000)
             }
-            leader = true
             // Avant toute boucle : un brouillon resté SENDING date d'avant le redémarrage
             val interrupted = repo.reconcileInterruptedSends()
             if (interrupted > 0) log.warn("$interrupted email(s) interrompu(s) pendant l'envoi, passés en FAILED : vérifier la boîte d'envoi")
@@ -94,8 +94,34 @@ class Orchestrator(
         }
     }
 
+    /** Takes the single-instance lock when it is free. */
+    internal fun becomeLeader(): Boolean {
+        leader = runCatching { instanceLock() }.getOrDefault(false)
+        return leader
+    }
+
+    /**
+     * The lock lives with its database connection: a Postgres restart or a dropped connection frees it
+     * silently, and another instance may already be running the loops. So every tick checks the lock is
+     * still held before doing any work, and tries to take it back when it is not.
+     */
+    internal fun ensureLeader(): Boolean {
+        if (runCatching { lockStillHeld() }.getOrDefault(false)) {
+            leader = true
+            return true
+        }
+        if (leader) log.error("Le verrou des boucles de fond a été perdu (connexion à la base coupée ?) : boucles suspendues")
+        leader = false
+        if (becomeLeader()) log.warn("Verrou des boucles de fond repris")
+        return leader
+    }
+
     private fun CoroutineScope.loop(name: String, every: kotlin.time.Duration, block: suspend () -> Unit) = launch {
         while (isActive) {
+            if (!ensureLeader()) {
+                delay(every)
+                continue
+            }
             try {
                 block()
             } catch (e: CancellationException) {
