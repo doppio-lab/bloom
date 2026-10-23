@@ -25,7 +25,8 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
-      - "8080:8080"
+      # Local only: production goes through deploy/ (Tailscale and Caddy)
+      - "127.0.0.1:8080:8080"
     depends_on:
       db:
         condition: service_healthy

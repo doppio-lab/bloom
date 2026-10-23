@@ -1,0 +1,9 @@
+[Unit]
+Description=Bloom database backup
+Wants=network-online.target
+After=network-online.target docker.service
+
+[Service]
+Type=oneshot
+User=deploy
+ExecStart=/opt/bloom/backup.sh

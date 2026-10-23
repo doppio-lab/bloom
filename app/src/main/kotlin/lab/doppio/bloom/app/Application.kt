@@ -3,6 +3,7 @@ package lab.doppio.bloom.app
 import io.ktor.http.HttpStatusCode
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
+import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.UserIdPrincipal
@@ -12,15 +13,23 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.Netty
 import io.ktor.server.plugins.calllogging.CallLogging
+import io.ktor.server.plugins.calllogging.processingTimeMillis
+import io.ktor.server.plugins.ratelimit.RateLimit
+import io.ktor.server.plugins.ratelimit.RateLimitName
+import io.ktor.server.plugins.ratelimit.rateLimit
+import io.ktor.server.request.httpMethod
+import io.ktor.server.request.uri
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.plugins.statuspages.StatusPages
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
+import io.ktor.server.routing.head
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.serialization.json.Json
 import lab.doppio.bloom.agents.Llm
 import lab.doppio.bloom.agents.LlmConfig
@@ -36,6 +45,7 @@ import lab.doppio.bloom.app.outreach.MailConfig
 import lab.doppio.bloom.app.outreach.Mailbox
 import lab.doppio.bloom.app.outreach.Orchestrator
 import lab.doppio.bloom.app.outreach.UnsubscribeTokens
+import lab.doppio.bloom.app.web.CrossSiteGuard
 import lab.doppio.bloom.app.web.apiRoutes
 import lab.doppio.bloom.app.web.discoveryRoutes
 import lab.doppio.bloom.app.web.unsubscribeRoutes
@@ -61,6 +71,7 @@ import lab.doppio.bloom.data.discovery.DiscoveryConfig
 import lab.doppio.bloom.data.discovery.DiscoveryService
 import lab.doppio.bloom.data.sources.defaultHttpClient
 import kotlinx.coroutines.runBlocking
+import kotlin.time.Duration.Companion.minutes
 
 private fun env(name: String, default: String? = null): String =
     System.getenv(name) ?: default ?: error("Variable d'environnement manquante : $name")
@@ -107,7 +118,7 @@ class AppContext {
             Mailbox(address.trim(), password.trim(), name.trim())
         },
         publicBaseUrl = env("PUBLIC_BASE_URL", "http://localhost:8080"),
-        unsubscribeSecret = env("UNSUBSCRIBE_SECRET"),
+        unsubscribeSecret = requireSecret("UNSUBSCRIBE_SECRET", System.getenv("UNSUBSCRIBE_SECRET")),
         legalFooterFr = env(
             "LEGAL_FOOTER_FR",
             "Doppio Lab (Advisely), Paris. Vos coordonnées professionnelles proviennent de sources publiques " +
@@ -117,7 +128,7 @@ class AppContext {
             "LEGAL_FOOTER_EN",
             "Doppio Lab (Advisely), Paris, France. Your business contact details come from public sources and are used only for this contact.",
         ),
-        dryRun = env("DRY_RUN", "true").toBoolean(),
+        dryRun = parseFlag("DRY_RUN", System.getenv("DRY_RUN"), default = true),
     )
     val tokens = UnsubscribeTokens(mail.unsubscribeSecret)
     private val gateway = EmailGateway(mail, tokens)
@@ -171,16 +182,36 @@ class AppContext {
 }
 
 fun main() {
+    // Fail before touching the database when a secret or DRY_RUN is unusable
+    requireSecret("ADMIN_PASSWORD", System.getenv("ADMIN_PASSWORD"))
+    requireSecret("UNSUBSCRIBE_SECRET", System.getenv("UNSUBSCRIBE_SECRET"))
+    parseFlag("DRY_RUN", System.getenv("DRY_RUN"), default = true)
     Db.connect(DbConfig(env("DATABASE_URL", "jdbc:postgresql://localhost:5432/bloom"), env("DB_USER", "bloom"), env("DB_PASSWORD", "bloom")))
     val ctx = AppContext()
     org.slf4j.LoggerFactory.getLogger("bloom").info("LLM : {}", ctx.llm.describe())
     runBlocking { ctx.repo.ensureSequences(DefaultSequences.all()) }
-    ctx.orchestrator.start(CoroutineScope(SupervisorJob() + Dispatchers.Default))
-    embeddedServer(Netty, port = env("PORT", "8080").toInt()) { module(ctx) }.start(wait = true)
+    val loops = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    ctx.orchestrator.start(loops)
+    val server = embeddedServer(Netty, port = env("PORT", "8080").toInt()) { module(ctx) }
+    // SIGTERM (docker stop) stops the server first, then the loops and the database, lock included
+    server.monitor.subscribe(ApplicationStopped) {
+        loops.cancel()
+        ctx.background.cancel()
+        Db.close()
+        org.slf4j.LoggerFactory.getLogger("bloom").info("Arrêt propre : boucles stoppées, base fermée")
+    }
+    server.start(wait = true)
 }
 
+private val unsubscribeToken = Regex("^/u/[^/?]+")
+
+/** Unsubscribe tokens identify a contact: they never reach the logs. */
+private fun maskedUri(uri: String) = uri.replace(unsubscribeToken, "/u/***")
+
 fun Application.module(ctx: AppContext) {
-    install(CallLogging)
+    install(CallLogging) {
+        format { call -> "${call.response.status()}: ${call.request.httpMethod.value} - ${maskedUri(call.request.uri)} in ${call.processingTimeMillis()}ms" }
+    }
     install(ContentNegotiation) { json(Json { encodeDefaults = true; ignoreUnknownKeys = true }) }
     install(StatusPages) {
         exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }
@@ -189,21 +220,32 @@ fun Application.module(ctx: AppContext) {
             call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "erreur interne"))
         }
     }
-    val adminPassword = env("ADMIN_PASSWORD")
+    val adminPassword = requireSecret("ADMIN_PASSWORD", System.getenv("ADMIN_PASSWORD")).toByteArray()
     install(Authentication) {
         basic("admin") {
             realm = "Doppio Bloom"
-            validate { if (it.name == "doppio" && it.password == adminPassword) UserIdPrincipal(it.name) else null }
+            validate {
+                // Constant-time compare: the response time says nothing about how much of the password matched
+                val ok = java.security.MessageDigest.isEqual(it.password.toByteArray(), adminPassword)
+                if (it.name == "doppio" && ok) UserIdPrincipal(it.name) else null
+            }
         }
     }
+    // One shared budget for the dashboard: behind a proxy every request comes from the same address
+    install(RateLimit) { register(RateLimitName("admin")) { rateLimiter(limit = 600, refillPeriod = 1.minutes) } }
     routing {
         // Public : la désinscription doit marcher sans compte, en un clic
         unsubscribeRoutes(ctx)
-        authenticate("admin") {
-            staticResources("/", "static")
-            apiRoutes(ctx)
-            discoveryRoutes(ctx)
+        rateLimit(RateLimitName("admin")) {
+            authenticate("admin") {
+                install(CrossSiteGuard)
+                staticResources("/", "static")
+                apiRoutes(ctx)
+                discoveryRoutes(ctx)
+            }
         }
         get("/health") { call.respondText("ok") }
+        // Uptime probes often check with HEAD
+        head("/health") { call.respond(HttpStatusCode.OK) }
     }
 }

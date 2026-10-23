@@ -69,8 +69,11 @@ Puis ouvrir `.env` et renseigner au minimum ces deux valeurs. Sans elles le serv
 
 | Variable | Valeur |
 |---|---|
-| `ADMIN_PASSWORD` | le mot de passe du dashboard (l'utilisateur est toujours `doppio`) |
+| `ADMIN_PASSWORD` | le mot de passe du dashboard (l'utilisateur est toujours `doppio`), 16 caractères au moins |
 | `UNSUBSCRIBE_SECRET` | une chaîne aléatoire, par exemple le résultat de `openssl rand -hex 32` |
+
+Le serveur refuse aussi les valeurs d'exemple du `.env.example` (`change-me`, `une-longue-chaine-aleatoire`) et
+un `DRY_RUN` autre que `true` ou `false`.
 
 Tout le reste peut garder sa valeur d'exemple pour un premier lancement. `DRY_RUN=true` garantit qu'aucun
 email ne part : les messages « envoyés » sont écrits dans les logs.
@@ -218,9 +221,10 @@ Garanties :
 | `OLLAMA_BASE_URL` | `http://localhost:11434` | adresse d'Ollama, fixée par Compose en option A |
 | `ANTHROPIC_API_KEY` | vide | obligatoire avec `anthropic` |
 | `OPENAI_API_KEY`, `OPENAI_BASE_URL` | vides | clé et racine de l'API avec `openai` |
-| `ADMIN_PASSWORD` | obligatoire | mot de passe du dashboard et de l'API |
-| `UNSUBSCRIBE_SECRET` | obligatoire | signe les liens de désinscription (HMAC) |
-| `DRY_RUN` | `true` | tant que c'est `true`, aucun email ne part et aucune boîte n'est relevée |
+| `ADMIN_PASSWORD` | obligatoire | mot de passe du dashboard et de l'API, 16 caractères au moins |
+| `UNSUBSCRIBE_SECRET` | obligatoire | signe les liens de désinscription (HMAC), 16 caractères au moins |
+| `DRY_RUN` | `true` | tant que c'est `true`, aucun email ne part et aucune boîte n'est relevée ; toute autre valeur que `true` ou `false` bloque le démarrage |
+| `JAVA_OPTS` | vide | options de la JVM, par exemple `-XX:MaxRAMPercentage=60` (fixé par `deploy/docker-compose.prod.yml`) |
 | `PORT` | `8080` | port HTTP du serveur (option B ; en option A, changer le mapping dans `docker-compose.yml`) |
 | `LOG_LEVEL` | `INFO` | niveau des logs de Bloom (`DEBUG` pour le détail) |
 | `DATABASE_URL` | `jdbc:postgresql://localhost:5432/bloom` | URL JDBC, fixée par Compose en option A |
@@ -262,6 +266,7 @@ docker compose down -v             # arrêter et effacer la base
 | `port is already allocated` sur 8080 ou 5432 | un autre service occupe le port : `lsof -nP -iTCP:8080 -sTCP:LISTEN`, puis l'arrêter ou changer le port de gauche dans `docker-compose.yml` (et `DATABASE_URL` si c'est 5432) |
 | `Connection to localhost:5432 refused` (option B) | la base n'est pas lancée : `docker compose up -d db` |
 | `password authentication failed for user "bloom"` | `DB_PASSWORD` a changé après la création de la base : remettre l'ancien, ou `docker compose down -v` (efface les données) |
+| `ADMIN_PASSWORD a encore sa valeur d'exemple` ou `doit faire au moins 16 caractères` | générer un secret : `openssl rand -hex 32` |
 | 401 sur le dashboard | utilisateur `doppio`, mot de passe `ADMIN_PASSWORD` ; après un changement du `.env`, redémarrer le serveur |
 | Les agents échouent avec `ollama` | Ollama n'est pas lancé (`curl localhost:11434/api/version`) ou le modèle n'est pas téléchargé (`ollama list`) |
 | Les agents échouent avec `anthropic` ou `openai` | clé invalide ou sans crédit, ou nom de modèle inconnu du serveur |
@@ -274,6 +279,73 @@ docker compose down -v             # arrêter et effacer la base
 Ne mettre `DRY_RUN=false` qu'une fois le domaine d'envoi configuré (SPF, DKIM, DMARC) et chauffé 3 à 4
 semaines, `MAILBOXES` rempli avec de vrais mots de passe d'application, et `PUBLIC_BASE_URL` pointant vers une
 URL joignable depuis Internet (les liens de désinscription en dépendent).
+
+## Mettre en production
+
+Phase 1 : Bloom tourne sur un VPS en `DRY_RUN=true` (découverte, recherche, brouillons, validation), sans
+envoyer d'email. Les fichiers sont dans `deploy/`.
+
+```
+Internet ──443──> Caddy (Let's Encrypt) ──> /u/... et /health ──> app:8080
+                         └─ tout le reste : 404
+Tailnet  ──443──> tailscale serve (https://bloom.<tailnet>.ts.net) ──> 127.0.0.1:8080 (mot de passe)
+VPS : app (image ghcr.io/doppio-lab/bloom) + PostgreSQL (aucun port publié) + Caddy
+```
+
+Le dashboard et l'API ne sont joignables que par Tailscale. Seuls les liens de désinscription et la sonde de
+santé sont publics, car un destinataire doit pouvoir se désinscrire sans compte.
+
+| Fichier | Rôle |
+|---|---|
+| `deploy/docker-compose.prod.yml` | app, base et Caddy ; app sur 127.0.0.1 seulement, logs tournants, healthcheck |
+| `deploy/Caddyfile` | HTTPS public, ne laisse passer que `/u/...` et `/health` |
+| `deploy/.env.prod.example` | modèle du `.env` de production (Anthropic, budget de tokens, `DRY_RUN=true`) |
+| `deploy/deploy.sh` | `./deploy.sh <sha>` : tire l'image, redémarre, attend `/health` |
+| `deploy/backup.sh`, `bloom-backup.service`, `bloom-backup.timer` | sauvegarde chiffrée de la base chaque nuit à 1h (restic) |
+
+L'image est publiée par la CI sur `ghcr.io/doppio-lab/bloom:<sha>` et `:latest` à chaque push sur `main`. Elle
+est construite pour x86 : choisir un serveur x86 (Hetzner CX, pas CAX).
+
+### Préparer le serveur (une fois)
+
+1. VPS dans l'UE (Hetzner CX22 ou CX32, Scaleway Paris), Ubuntu 24.04, connexion par clé SSH uniquement.
+   Créer un utilisateur `deploy`, l'ajouter au groupe `docker`, activer `unattended-upgrades`.
+2. Installer Docker Engine avec Compose v2, restic, puis Tailscale : `sudo tailscale up --ssh --hostname bloom`.
+3. Pare-feu (ufw et pare-feu du fournisseur) : ouvrir 80 et 443. Fermer 22 côté Internet une fois la connexion
+   par `tailscale ssh deploy@bloom` vérifiée.
+4. DNS : enregistrement A (et AAAA) `bloom.doppio-studio.fr` vers l'IP du VPS. Un sous-domaine du domaine
+   d'envoi, jamais `doppio-lab.com`.
+5. Copier `deploy/` dans `/opt/bloom`, puis `cp .env.prod.example .env && chmod 600 .env`. Renseigner les
+   secrets (`openssl rand -hex 32` pour chacun), `ANTHROPIC_API_KEY` et `LLM_DAILY_TOKEN_BUDGET`.
+6. Si le paquet GHCR est privé : `docker login ghcr.io` avec un jeton limité à `read:packages`.
+7. `./deploy.sh <sha>`, puis publier le dashboard sur le tailnet :
+   `sudo tailscale serve --bg --https=443 http://127.0.0.1:8080`.
+8. Sauvegardes : écrire `/opt/bloom/restic.env` (`RESTIC_REPOSITORY`, `RESTIC_PASSWORD`, identifiants du
+   stockage, chmod 600), `restic init`, copier les deux unités dans `/etc/systemd/system/`, puis
+   `sudo systemctl enable --now bloom-backup.timer`. Activer aussi les snapshots du fournisseur.
+9. Sonde externe (UptimeRobot, Better Stack) sur `https://bloom.doppio-studio.fr/health`.
+
+### Exploiter
+
+| Besoin | Commande, dans `/opt/bloom` |
+|---|---|
+| Déployer une version | `./deploy.sh <sha du commit sur main>` |
+| Revenir en arrière | `./deploy.sh <sha précédent>` (les migrations Flyway ne se défont pas : vérifier qu'aucune n'a été ajoutée entre les deux) |
+| Logs | `docker compose -f docker-compose.prod.yml logs -f app` |
+| Console SQL | `docker compose -f docker-compose.prod.yml exec db psql -U bloom bloom` |
+| Sauvegarder maintenant | `./backup.sh` |
+| Restaurer | app arrêtée (`docker compose -f docker-compose.prod.yml stop app`) : `restic dump latest bloom.dump \| docker compose -f docker-compose.prod.yml exec -T db pg_restore --clean --if-exists -U bloom -d bloom`, puis `./deploy.sh` |
+| Changer un secret | modifier `.env`, puis `docker compose -f docker-compose.prod.yml up -d app` |
+
+Un `docker stop` arrête proprement : le serveur, puis les boucles, puis la base et le verrou d'instance, en
+quelques secondes. Un redémarrage du VPS relance tout seul (`restart: unless-stopped`).
+
+### Phase 2 : envoi réel
+
+Avant `DRY_RUN=false` : corriger les P0 de `docs/audit-2026-10-20.md` (garde-fou des chiffres, renvoi SMTP,
+timeouts SMTP et IMAP, arrêts « stop », citations Outlook), afficher une confirmation avant la désinscription par
+GET (les scanners de liens des entreprises cliquent), configurer SPF, DKIM et DMARC, chauffer les boîtes 3 à 4
+semaines, puis renseigner `MAILBOXES` et vérifier la relève IMAP.
 
 ## Liste noire et carnet de contacts
 
@@ -352,6 +424,7 @@ Vélomoov;velomoov.fr;123456789;;MOBILITY_TRANSPORT;120;Recommandé par Julie;Cl
 - Hypothèses à confirmer au premier lancement : le flux de classement App Store par genre
   (`itunes.apple.com/fr/rss/topfreeapplications/limit=200/genre=…/json`) et le champ `entreprise.url` des offres
   France Travail. Si l'un ne répond plus, la découverte continue avec l'autre source.
+- Mise en production prête pour la phase 1 (`deploy/`, image publiée sur GHCR) : pas encore déployée.
 - Non fait : page de détail d'un compte dans le dashboard, tests de l'orchestrateur et des routes, Google Play.
 
 ## Garde-fous de conformité intégrés
