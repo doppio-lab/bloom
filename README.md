@@ -227,8 +227,9 @@ Garanties :
 | `DB_USER`, `DB_PASSWORD` | `bloom`, `bloom` | identifiants PostgreSQL |
 | `PUBLIC_BASE_URL` | `http://localhost:8080` | base des liens de désinscription |
 | `FT_CLIENT_ID`, `FT_CLIENT_SECRET` | vides | API Offres d'emploi France Travail ; sans elles, la source « offres d'emploi » est coupée et le dashboard le signale |
-| `DISCOVERY_SOURCES` | `bodacc,boamp,ted,codeur,press,github,jobboards` | sources ajoutées à la découverte |
+| `DISCOVERY_SOURCES` | `bodacc,boamp,ted,decp,codeur,press,github,jobboards` | sources ajoutées à la découverte |
 | `BODACC_MIN_CAPITAL` | `100000` | capital minimal, en euros, pour étudier une annonce BODACC |
+| `DECP_RENEWAL_MONTHS` | `12` | un marché DECP est gardé s'il arrive à échéance dans ce nombre de mois |
 | `CODEUR_MIN_BUDGET` | `1000` | bas de la tranche de budget, en euros, pour garder un projet Codeur |
 | `GITHUB_TOKEN` | vide | jeton sans permission : 30 recherches GitHub par minute au lieu de 10 |
 | `DROPCONTACT_API_KEY` | vide | recherche d'email par Dropcontact ; sans elle, saisie manuelle |
@@ -299,6 +300,7 @@ l'annonce, de l'offre ou de l'avis dont il vient. Tout est déterministe : aucun
 | BODACC | augmentation de capital publiée aux annonces légales | levée de fonds | `bodacc` |
 | BOAMP | appel d'offres public ouvert qui demande une application mobile | marché public | `boamp` |
 | TED | marché public européen passé en France pour une application mobile | marché public | `ted` |
+| DECP (données essentielles de la commande publique) | marché d'application mobile déjà attribué qui arrive à échéance dans `DECP_RENEWAL_MONTHS` mois | marché à renouveler | `decp` |
 | Codeur.com | projet mobile publié par une entreprise, budget d'au moins `CODEUR_MIN_BUDGET` | aucun : liste « Demandes à répondre » | `codeur` |
 | GitHub | organisation française qui publie du code Kotlin Multiplatform | code KMP public | `github` |
 | Pages carrières (Greenhouse, Lever, Ashby, SmartRecruiters) | offre mobile d'un compte déjà connu, avec sa date de publication | recrutement mobile, KMP, recrutement bloqué | `jobboards` |
@@ -316,6 +318,9 @@ Limites à connaître :
   renvoie vers l'un des quatre services. Ashby et SmartRecruiters ne donnent pas l'ancienneté d'une offre.
 - Presse : seuls le titre et le lien de l'article sont repris. Les conditions de réutilisation des flux n'ont pas
   été vérifiées ; retirer `press` de `DISCOVERY_SOURCES` en cas de doute.
+- DECP ne donne que le SIRET de l'acheteur : son nom vient de l'annuaire des entreprises. L'échéance est
+  calculée à partir de la date de notification et de la durée initiale, sans tenir compte d'une reconduction
+  ou d'un avenant.
 - GitHub sert à repérer des organisations. Aucun contact n'est créé à partir d'un compte GitHub.
 - Codeur ne nomme pas l'entreprise et interdit de la contacter hors de la plateforme : ces projets ne deviennent
   jamais des comptes ni des séquences d'emails. Le flux est relu toutes les 30 minutes, car il ne garde que les

@@ -10,6 +10,7 @@ import lab.doppio.bloom.core.discovery.Boamp
 import lab.doppio.bloom.core.discovery.Bodacc
 import lab.doppio.bloom.core.discovery.Codeur
 import lab.doppio.bloom.core.discovery.CompanyNames
+import lab.doppio.bloom.core.discovery.Decp
 import lab.doppio.bloom.core.discovery.GitHub
 import lab.doppio.bloom.core.discovery.HiringRules
 import lab.doppio.bloom.core.discovery.JobBoards
@@ -19,6 +20,7 @@ import lab.doppio.bloom.core.discovery.Ted
 import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.scoring.Scoring
 import java.time.Instant
+import java.time.LocalDate
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -202,6 +204,25 @@ class SourceParsersTest {
         assertEquals(0.3, HiringRules.stuckStrength(46))
         assertEquals(1.0, HiringRules.stuckStrength(200))
         assertTrue(HiringRules.mentionsKmp("Senior Android, Kotlin Multiplatform"))
+    }
+
+    @Test
+    fun `un marché DECP d'app mobile qui arrive à échéance dans l'année est gardé`() {
+        val contracts = json("decp.json").jsonObject["results"]!!.jsonArray.mapNotNull { Decp.parse(it.jsonObject) }
+        assertEquals(7, contracts.size)
+        val versailles = contracts.single { it.id == "202323ABV00400" }
+        assertEquals("217806462", versailles.buyerSiren)
+        // Some records hold the holder's SIRET as a number, not a string
+        assertEquals("80286926300029", versailles.holderSiret)
+        assertEquals(LocalDate.parse("2027-02-08"), versailles.endsOn)
+
+        val today = LocalDate.parse("2026-10-10")
+        val kept = contracts.filter { Decp.isRenewalCandidate(it, today) }.map { it.id }.toSet()
+        // Côte-d'Or ends in August 2027, Versailles in February 2027. Courbevoie ends after the window, the
+        // health app contract has already ended, a 48 month renewal signed in 2026 is far off, and "levage
+        // mobiles" or "mobilier" are not apps
+        assertEquals(setOf("2026ALS0152534", "202323ABV00400"), kept)
+        assertTrue(contracts.single { it.id == "2023M10800" }.let { Decp.isRenewalCandidate(it, today, maxMonths = 13) })
     }
 
     @Test

@@ -9,6 +9,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import java.time.Instant
+import java.time.LocalDate
 import java.time.OffsetDateTime
 
 /**
@@ -104,6 +105,48 @@ object Boamp {
     /** A call for tenders (not an award notice) still open, whose subject asks for a mobile app. */
     fun isOpenMobileTender(tender: Tender, now: Instant): Boolean =
         tender.nature == "APPEL_OFFRE" && tender.deadline?.isAfter(now) == true && mobileApp.containsMatchIn(tender.subject)
+}
+
+// --- DECP: public contracts already awarded ---------------------------------------------------------
+
+data class AwardedContract(
+    val id: String,
+    val subject: String,
+    /** SIRET of the buyer. The records carry no buyer name. */
+    val buyerSiret: String,
+    val holderSiret: String?,
+    val notifiedOn: LocalDate,
+    val durationMonths: Int,
+    val amountEur: Long?,
+) {
+    val buyerSiren: String get() = buyerSiret.take(9)
+    val endsOn: LocalDate get() = notifiedOn.plusMonths(durationMonths.toLong())
+}
+
+object Decp {
+    private val mobileApp = Regex("(?i)\\b(appli(cations?)?|apps?)\\b.{0,25}\\b(mobiles?|smartphones?|ios|android)\\b")
+
+    fun parse(record: JsonObject): AwardedContract? {
+        val buyer = record["acheteur_id"].text()?.filter(Char::isDigit)?.takeIf { it.length == 14 } ?: return null
+        return AwardedContract(
+            id = record["id"].text() ?: return null,
+            subject = record["objet"].text() ?: return null,
+            buyerSiret = buyer,
+            holderSiret = record["titulaire_id_1"].text()?.filter(Char::isDigit)?.takeIf { it.length == 14 },
+            notifiedOn = record["datenotification"].text()?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() } ?: return null,
+            durationMonths = record["dureemois"].text()?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 } ?: return null,
+            amountEur = record["montant"].text()?.toDoubleOrNull()?.toLong(),
+        )
+    }
+
+    /**
+     * A mobile app contract that ends between [minMonths] and [maxMonths] from [today]: the buyer has to
+     * renew it, and usually prepares the new tender a few months before the end.
+     */
+    fun isRenewalCandidate(contract: AwardedContract, today: LocalDate, minMonths: Long = 1, maxMonths: Long = 12): Boolean =
+        mobileApp.containsMatchIn(contract.subject) &&
+            !contract.endsOn.isBefore(today.plusMonths(minMonths)) &&
+            !contract.endsOn.isAfter(today.plusMonths(maxMonths))
 }
 
 // --- Press: funding headlines from RSS feeds --------------------------------------------------------

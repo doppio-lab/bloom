@@ -1,0 +1,68 @@
+{
+ "total_count": 7,
+ "results": [
+  {
+   "id": "202605071432",
+   "objet": "RENOUVELLEMENT DU CONTRAT D HEBERGEMENT D ASSITANCE ET DE PRESTATIONS ASSOCIEES DE L APPLICATION MOBILE MON AGGLO FACILE",
+   "acheteur_id": "24440064400013",
+   "titulaire_id_1": "80286926300029",
+   "datenotification": "2026-06-23",
+   "dureemois": 48,
+   "montant": 100000.0
+  },
+  {
+   "id": "2026ALS0152534",
+   "objet": "Développement informatique du socle d'une app mobile multiservices Côte-d'Or",
+   "acheteur_id": "22210001800019",
+   "titulaire_id_1": "43362470700017",
+   "datenotification": "2026-08-03",
+   "dureemois": 12,
+   "montant": 210000.0
+  },
+  {
+   "id": "2023M10800",
+   "objet": "MISE EN OEUVRE DU PORTAIL FAMILLE ESPACE CITOYENS - DEMARCHES FAMILLES ET DE L'APPLICATION MOBILE M-CITY MODULE FAMILLE EN LIEN AVEC LE LOGICIEL CONCERTO OPUS DEJA ACQUIS PAR LA VILLE DE COURBEVOIE",
+   "acheteur_id": "21920026800015",
+   "titulaire_id_1": 35142130000036,
+   "datenotification": "2023-11-08",
+   "dureemois": 48,
+   "montant": 395620.0
+  },
+  {
+   "id": "202323ABV00400",
+   "objet": "TIERCE MAINTENANCE APPLICATIVE DE L APPLICATION MOBILE VERSAILLES",
+   "acheteur_id": "21780646200016",
+   "titulaire_id_1": 80286926300029,
+   "datenotification": "2023-02-08",
+   "dureemois": 48,
+   "montant": 90000.0
+  },
+  {
+   "id": "202287987100",
+   "objet": "Mise en oeuvre d'une application mobile soutenant le rétablissement des usagers en santé mentale pour l'E.P.S.M Lille-Métropole",
+   "acheteur_id": "26590706300019",
+   "titulaire_id_1": 79362754800035,
+   "datenotification": "2022-07-21",
+   "dureemois": 36,
+   "montant": 101760.0
+  },
+  {
+   "id": "2026AGEGI44",
+   "objet": "VERIF. PERIODIQUES INSTALLATIONS ET EQUIPEMENTS - VERIF APPR ET ACCES LEVAGE MOBILES GENER COURANT E",
+   "acheteur_id": "28381200600023",
+   "titulaire_id_1": "43325083400010",
+   "datenotification": "2026-08-10",
+   "dureemois": 12,
+   "montant": 50000.0
+  },
+  {
+   "id": "26-1148853",
+   "objet": "Équipement mobilier, scénographique et informatique de l'Ecole des arts et de la MédiathèqueLOT N°03 :Équipement informatique (relance en marché sans publicité ni mise en concurrence en application de l'article R2122-2 du Code de la Commande Publique consécutif à déclaration sans suite)",
+   "acheteur_id": "20003382700011",
+   "titulaire_id_1": "42933356000036",
+   "datenotification": "2026-02-25",
+   "dureemois": 12,
+   "montant": 28000.0
+  }
+ ]
+}

@@ -40,6 +40,8 @@ object Scoring {
     val rules: Map<SignalType, SignalRule> = mapOf(
         // A published tender states the need outright, but it expires with its deadline
         SignalType.PUBLIC_TENDER to SignalRule(45.0, 21.0),
+        // The need is certain but months away, so it weighs less than an open tender and lasts longer
+        SignalType.CONTRACT_RENEWAL to SignalRule(25.0, 90.0),
         SignalType.REFERRAL to SignalRule(30.0, 60.0),
         SignalType.HIRING_STUCK to SignalRule(22.0, 30.0),
         SignalType.QUALITY_COMPLAINTS to SignalRule(20.0, 30.0),
@@ -70,6 +72,7 @@ object Scoring {
         SignalType.CONTENT_ENGAGEMENT to Offer.DISCOVERY,
         SignalType.REFERRAL to Offer.DISCOVERY,
         SignalType.PUBLIC_TENDER to Offer.FORFAIT,
+        SignalType.CONTRACT_RENEWAL to Offer.FORFAIT,
         SignalType.KMP_ADOPTION to Offer.TRAINING_KMP,
     )
 

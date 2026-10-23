@@ -48,6 +48,7 @@ import lab.doppio.bloom.data.sources.AppStoreSource
 import lab.doppio.bloom.data.sources.BoampSource
 import lab.doppio.bloom.data.sources.BodaccSource
 import lab.doppio.bloom.data.sources.CodeurSource
+import lab.doppio.bloom.data.sources.DecpSource
 import lab.doppio.bloom.data.sources.TedSource
 import lab.doppio.bloom.data.sources.GitHubSource
 import lab.doppio.bloom.data.sources.JobBoardSource
@@ -134,11 +135,18 @@ class AppContext {
      * Sources added to discovery, chosen by DISCOVERY_SOURCES. The press feeds are left out of the default:
      * their reuse terms have to be checked by the owner before the source is turned on.
      */
-    private val enabledSources = env("DISCOVERY_SOURCES", "bodacc,boamp,ted,codeur,press,github,jobboards").split(',').map { it.trim().lowercase() }.toSet()
+    private val enabledSources = env("DISCOVERY_SOURCES", "bodacc,boamp,ted,decp,codeur,press,github,jobboards").split(',').map { it.trim().lowercase() }.toSet()
     private val discoverySources = listOfNotNull(
         BodaccSource(http, minCapitalEur = env("BODACC_MIN_CAPITAL", "100000").toLong()).takeIf { "bodacc" in enabledSources },
         BoampSource(http).takeIf { "boamp" in enabledSources },
         TedSource(http).takeIf { "ted" in enabledSources },
+        DecpSource(
+            http,
+            buyerName = { siren -> registry.bySiren(siren)?.name },
+            wasSeen = { repo.wasSeen(it, 365) },
+            markSeen = { key, kept, reason -> repo.markSeen(key, kept, reason) },
+            maxMonths = env("DECP_RENEWAL_MONTHS", "12").toLong(),
+        ).takeIf { "decp" in enabledSources },
         PressSource(http).takeIf { "press" in enabledSources },
         GitHubSource(http, optionalEnv("GITHUB_TOKEN"), wasSeen = { repo.wasSeen(it, 90) }, markSeen = { key, kept, reason -> repo.markSeen(key, kept, reason) })
             .takeIf { "github" in enabledSources },
