@@ -27,4 +27,4 @@ Not designed yet, so the code is the only reference for now: `docs/pipeline.html
 
 ## Product claims
 
-`docs/positioning.md` and `docs/proof-audit.md` define what the interface and the marketing may claim. Interface copy must stay inside the claims marked as proven there.
+`marketing/positioning.md` and `marketing/claims-audit.md` define what the interface and the marketing may claim. Interface copy must stay inside the claims marked as proven there.

@@ -1,6 +1,8 @@
 # Bloom: app positioning
 
-2026-10-10 · Renaud Mathieu
+> Written and updated by the `app-positioning` skill, except the "What the code says" section (owned by `claims-proof-audit`). Keep the headings: they are the anchors of later updates. Hand edits are welcome and kept.
+
+Status: to validate | Market: France first (French), English second | Last update: 2026-10-15 | Author: Renaud Mathieu
 
 ## Verdict
 
@@ -10,34 +12,35 @@ The angle holds on two conditions. The claim stays inside what `MessageGuard` re
 
 - Why this angle: no competitor homepage leads with it, and none in France mentions it. Players priced by emails sent, by credits or by autonomy cannot adopt it without cutting what they bill.
 - What is off limits: volume, automation, autonomy, "AI SDR". That ground belongs to lemlist, Instantly, Clay, 11x and Artisan.
-- What is not proven: only `core` is covered by tests, and nothing has run end to end. The proof audit below gives the status of each claim.
-- What needs your decision: confirm angle A, and settle the business model (pricing by volume would contradict the promise).
+- What changed on 2026-10-15: human approval alone is no longer ours. Clay now moves into sending and its homepage shows a draft to "approve and send or edit". The guard on facts stays free, so approval is a pillar, never the headline.
+- What is not proven: tests now cover `core` and `data`, and the dashboard was validated against a real server in dry mode, but agents, SMTP and IMAP have still not run end to end. The proof audit below dates from 2026-10-10 and predates eight commits: re-run it before any content goes out.
+- Decided: angle A, confirmed on 2026-10-15. Still open: the business model (pricing by volume would contradict the promise), and configuration for a team other than Doppio Lab.
 
 ## What the code says
 
-The angle survives the audit, in a narrower form: of 21 claims, 11 are proven in code, 7 are partial, 2 are false and 1 cannot be verified from the repo. The promise can say "first email" and "numbers", not "every sentence".
+The angle survives the re-audit of 2026-10-15 at commit 15980e4, in the same narrow form: of 25 claims, 12 are proven, 10 partial, 2 false and 1 unverifiable. The guard has not changed since 2026-10-10, so the promise still says "first email" and "numbers in the body", never "every sentence". The new problem is in the product itself: the Méthode view and the README over-claim, and they must be fixed before any screenshot or public copy points to them.
 
-Read-only audit of the working tree on 2026-10-10 (commit 8e4546f plus uncommitted changes). The four modules now compile and the 20 `core` tests pass (results dated 2026-10-10, read from `core/build/test-results`, not re-run here). Agents, SMTP and IMAP have not run end to end, and no module other than `core` has tests.
+Read-only audit; `./gradlew build` and its tests run in CI (`.github/workflows/build.yml`). Tests now cover `core` (37) and `data` (12, PostgreSQL). `agents` and `app` have none, and agents, SMTP and IMAP have never run end to end.
 
 | Building block | What it does | Gap with the positioning |
 | --- | --- | --- |
-| `MessageGuard` (`core/.../guard/MessageGuard.kt`) | Blocks a first email without a cited fact, a citation that matches no fact, a number absent from the cited facts, banned phrases, a link in the body, a fake "Re:" | Numbers in the subject line are not scanned. Follow-up emails need no fact. A sentence without a number and without a marker passes: "every claim has a source" is false |
-| Research agent (`agents/.../ResearchAgent.kt`, `recordQuote`) | Keeps a web quote only if found word for word on the page read | The fact statement also stores a sentence written by the model (`meaning`). A number in that sentence then counts as sourced |
-| Approval (`app/.../web/Routes.kt`, `/drafts/{id}/approve`) | Only this route sets a draft to approved. The guard runs again on human edits | No test covers it |
-| Sending (`app/.../outreach/Orchestrator.kt`, `sendApproved`) | Sends approved emails only, Tuesday to Thursday 8:30 to 11:30, 180 seconds apart, under the daily cap | The cap is an environment variable with no upper bound: 25 is a default. Follow-ups get a "Re:" prefix (`Mail.kt`, line 103) that the guard forbids in drafts |
-| Email (`app/.../outreach/Mail.kt`) | Plain text, no pixel, `List-Unsubscribe` headers, signed link, legal footer | The footer adds the unsubscribe link, so "no link in the first email" is false as worded. The footer gives one generic source sentence, not the contact's actual source |
-| Opposition and purge (`data/.../db/Repository.kt`) | Checks email and domain before each draft and each send. Deletes contacts after 3 years. Never touches the opposition list | Nothing ever writes a domain entry: no route, no screen |
-| LinkedIn | No call to LinkedIn anywhere in `data`, `agents` or `app`. Notes are a manual task queue | None |
-| Configuration | Mailboxes, footer, sender name, LLM provider by environment variable | Studio description, client references, offers, sequences, allowed link domain and login are hardcoded for Doppio Lab. "For your team" is false |
+| `MessageGuard` (`core/.../guard/MessageGuard.kt`) | Blocks a first email without a cited fact, unknown citations, numbers absent from cited facts in the body, banned phrases, links, emojis, a fake "Re:". 10 blocking rule names in 7 groups | Subject numbers not scanned; the model-written meaning of web facts counts as provenance; follow-ups need no fact. No test for "Re:", links, emojis |
+| Research agent (`agents/.../ResearchAgent.kt`, `recordQuote`) | Keeps a web quote only if found word for word, 6 pages at most | Untested: `agents` has no test |
+| Approval and sending (`Routes.kt`, `Orchestrator.kt`, `Mail.kt`) | Only a `PENDING_REVIEW` draft that passes the guard can be approved (409 otherwise); sending is claimed once and never repeated (tested); Tuesday to Thursday, 8:30 to 11:30, 25 a day by default | The approval gate itself has no test; the cap has no ceiling; follow-ups get a "Re:" prefix |
+| Replies (`Orchestrator.kt`, `processReply`) | A matched reply or a bounce stops the sequence; the reader never loses a message (tested) | A reply from an unknown address stops nothing; out of office pauses forever |
+| Respect (`Mail.kt`, `Repository.kt`, `/u/{token}`) | Plain text, no pixel, one-click unsubscribe, opposition never purged, contacts purged after 3 years | Footer source is generic; no domain opposition can be written; a link scanner can unsubscribe a contact |
+| Dashboard (`app/.../static/index.html`) | Example data only with `?demo=1`; citations open their source | Méthode says "12 catégories, 120 apps par nuit" (code: 21 categories, up to 400 apps); facts show no date, which template B promises |
+| AI (`agents/.../Llm.kt`) | Every AI call follows the configured provider, Ollama included; daily token cap | Default provider in code is Anthropic; Dropcontact and Gmail still receive prospect data when configured |
+| Configuration | Mailboxes, footer, sender, LLM provider by environment variable | 50 occurrences of "doppio" in 14 files: "pour votre équipe" is false |
 
 **Consequence on the plan.**
 
-- Can start now: the landing page with the H1 and subtitle as written, hook families 2 (Le reçu) and 5 (Les règles), the free hooks of the other families, and screenshots from the dashboard's built-in example data, labelled as examples.
-- To reword before use: hook 3 (six blocking rule groups, not seven), hook 13 ("par défaut"), hook 21 ("aucun lien, sauf celui pour se désinscrire"), hook 29 ("de sources publiques"). Hook 4 waits for a decision on the "Re:" prefix.
-- Waits for a real run: templates A and B (a draft Bloom really refused), and every "we tested" hook.
-- Waits for a workstream: any copy inviting other teams (configuration), template C slide 3 (per-contact data source).
+- Can start now: the landing page (H1, subtitle, CTA) and the hooks marked go in the audit (5, 6, 3, 13, 17, 19, 21, 22, 23, 26 to 29 as reworded, the free hooks of family 2).
+- Fix first, before any screenshot of the Méthode view or any link to the README: prompt 01 (interface copy, fact date on screen). It is small.
+- Waits for a real run in dry mode: templates A and B, hooks 1, 2, 7, 10, 24 and every "we tested" hook.
+- Waits for a workstream: hook 4 ("Re:", prompt 02), template C slide 3 (per-contact source, prompt 03), any copy for other teams (prompt 04), slide 6 captures (prompt 05).
 
-The full register, the screenshot inventory and four ready-to-paste Claude Code prompts are in [proof-audit.md](proof-audit.md).
+The full register, the screenshot inventory and the five Claude Code prompts are in [claims-audit.md](claims-audit.md) and [prompts/](prompts/).
 
 ## Intake
 
@@ -47,8 +50,8 @@ Bloom is positioned as a product for other teams, not only as Doppio Lab's inter
 | --- | --- | --- |
 | Subject | Bloom as a product (evidence-only B2B prospecting tool) | Competitors are sales engagement and AI SDR tools, not app studios |
 | Market and language | France first, English version second | Promise and hooks in French, each with an English version |
-| Status | Pre-launch: one commit, four modules compiling, tests only in `core` (20 tests), no landing page, no store listing | Goal is waitlist or beta sign-ups, not installs |
-| Business model | Not decided | No price or independence claim in the copy until it is |
+| Status | Pre-launch: runs locally in dry mode (no email leaves), tests in `core` and `data`, no landing page, no store listing (updated 2026-10-15) | Goal is waitlist or beta sign-ups, not installs |
+| Business model | Not decided (confirmed open on 2026-10-15) | No price or independence claim in the copy until it is |
 
 Bloom is a self-hosted web dashboard (Kotlin, Ktor, PostgreSQL), not a mobile app. The social formats of this skill are adapted to B2B: LinkedIn carousels first, TikTok and Instagram second.
 
@@ -62,12 +65,15 @@ The only existing copy is the README, the dashboard microcopy and `docs/pipeline
 | "Bloom repère les entreprises qui vont avoir besoin d'une app native avant qu'elles ne lancent un appel d'offres" (README, line 3) | Specific, but it describes Doppio Lab's use case, not a product others can buy | Specific to one customer |
 | "On ne contacte que sur preuve" (README, line 7) | A volume-based sender cannot say it | Differentiating, second paragraph |
 | "Les LLM cherchent et rédigent ; le code score, vérifie et décide" (README, line 10) | An autonomous AI SDR cannot say it | Differentiating, buried at the end of a paragraph |
-| "Chaque affirmation renvoie à sa source. Rien ne part sans vous." (dashboard, tab "À valider") | Same | Best line of the product, buried in a subtitle |
+| ~~"Chaque affirmation renvoie à sa source. Rien ne part sans vous." (dashboard, tab "À valider")~~ The first sentence left the dashboard with the 2026-10-14 rework. Today: "Rien ne part sans vous." (À faire, section "Emails à valider") | Clay now shows approval before sending too | Still true, no longer differentiating on its own |
+| "Du signal au contrat signé." and the eleven steps (dashboard, view Méthode, 2026-10-14) | Specific to Bloom's pipeline | Best explanation of the product, written inside the claims the audit proves |
 
-Three points would mislead a buyer if the copy went public as is:
+Four points would mislead a buyer if the copy went public as is:
+
+- The README says "chaque affirmation est reliée à un fait sourcé" (lines 8 and 9). The proof audit rates "every claim has a source" as False: replace it with "le premier email s'appuie sur un fait sourcé, chaque chiffre est relié à un fait cité".
 
 - The product is wired to one customer. Discovery sources (mobile job posts, App Store France), the reference library, the exclusion list and the allowed link domain (`doppio-lab.com` in `MessageGuard.kt`) are Doppio Lab's. "For any team" is not true yet.
-- The README states that `data`, `agents` and `app` now compile (uncommitted changes of 2026-10-10), but agents, SMTP and IMAP have not run end to end. Only `core` is tested. Any "we sent" or "we tested" claim waits for a first real run.
+- Agents, SMTP and IMAP have not run end to end. `core` and `data` are tested, and the dashboard was checked against a real server in dry mode on 2026-10-15. Any "we sent" or "we tested" claim waits for a first real run.
 - Legal references are asserted without a link: LinkedIn terms "section 8.2", the CNIL three-year purge, RGPD article 14. They go to the proof audit before they appear in public copy.
 
 ## Market map
@@ -79,15 +85,15 @@ Volume, automation and autonomy are taken by players with far more resources, so
 | [lemlist](https://www.lemlist.com/) (FR) | "The only platform you need to make Outbound work." | Per user, from $69/month, "50,000 emails/mo" ([pricing](https://www.lemlist.com/pricing)) | Sells automation across five channels and send volume. Nothing on sourcing or accuracy | Bought Claap, eight-figure deal ([Le Média de l'Investisseur](https://lemediadelinvestisseur.fr/actualite/lemlist-rachat-claap/), 22 Oct 2025) |
 | [La Growth Machine](https://lagrowthmachine.com/) (FR) | "Your GTM stack. Our engine built to convert." | Per identity, from 60 €/month ([pricing](https://lagrowthmachine.com/pricing/)) | Core is LinkedIn automation plus AI-written messages. Has to reassure on account restrictions | None found |
 | [Waalaxy](https://www.waalaxy.com/fr) (FR) | "On rend la prospection LinkedIn (vraiment) simple" | Per user, from 19 €, 300 invitations/month ([tarifs](https://www.waalaxy.com/fr/tarifs)) | Promise is a monthly contact count ("800+"). Its own blog admits a past feature to exceed LinkedIn's quota | Quota bypass "no longer works" ([blog](https://www.waalaxy.com/blog/linkedin-platform-knowledge/bypass-linkedin-limit), updated 11 Sep 2026) |
-| [Clay](https://www.clay.com/) | "Build systems to grow revenue" | Credits, free tier, paid from $54 to $185/month depending on the page ([pricing](https://www.clay.com/pricing)) | Infrastructure for signals, not a guard on what gets written. Credits reward more enrichment | $115M Series D at $7.1B ([Runtimewire](https://runtimewire.com/article/kareem-amin-clay-115m-series-d-7-1b-valuation), 9 Sep 2026) |
-| [Instantly](https://instantly.ai/) | "Find Clients" | Tiers by send volume, from $47/month for 5,000 emails ([pricing](https://instantly.ai/pricing)) | The price list is an email count, up to 500,000 a month. Unlimited mailboxes | Entry plan raised to $47 ([Industry Lens](https://industry-lens.com/reports/signal-spotlight-instantly/md), 5 Aug 2026, single secondary source) |
+| [Clay](https://www.clay.com/) | "Build systems to grow revenue" | Credits, free tier, paid from $54 to $185/month depending on the page ([pricing](https://www.clay.com/pricing)) | Infrastructure for signals, not a guard on what gets written. Credits reward more enrichment. Its homepage now shows a drafted message to "approve and send or edit", with no source attached (read 2026-10-15) | $115M Series D at $7.1B ([Runtimewire](https://runtimewire.com/article/kareem-amin-clay-115m-series-d-7-1b-valuation), 9 Sep 2026). Sequencer 2.0 shipped, a move into sending ([Industry Lens](https://industry-lens.com/intelligence/sales-intelligence), report of 6 Oct 2026, single secondary source) |
+| [Instantly](https://instantly.ai/) | "Find Clients" | Tiers by send volume, from $47/month for 5,000 emails ([pricing](https://instantly.ai/pricing)) | The price list is an email count, up to 500,000 a month. Unlimited mailboxes | Entry plan raised to $47 ([Industry Lens](https://industry-lens.com/reports/signal-spotlight-instantly/md), 5 Aug 2026, single secondary source). Five new AI agents launched ([Industry Lens](https://industry-lens.com/intelligence/sales-intelligence), report of 6 Oct 2026, single secondary source) |
 | [11x](https://www.11x.ai/) | "Digital Workers, Human Results" | Not public | Sells work done "without supervision". No human review, no sourcing | Nothing verified |
 | [Artisan](https://www.artisan.co/) | "Hire Ava, the autonomous AI BDR" | Credits, no public figure ([pricing](https://www.artisan.co/pricing)) | Autonomous end to end. LinkedIn alleged use of scraped data | Banned from LinkedIn, then reinstated ([TechCrunch](https://techcrunch.com/2026/01/07/yes-linkedin-banned-ai-agent-startup-artisan-but-now-its-back), 7 Jan 2026) |
 | [AiSDR](https://aisdr.com/) | "Your AI SDR that books meetings that close" | From $250/month for 200 researched contacts ([pricing](https://aisdr.com/pricing/)) | Closest rhetoric ("lead quality over volume", "Back every message with real research"), but the AI answers replies alone and no claim carries a citation | None found |
 
 Checked and set aside: [Pharow](https://www.pharow.com/) (French data provider, no sending, a possible partner), [Unify](https://www.unifygtm.com/), [Smartlead](https://www.smartlead.ai/), [Amplemarket](https://www.amplemarket.com/). Apollo was not checked.
 
-The evidence ground is free at headline level, and fully free in France. It will not stay free: [FirstSales](https://firstsales.io/changelog/ai-researches-prospects-website-before-writing/) shipped a site-fact check (21 Jul 2026) and [Vibe Prospecting](https://www.vibeprospecting.ai/blog/how-to-stop-ai-agents-hallucinating-outreach-personalization-2026-for-gtm-engineers) published "Ask for Receipts" (8 Sep 2026).
+The evidence ground is free at headline level, and fully free in France. Approval before sending is not: Clay shows it on its homepage since its move into sending (read 2026-10-15). A search on 2026-10-15 found no new launch built on sourced or fact-checked outreach. The evidence ground will not stay free: [FirstSales](https://firstsales.io/changelog/ai-researches-prospects-website-before-writing/) shipped a site-fact check (21 Jul 2026) and [Vibe Prospecting](https://www.vibeprospecting.ai/blog/how-to-stop-ai-agents-hallucinating-outreach-personalization-2026-for-gtm-engineers) published "Ask for Receipts" (8 Sep 2026).
 
 Open points: homepage wording was read as extracted text and should be checked once by eye. Clay and La Growth Machine show inconsistent prices on their own pages. 11x and Artisan prices could not be obtained.
 
@@ -162,7 +168,10 @@ Scores from 1 to 5. Provability is a first estimate, to be confirmed by the proo
 | 2026-10-10 | Position Bloom as a product, not Doppio Lab's studio offer | User |
 | 2026-10-10 | France first, English version second | User |
 | 2026-10-10 | Business model left open | User |
-| 2026-10-10 | Angle A proposed, B and C kept as pillars. Awaiting confirmation | Claude, to be confirmed by the user |
+| ~~2026-10-10~~ | ~~Angle A proposed, B and C kept as pillars. Awaiting confirmation~~ | ~~Claude, to be confirmed by the user~~ |
+| 2026-10-15 | Angle A confirmed, B and C kept as pillars | User |
+| 2026-10-15 | Business model still open: no price or independence claim | User |
+| 2026-10-15 | Marketing deliverables move to `marketing/` (`positioning.md`, `claims-audit.md`) | User |
 
 ## Messaging house
 
@@ -180,6 +189,8 @@ Scores from 1 to 5. Provability is a first estimate, to be confirmed by the proo
 | Prerequisite | A team other than Doppio Lab can configure its own signals, references and domain | Configuration without code change | To build |
 
 Every row goes into the proof audit, since none has the full status "exists".
+
+Pillar 2 is necessary but no longer differentiating: Clay also shows approval before sending (2026-10-15). It supports the headline, it never replaces it.
 
 **Tone.** Write like an engineer reading a log aloud: a fact, its source, what the tool refused. No superlative, no promise of results.
 
@@ -216,8 +227,8 @@ Flags: **Test** means a real, dated example must exist before publishing. **P1, 
 | --- | --- | --- | --- |
 | 1 | L'IA a écrit « 43 % de crashs ». Le code a refusé l'email. | The AI wrote "43% crashes". The code refused the email. | Test, P1 |
 | 2 | Voici un email que notre outil a refusé d'envoyer. | Here is an email our tool refused to send. | Test |
-| 3 | 7 raisons pour lesquelles un brouillon est bloqué avant d'arriver chez vous. | 7 reasons a draft gets blocked before it reaches you. | P1, count to confirm in the audit |
-| 4 | Faux « Re: » dans l'objet ? Bloqué. | Fake "Re:" in the subject line? Blocked. | P1 (rule tested in `core`) |
+| 3 | 6 raisons pour lesquelles un brouillon est bloqué avant d'arriver chez vous. | 6 reasons a draft gets blocked before it reaches you. | P1 (six blocking rule groups per the audit, 2026-10-10) |
+| 4 | Faux « Re: » dans l'objet ? Bloqué. | Fake "Re:" in the subject line? Blocked. | P1, on hold: follow-ups get a "Re:" prefix (`Mail.kt`), decision pending |
 | 5 | Un chiffre sans source dans un email de prospection, c'est un mensonge poli. | A number without a source in a cold email is a polite lie. | Free |
 | 6 | On a interdit « je me permets » dans le code. | We banned "hope this email finds you" in the code. | P1 (rule tested in `core`) |
 
@@ -236,7 +247,7 @@ Flags: **Test** means a real, dated example must exist before publishing. **P1, 
 
 | # | FR | EN | Flag |
 | --- | --- | --- | --- |
-| 13 | 25 emails par jour. Pas un de plus. | 25 emails a day. Not one more. | P2 |
+| 13 | 25 emails par jour et par boîte, par défaut. | 25 emails a day per mailbox, by default. | P2 (the cap is a setting, reworded per the audit) |
 | 14 | Votre outil vous facture à l'email envoyé. Devinez ce qu'il vous pousse à faire. | Your tool bills you per email sent. Guess what it pushes you to do. | Blocked until the business model is decided |
 | 15 | On a testé : 25 emails prouvés contre 1 000 emails génériques. | We tested: 25 proven emails against 1,000 generic ones. | Test (needs live sending), P2 |
 | 16 | 52 % des pros suppriment un email de prospection sans l'ouvrir. | 52% of professionals delete cold outreach unread. | Source (open the Firmable report itself) |
@@ -249,7 +260,7 @@ Flags: **Test** means a real, dated example must exist before publishing. **P1, 
 | --- | --- | --- | --- |
 | 19 | Vous aussi, vous reconnaissez un email écrit par un robot dès la première ligne ? | You also spot a robot-written email from the first line? | Free |
 | 20 | 61 % se méfient des emails de prospection écrits par IA. | 61% distrust AI-written outreach. | Source (same report) |
-| 21 | Le premier email n'a aucun lien. Voici pourquoi. | The first email has no link. Here is why. | P1 (rule tested in `core`) |
+| 21 | Le premier email n'a aucun lien, sauf celui pour se désinscrire. Voici pourquoi. | The first email has no link, apart from the one to unsubscribe. Here is why. | P1 (rule tested in `core`, reworded per the audit) |
 | 22 | Pas de pixel. On ne sait pas si vous avez ouvert, et c'est voulu. | No pixel. We do not know if you opened it, on purpose. | P3 |
 | 23 | Se désinscrire en un clic, sans compte, sans motif. | Unsubscribe in one click, no account, no reason asked. | P3 |
 | 24 | L'email que vous auriez aimé recevoir d'un commercial. | The email you wish a salesperson had sent you. | Test (real approved email, anonymized) |
@@ -262,7 +273,7 @@ Flags: **Test** means a real, dated example must exist before publishing. **P1, 
 | 26 | LinkedIn peut restreindre votre compte pour automatisation. On ne l'automatise pas. | LinkedIn can restrict your account for automation. We do not automate it. | Source (LinkedIn Help, cited), P2 |
 | 27 | Ce que la CNIL demande pour un email B2B, en 3 points. | What the CNIL requires for a B2B email, in 3 points. | Free (CNIL page cited) |
 | 28 | Gmail tolère 0,3 % de plaintes. Après, c'est le spam. | Gmail tolerates 0.3% complaints. After that, spam. | Free (Google page cited) |
-| 29 | Chaque email dit d'où viennent vos coordonnées. | Every email says where your contact details come from. | P3 |
+| 29 | Chaque email dit que vos coordonnées viennent de sources publiques. | Every email says your contact details come from public sources. | P3 (the footer is generic, reworded per the audit) |
 | 30 | Trois ans sans échange : le contact est supprimé. | Three years without contact: the record is deleted. | P3, CNIL reference to verify |
 
 Ethical rules applied: no "we tested" or "we sent" before Bloom has really sent emails (it runs in dry mode today), no invented testimonial, no real prospect named without consent, and the business model disclosed as soon as it exists.
@@ -278,7 +289,7 @@ Three 6-slide templates, one per pillar, written in French. Each works as a Link
 | 3 | Le fait sourcé disait autre chose. | Une preuve : une offre iOS ouverte depuis 74 jours. | Deux : l'origine de ses coordonnées, dite clairement. |
 | 4 | La règle : aucun chiffre absent d'un fait cité. | Chaque fait a un lien et une date. | Trois : un refus possible dans chaque message. |
 | 5 | L'IA corrige. Vous validez. L'email part. | Pas de fait, pas d'email. | Dans Bloom, ces trois règles sont dans le code. |
-| 6 | Real screenshot: the "À valider" queue with a blocked draft and its reason | Real screenshot: a draft with its citations and the fact panel open | Real screenshot: the footer of a sent email, with data source and unsubscribe link |
+| 6 | Real screenshot: the À faire view with a blocked draft, its "Bloqué" reason above it and the "Corriger" action | Real screenshot: a draft in À faire with its citation chips and the sources panel open | Real screenshot: the footer of a sent email, with data source and unsubscribe link |
 
 The draft and the figure in template A are placeholders. They must be replaced by a draft Bloom really refused, on a prospect that is anonymized or has agreed.
 
@@ -305,7 +316,9 @@ Diagnostic indicators: saves and clicks to the landing page. On LinkedIn, carous
 
 ## Sources
 
-All pages opened on 2026-10-10. Facts seen only in search results were excluded.
+Pages opened on 2026-10-10 unless dated otherwise. Facts seen only in search results were excluded.
+
+- Update of 2026-10-15: [Clay homepage](https://www.clay.com/) (approval before sending, no source attached), [Industry Lens sales intelligence hub](https://industry-lens.com/intelligence/sales-intelligence) (Clay Sequencer 2.0 and Instantly agents, report of 6 Oct 2026, secondary). Repo: `README.md`, `app/.../static/index.html` after the dashboard rework (commit 15980e4).
 
 - Repo: `README.md`, `core/.../guard/MessageGuard.kt`, `app/.../static/index.html`, `.env.example` (commit 8e4546f).
 - Competitors: [lemlist](https://www.lemlist.com/) and [pricing](https://www.lemlist.com/pricing), [La Growth Machine](https://lagrowthmachine.com/) and [pricing](https://lagrowthmachine.com/pricing/), [Waalaxy](https://www.waalaxy.com/fr), [tarifs](https://www.waalaxy.com/fr/tarifs) and [blog](https://www.waalaxy.com/blog/linkedin-platform-knowledge/bypass-linkedin-limit), [Clay](https://www.clay.com/) and [pricing](https://www.clay.com/pricing), [Instantly](https://instantly.ai/) and [pricing](https://instantly.ai/pricing), [11x](https://www.11x.ai/), [Artisan](https://www.artisan.co/), [AiSDR](https://aisdr.com/) and [pricing](https://aisdr.com/pricing/), [Pharow](https://www.pharow.com/), [Unify](https://www.unifygtm.com/), [Smartlead](https://www.smartlead.ai/), [Amplemarket](https://www.amplemarket.com/).
@@ -314,3 +327,12 @@ All pages opened on 2026-10-10. Facts seen only in search results were excluded.
 - Figures: [PPC Land on the Firmable survey](https://ppc.land/52-of-professionals-delete-cold-outreach-unread-firmable-finds/) (Aug 2026), [Instantly benchmark](https://instantly.ai/report-page), [Belkins](https://belkins.io/blog/sales-follow-up-statistics), [Google sender guidelines](https://support.google.com/a/answer/81126?hl=en), [Petri on Outlook rules](https://petri.com/microsoft-outlook-email-authentication-rules/), [LinkedIn Help](https://www.linkedin.com/help/linkedin/answer/a1341387).
 - CNIL: [Kaspr sanction](https://cnil.fr/fr/aspiration-de-donnees-sanction-de-240-000-euros-lencontre-de-la-societe-kaspr) (5 Dec 2024), [list of sanctions](https://cnil.fr/fr/les-sanctions-prononcees-par-la-cnil), [prospecting by email](https://www.cnil.fr/fr/la-prospection-commerciale-par-courrier-electronique) (10 June 2026).
 - Reviews: Trustpilot 1 and 2 star pages for [Instantly](https://www.trustpilot.com/review/instantly.ai?stars=1&stars=2), [Waalaxy](https://www.trustpilot.com/review/waalaxy.com?stars=1&stars=2), [Clay](https://www.trustpilot.com/review/clay.com?stars=1&stars=2), [11x](https://www.trustpilot.com/review/11x.ai?stars=1&stars=2) and [Kaspr](https://fr.trustpilot.com/review/kaspr.io?stars=1&stars=2).
+
+## History
+
+| Date | Skill | Change |
+|---|---|---|
+| 2026-10-10 | app-positioning | Created in `docs/positioning.md`, angle A proposed |
+| 2026-10-10 | claims-proof-audit | "What the code says" section and `proof-audit.md` |
+| 2026-10-15 | app-positioning | Moved to `marketing/`. Angle A confirmed, business model still open. Market refreshed (Clay approval before sending). Diagnosis updated after the dashboard rework. Hooks 3, 13, 21 and 29 reworded per the audit, hook 4 on hold. Template slide 6 matched to the current screens |
+| 2026-10-15 | claims-proof-audit | "What the code says" rewritten after the re-audit at 15980e4: 25 claims, Méthode view over-claim found, prompt 01 added |
