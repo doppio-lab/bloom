@@ -707,6 +707,12 @@ class Repository {
         Events.selectAll().where { (Events.type eq type) and (Events.occurredAt greaterEq since) }.count().toInt()
     }
 
+    /** When each event of these types happened since [since], for the activity chart of the dashboard. */
+    suspend fun eventTimes(types: Set<String>, since: Instant): List<Pair<String, Instant>> = dbQuery {
+        Events.select(Events.type, Events.occurredAt).where { (Events.type inList types) and (Events.occurredAt greaterEq since) }
+            .map { it[Events.type] to it[Events.occurredAt] }
+    }
+
     suspend fun eventsSince(since: Instant): List<Triple<String, Long?, Instant>> = dbQuery {
         Events.selectAll().where { Events.occurredAt greaterEq since }.map { Triple(it[Events.type], it[Events.accountId], it[Events.occurredAt]) }
     }

@@ -41,11 +41,32 @@ private const val NOT_PENDING = "ce brouillon n'est plus à valider"
 @Serializable data class SignalRow(val label: String, val sent: Int, val positive: Int)
 @Serializable data class StageRow(val stage: DealStage, val count: Int, val amountEur: Long)
 @Serializable data class AgentRow(val agent: String, val runs: Int, val failures: Int, val inputTokens: Long, val outputTokens: Long, val avgMs: Long)
+@Serializable data class DayCount(val date: String, val sent: Int, val replies: Int)
 @Serializable data class Overview(
     val periodDays: Int, val kpis: Kpis, val queues: Queues, val pipeline: List<StageRow>,
     val accounts: List<AccountRow>, val agents: List<AgentRow>, val dryRun: Boolean,
     val bySignal: List<SignalRow> = emptyList(),
+    /** Emails sent and replies received per day (Paris time), oldest first, for the Pilotage chart. */
+    val activity: List<DayCount> = emptyList(),
+    val mailboxes: Int = 0,
+    /** Start of the next sending window, whatever the queue holds. */
+    val nextSendAt: String? = null,
 )
+
+private const val ACTIVITY_DAYS = 90L
+
+/** One entry per day over the last [ACTIVITY_DAYS] days, today included, empty days at zero. */
+private suspend fun activity(ctx: AppContext): List<DayCount> {
+    val zone = java.time.ZoneId.of(ctx.policy.timezone)
+    val today = java.time.LocalDate.now(zone)
+    val first = today.minusDays(ACTIVITY_DAYS - 1)
+    val events = ctx.repo.eventTimes(setOf("EMAIL_SENT", "REPLY_RECEIVED"), first.atStartOfDay(zone).toInstant())
+        .groupBy({ it.second.atZone(zone).toLocalDate() }, { it.first })
+    return (0 until ACTIVITY_DAYS).map { first.plusDays(it) }.map { day ->
+        val types = events[day].orEmpty()
+        DayCount(day.toString(), types.count { it == "EMAIL_SENT" }, types.count { it == "REPLY_RECEIVED" })
+    }
+}
 @Serializable data class DraftView(val draft: Draft, val contactName: String, val contactRole: String, val accountName: String, val facts: List<Fact>, val linkedinUrl: String?)
 @Serializable data class AccountDetail(val account: Account, val facts: List<Fact>, val signals: List<Signal>, val dossier: Dossier?, val contacts: List<Contact>)
 @Serializable data class NewAccount(val account: Account, val contacts: List<Contact> = emptyList(), val researchNow: Boolean = true)
@@ -91,6 +112,9 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
                 agents = repo.agentStats(Instant.now().minus(7, ChronoUnit.DAYS)).map { AgentRow(it.agent, it.runs, it.failures, it.inputTokens, it.outputTokens, it.avgMs) },
                 dryRun = ctx.mail.dryRun,
                 bySignal = conversionBySignal(ctx),
+                activity = activity(ctx),
+                mailboxes = ctx.mail.mailboxes.size,
+                nextSendAt = lab.doppio.bloom.core.sequence.SequenceEngine.nextSendingSlot(Instant.now(), ctx.policy).toString(),
             ),
         )
     }
@@ -245,6 +269,7 @@ private val signalLabels = mapOf(
     "FUNDING" to "Levée de fonds", "HIRING_MOBILE" to "Recrutement mobile", "PRODUCT_LAUNCH" to "Lancement produit",
     "RELEASE_STALL" to "App sans mise à jour", "CONTENT_ENGAGEMENT" to "Interaction LinkedIn", "AI_ADOPTION" to "Équipe LLM",
     "PUBLIC_TENDER" to "Marché public", "KMP_ADOPTION" to "Code KMP public",
+    "CONTRACT_RENEWAL" to "Marché à renouveler",
 )
 
 /** Réponses positives par signal dominant des comptes contactés, sur 90 jours. */
