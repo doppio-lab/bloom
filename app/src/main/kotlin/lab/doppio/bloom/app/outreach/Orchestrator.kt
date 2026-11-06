@@ -20,6 +20,7 @@ import lab.doppio.bloom.core.sequence.NextAction
 import lab.doppio.bloom.core.sequence.SequenceEngine
 import lab.doppio.bloom.data.db.Repository
 import org.slf4j.LoggerFactory
+import java.time.Clock
 import java.time.DayOfWeek
 import java.time.Duration
 import java.time.Instant
@@ -50,6 +51,7 @@ class Orchestrator(
     private val policy: SendingPolicy,
     private val discovery: lab.doppio.bloom.data.discovery.DiscoveryService,
     private val nightlyResearchBudget: Int = 25,
+    private val clock: Clock = Clock.systemDefaultZone(),
     private val instanceLock: () -> Boolean = { lab.doppio.bloom.data.db.Db.tryHoldSingleInstanceLock() },
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -107,7 +109,7 @@ class Orchestrator(
         }
     }
 
-    suspend fun planDrafts(now: Instant = Instant.now()) = planning.withLock { planDraftsLocked(now) }
+    suspend fun planDrafts(now: Instant = clock.instant()) = planning.withLock { planDraftsLocked(now) }
 
     private suspend fun planDraftsLocked(now: Instant) {
         val sequences = repo.sequences().associateBy { it.id }
@@ -146,7 +148,7 @@ class Orchestrator(
         }
     }
 
-    suspend fun sendApproved(now: Instant = Instant.now()) {
+    suspend fun sendApproved(now: Instant = clock.instant()) {
         if (!SequenceEngine.inWindow(now, policy)) return
         val startOfDay = now.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant()
         val draft = repo.nextToSend(now) ?: return
@@ -277,7 +279,7 @@ class Orchestrator(
      * L'agent coûte des tokens : on ne l'utilise que là où le score déterministe dit que ça vaut le coup.
      */
     suspend fun researchBatch() {
-        val stale = Instant.now().minus(14, ChronoUnit.DAYS)
+        val stale = clock.instant().minus(14, ChronoUnit.DAYS)
         val rows = repo.accountsByScore(500).filter { it.score >= 45 }
         val withoutDossier = rows.filter { repo.dossier(it.account.id) == null }
         val staleOnes = rows.filter { it !in withoutDossier && (it.refreshedAt == null || Instant.parse(it.refreshedAt) < stale) }
@@ -293,7 +295,7 @@ class Orchestrator(
      *  - note du coach : une fois par semaine, à partir du lundi 7h ;
      *  - purge RGPD : une fois par mois, à partir du 1er à 4h.
      */
-    suspend fun nightly(now: ZonedDateTime = ZonedDateTime.now(zone)) {
+    suspend fun nightly(now: ZonedDateTime = ZonedDateTime.now(clock.withZone(zone))) {
         val today = now.toLocalDate()
         // Every tick: the Codeur feed only keeps the latest projects, a nightly read would miss most of them
         runCatching { discovery.pollDemands() }.onFailure { log.warn("Lecture de Codeur en échec", it) }

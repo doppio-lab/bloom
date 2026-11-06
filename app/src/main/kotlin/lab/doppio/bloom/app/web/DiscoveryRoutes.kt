@@ -269,7 +269,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
                 )
                 val id = repo.upsertAccount(account)
                 if (existed) updated++ else created++
-                repo.saveScore(Scoring.score(account.copy(id = id), repo.signalsOf(id)))
+                repo.saveScore(Scoring.score(account.copy(id = id), repo.signalsOf(id), ctx.clock.instant()))
                 val contactName = r["contact_name"].orEmpty()
                 if (contactName.isNotBlank()) {
                     val email = r["contact_email"]?.trim()?.takeIf { it.contains('@') }

@@ -112,7 +112,7 @@ object Scoring {
         return exp(-ln(2.0) * ageDays / halfLifeDays)
     }
 
-    fun score(account: Account, signals: List<Signal>, now: Instant = Instant.now()): ScoreBreakdown {
+    fun score(account: Account, signals: List<Signal>, now: Instant): ScoreBreakdown {
         val reasons = mutableListOf<String>()
         val fit = fit(account, reasons)
 

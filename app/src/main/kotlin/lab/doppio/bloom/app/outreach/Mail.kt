@@ -135,7 +135,7 @@ data class InboundMail(
  * Relève IMAP des boîtes d'envoi. Rien n'est supprimé. Un message n'est marqué vu qu'après traitement
  * ([markSeen]) : s'il échoue, il sera relu à la passe suivante.
  */
-class ImapPoller(private val config: MailConfig) {
+class ImapPoller(private val config: MailConfig, private val clock: java.time.Clock = java.time.Clock.systemDefaultZone()) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val messageIdPattern = Regex("<[^<>\\s@]+@[^<>\\s]+>")
 
@@ -180,7 +180,7 @@ class ImapPoller(private val config: MailConfig) {
             val uid = uidFolder.getUID(m)
             val key = m.getHeader("Message-ID")?.firstOrNull()?.trim() ?: "${mb.address}/${uidFolder.uidValidity}/$uid"
             InboundMail(mb.address, from, m.subject, textOf(m), (refs + bounceRefs).distinct(),
-                m.receivedDate?.toInstant() ?: Instant.now(), bounce, uid, key)
+                m.receivedDate?.toInstant() ?: clock.instant(), bounce, uid, key)
         }
     }
 

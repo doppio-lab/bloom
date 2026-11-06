@@ -137,11 +137,12 @@ class RunTracker(
     /** Tokens allowed per day, all agents together. 0: no limit. */
     private val dailyTokenBudget: Long = 0,
     private val zone: java.time.ZoneId = java.time.ZoneId.of("Europe/Paris"),
+    private val clock: java.time.Clock = java.time.Clock.systemDefaultZone(),
 ) {
     /** Refuses a new run once the day's budget is spent: the caller retries later, nothing is lost. */
     private suspend fun checkBudget(agent: String) {
         if (dailyTokenBudget <= 0) return
-        val startOfDay = java.time.LocalDate.now(zone).atStartOfDay(zone).toInstant()
+        val startOfDay = java.time.LocalDate.now(clock.withZone(zone)).atStartOfDay(zone).toInstant()
         val used = repo.tokensSince(startOfDay)
         if (used >= dailyTokenBudget) throw TokenBudgetExceeded("Budget de $dailyTokenBudget tokens du jour atteint ($used) : $agent attend demain")
     }

@@ -1,5 +1,6 @@
 package lab.doppio.bloom.data.discovery
 
+import java.time.Clock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import lab.doppio.bloom.core.discovery.CompanyNames
@@ -89,6 +90,7 @@ class DiscoveryService(
     private val sources: List<DiscoverySource> = emptyList(),
     private val jobBoards: JobBoardSource? = null,
     private val codeur: CodeurSource? = null,
+    private val clock: Clock = Clock.systemDefaultZone(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -101,7 +103,7 @@ class DiscoveryService(
         const val DEMANDS_LABEL = "Codeur"
     }
 
-    suspend fun run(now: Instant = Instant.now()): DiscoveryReport {
+    suspend fun run(now: Instant = clock.instant()): DiscoveryReport {
         blocked = config.extraExclusions + runCatching { repo.blockedNames() }.getOrDefault(emptySet())
         // Before the sources, for the accounts already known; again at the end, for the ones this run creates
         runCatching { refreshOfficers() }.onFailure { log.warn("Lecture des dirigeants en échec", it) }

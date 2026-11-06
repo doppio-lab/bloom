@@ -1,5 +1,6 @@
 package lab.doppio.bloom.agents
 
+import java.time.Clock
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
@@ -42,6 +43,7 @@ class ResearchAgent(
     private val registry: CompanyRegistrySource,
     private val jobs: FranceTravailSource?,
     private val web: WebPageSource,
+    private val clock: Clock = Clock.systemDefaultZone(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -70,7 +72,7 @@ class ResearchAgent(
         // 2. Exploration du site, outillée et vérifiée (seulement si le site est connu)
         val domain = account.domain
         if (domain != null) {
-            val siteTools = SiteResearchTools(account.id, domain, web)
+            val siteTools = SiteResearchTools(account.id, domain, web, clock)
             runCatching {
                 val tokens = TokenCounter()
                 val agent = AIAgent(
@@ -96,7 +98,7 @@ class ResearchAgent(
         val allFacts = repo.factsOf(account.id)
         if (allFacts.isNotEmpty()) synthesize(account, allFacts)
 
-        val score = Scoring.score(account, repo.signalsOf(account.id), Instant.now())
+        val score = Scoring.score(account, repo.signalsOf(account.id), clock.instant())
         repo.saveScore(score)
         repo.logEvent("ACCOUNT_RESEARCHED", accountId = account.id, payload = """{"score":${score.total}}""")
         return score
@@ -164,7 +166,7 @@ class ResearchAgent(
  * le code vérifie qu'elles existent mot pour mot avant d'en faire des faits.
  */
 @LLMDescription("Outils pour lire le site public d'une entreprise et enregistrer des citations vérifiées")
-class SiteResearchTools(private val accountId: Long, private val domain: String, private val web: WebPageSource) : ToolSet {
+class SiteResearchTools(private val accountId: Long, private val domain: String, private val web: WebPageSource, private val clock: Clock = Clock.systemDefaultZone()) : ToolSet {
     private val pages = mutableMapOf<String, String>()
     val recorded = mutableListOf<Fact>()
     val signals = mutableListOf<Signal>()
@@ -206,9 +208,9 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
         val f = fact(accountId, FactKind.WEB_PAGE, "$meaning (« $normalized »)", url, excerpt = normalized)
         recorded += f
         when (category.uppercase()) {
-            "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, 0.6, Instant.now().toString(), listOf(f.id))
-            "MOBILE_PROJECT" -> signals += Signal(accountId, SignalType.PRODUCT_LAUNCH, 0.6, Instant.now().toString(), listOf(f.id))
-            "APP_ISSUE" -> signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, 0.4, Instant.now().toString(), listOf(f.id))
+            "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, 0.6, clock.instant().toString(), listOf(f.id))
+            "MOBILE_PROJECT" -> signals += Signal(accountId, SignalType.PRODUCT_LAUNCH, 0.6, clock.instant().toString(), listOf(f.id))
+            "APP_ISSUE" -> signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, 0.4, clock.instant().toString(), listOf(f.id))
         }
         return "Enregistré sous l'identifiant ${f.id}."
     }

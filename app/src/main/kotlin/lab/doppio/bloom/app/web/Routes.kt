@@ -58,7 +58,7 @@ private const val ACTIVITY_DAYS = 90L
 /** One entry per day over the last [ACTIVITY_DAYS] days, today included, empty days at zero. */
 private suspend fun activity(ctx: AppContext): List<DayCount> {
     val zone = java.time.ZoneId.of(ctx.policy.timezone)
-    val today = java.time.LocalDate.now(zone)
+    val today = java.time.LocalDate.now(ctx.clock.withZone(zone))
     val first = today.minusDays(ACTIVITY_DAYS - 1)
     val events = ctx.repo.eventTimes(setOf("EMAIL_SENT", "REPLY_RECEIVED"), first.atStartOfDay(zone).toInstant())
         .groupBy({ it.second.atZone(zone).toLocalDate() }, { it.first })
@@ -87,7 +87,7 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
 
     get("/overview") {
         val days = call.request.queryParameters["days"]?.toIntOrNull() ?: 30
-        val since = Instant.now().minus(days.toLong(), ChronoUnit.DAYS)
+        val since = ctx.clock.instant().minus(days.toLong(), ChronoUnit.DAYS)
         val sent = repo.countEvents("EMAIL_SENT", since)
         val replies = repo.countEvents("REPLY_RECEIVED", since)
         val positive = repo.countEvents("REPLY_POSITIVE", since)
@@ -105,16 +105,16 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
                     tasks = repo.draftsByStatus(DraftStatus.APPROVED).count { it.channel != Channel.EMAIL },
                     openReplies = repo.countOpenReplies().toInt(),
                     toComplete = repo.accountsToComplete().size,
-                    discoveredThisWeek = repo.countEvents("ACCOUNT_DISCOVERED", Instant.now().minus(7, ChronoUnit.DAYS)),
+                    discoveredThisWeek = repo.countEvents("ACCOUNT_DISCOVERED", ctx.clock.instant().minus(7, ChronoUnit.DAYS)),
                 ),
                 pipeline = DealStage.entries.map { s -> deals.filter { it.stage == s }.let { StageRow(s, it.size, it.sumOf { d -> d.amountEur }) } },
                 accounts = repo.accountsByScore(50),
-                agents = repo.agentStats(Instant.now().minus(7, ChronoUnit.DAYS)).map { AgentRow(it.agent, it.runs, it.failures, it.inputTokens, it.outputTokens, it.avgMs) },
+                agents = repo.agentStats(ctx.clock.instant().minus(7, ChronoUnit.DAYS)).map { AgentRow(it.agent, it.runs, it.failures, it.inputTokens, it.outputTokens, it.avgMs) },
                 dryRun = ctx.mail.dryRun,
                 bySignal = conversionBySignal(ctx),
                 activity = activity(ctx),
                 mailboxes = ctx.mail.mailboxes.size,
-                nextSendAt = lab.doppio.bloom.core.sequence.SequenceEngine.nextSendingSlot(Instant.now(), ctx.policy).toString(),
+                nextSendAt = lab.doppio.bloom.core.sequence.SequenceEngine.nextSendingSlot(ctx.clock.instant(), ctx.policy).toString(),
             ),
         )
     }
@@ -274,7 +274,7 @@ private val signalLabels = mapOf(
 
 /** Réponses positives par signal dominant des comptes contactés, sur 90 jours. */
 private suspend fun conversionBySignal(ctx: AppContext): List<SignalRow> {
-    val events = ctx.repo.eventsSince(Instant.now().minus(90, ChronoUnit.DAYS))
+    val events = ctx.repo.eventsSince(ctx.clock.instant().minus(90, ChronoUnit.DAYS))
     val sent = events.filter { it.first == "EMAIL_SENT" }.mapNotNull { it.second }.toSet()
     val positive = events.filter { it.first == "REPLY_POSITIVE" }.mapNotNull { it.second }.toSet()
     return sent.groupBy { ctx.repo.dominantSignal(it)?.name ?: "NONE" }

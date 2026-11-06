@@ -32,27 +32,22 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.serialization.json.Json
 import lab.doppio.bloom.agents.Llm
-import lab.doppio.bloom.agents.LlmConfig
-import lab.doppio.bloom.agents.LlmProvider
 import lab.doppio.bloom.agents.ReplyClassifierAgent
 import lab.doppio.bloom.agents.ResearchAgent
 import lab.doppio.bloom.agents.RunTracker
 import lab.doppio.bloom.agents.WeeklyCoachAgent
 import lab.doppio.bloom.agents.WriterAgent
+import lab.doppio.bloom.app.config.BloomConfig
 import lab.doppio.bloom.app.outreach.EmailGateway
 import lab.doppio.bloom.app.outreach.ImapPoller
-import lab.doppio.bloom.app.outreach.MailConfig
-import lab.doppio.bloom.app.outreach.Mailbox
 import lab.doppio.bloom.app.outreach.Orchestrator
 import lab.doppio.bloom.app.outreach.UnsubscribeTokens
 import lab.doppio.bloom.app.web.CrossSiteGuard
 import lab.doppio.bloom.app.web.apiRoutes
 import lab.doppio.bloom.app.web.discoveryRoutes
 import lab.doppio.bloom.app.web.unsubscribeRoutes
-import lab.doppio.bloom.core.model.SendingPolicy
 import lab.doppio.bloom.core.sequence.DefaultSequences
 import lab.doppio.bloom.data.db.Db
-import lab.doppio.bloom.data.db.DbConfig
 import lab.doppio.bloom.data.db.Repository
 import lab.doppio.bloom.data.sources.AppStoreSource
 import lab.doppio.bloom.data.sources.BoampSource
@@ -71,84 +66,39 @@ import lab.doppio.bloom.data.discovery.DiscoveryConfig
 import lab.doppio.bloom.data.discovery.DiscoveryService
 import lab.doppio.bloom.data.sources.defaultHttpClient
 import kotlinx.coroutines.runBlocking
+import java.time.Clock
 import kotlin.time.Duration.Companion.minutes
 
-private fun env(name: String, default: String? = null): String =
-    System.getenv(name) ?: default ?: error("Variable d'environnement manquante : $name")
-
-/** An empty value in .env (KEY=) counts as an absent key. */
-private fun optionalEnv(name: String): String? = System.getenv(name)?.takeIf { it.isNotBlank() }
-
 /** Câblage manuel : pas de framework d'injection pour une douzaine de composants. */
-class AppContext {
-    val repo = Repository()
+class AppContext(val config: BloomConfig, val clock: Clock = Clock.systemDefaultZone()) {
+    val repo = Repository(clock)
     private val http = defaultHttpClient()
-    val llm = LlmProvider.parse(env("LLM_PROVIDER", "anthropic")).let { provider ->
-        Llm(
-            LlmConfig(
-                provider = provider,
-                apiKey = when (provider) {
-                    LlmProvider.ANTHROPIC -> optionalEnv("ANTHROPIC_API_KEY") ?: error("ANTHROPIC_API_KEY est obligatoire avec LLM_PROVIDER=anthropic")
-                    LlmProvider.OPENAI -> optionalEnv("OPENAI_API_KEY")
-                    LlmProvider.OLLAMA -> null
-                },
-                baseUrl = when (provider) {
-                    LlmProvider.ANTHROPIC -> null
-                    LlmProvider.OPENAI -> optionalEnv("OPENAI_BASE_URL")
-                    LlmProvider.OLLAMA -> optionalEnv("OLLAMA_BASE_URL")
-                },
-                model = optionalEnv("LLM_MODEL"),
-                fastModel = optionalEnv("LLM_MODEL_FAST"),
-                contextLength = env("LLM_CONTEXT_LENGTH", "16384").toLong(),
-            ),
-        )
-    }
-    private val tracker = RunTracker(repo, dailyTokenBudget = optionalEnv("LLM_DAILY_TOKEN_BUDGET")?.toLong() ?: 0)
+    val llm = Llm(config.llm.client)
+    private val tracker = RunTracker(repo, dailyTokenBudget = config.llm.dailyTokenBudget, clock = clock)
     /** Portée des tâches de fond déclenchées depuis le dashboard (découverte, recherche). */
     val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    val policy = SendingPolicy(maxPerMailboxPerDay = env("MAX_PER_MAILBOX_PER_DAY", "25").toInt())
+    val policy = config.sending.policy
 
-    val mail = MailConfig(
-        smtpHost = env("SMTP_HOST", "smtp.gmail.com"),
-        smtpPort = env("SMTP_PORT", "587").toInt(),
-        imapHost = env("IMAP_HOST", "imap.gmail.com"),
-        // MAILBOXES="prenom@doppio-studio.fr:motdepasseapplication:Prénom Nom,..."
-        mailboxes = env("MAILBOXES", "").split(',').filter { it.isNotBlank() }.map {
-            val (address, password, name) = it.split(':', limit = 3)
-            Mailbox(address.trim(), password.trim(), name.trim())
-        },
-        publicBaseUrl = env("PUBLIC_BASE_URL", "http://localhost:8080"),
-        unsubscribeSecret = requireSecret("UNSUBSCRIBE_SECRET", System.getenv("UNSUBSCRIBE_SECRET")),
-        legalFooterFr = env(
-            "LEGAL_FOOTER_FR",
-            "Doppio Lab (Advisely), Paris. Vos coordonnées professionnelles proviennent de sources publiques " +
-                "(site de votre entreprise, annuaire des entreprises) et ne servent qu'à ce contact.",
-        ),
-        legalFooterEn = env(
-            "LEGAL_FOOTER_EN",
-            "Doppio Lab (Advisely), Paris, France. Your business contact details come from public sources and are used only for this contact.",
-        ),
-        dryRun = parseFlag("DRY_RUN", System.getenv("DRY_RUN"), default = true),
-    )
+    val mail = config.mail
     val tokens = UnsubscribeTokens(mail.unsubscribeSecret)
     private val gateway = EmailGateway(mail, tokens)
 
     private val appStore = AppStoreSource(http)
     private val registry = CompanyRegistrySource(http)
-    private val jobs = optionalEnv("FT_CLIENT_ID")?.let { FranceTravailSource(http, it, env("FT_CLIENT_SECRET")) }
+    private val jobs = config.discovery.franceTravail?.let { FranceTravailSource(http, it.clientId, it.clientSecret) }
 
     /** Optionnel : sans clé Dropcontact, les contacts sont saisis à la main (nom, email ou profil LinkedIn). */
-    val dropcontact = optionalEnv("DROPCONTACT_API_KEY")?.let { DropcontactSource(http, it) }
+    val dropcontact = config.discovery.dropcontactApiKey?.let { DropcontactSource(http, it) }
 
-    val research = ResearchAgent(llm, repo, tracker, appStore = appStore, registry = registry, jobs = jobs, web = WebPageSource(http))
+    val research = ResearchAgent(llm, repo, tracker, appStore = appStore, registry = registry, jobs = jobs, web = WebPageSource(http), clock = clock)
 
     /**
      * Sources added to discovery, chosen by DISCOVERY_SOURCES. The press feeds are left out of the default:
      * their reuse terms have to be checked by the owner before the source is turned on.
      */
-    private val enabledSources = env("DISCOVERY_SOURCES", "bodacc,boamp,ted,decp,codeur,press,github,jobboards").split(',').map { it.trim().lowercase() }.toSet()
+    private val enabledSources = config.discovery.sources
     private val discoverySources = listOfNotNull(
-        BodaccSource(http, minCapitalEur = env("BODACC_MIN_CAPITAL", "100000").toLong()).takeIf { "bodacc" in enabledSources },
+        BodaccSource(http, minCapitalEur = config.discovery.bodaccMinCapitalEur).takeIf { "bodacc" in enabledSources },
         BoampSource(http).takeIf { "boamp" in enabledSources },
         TedSource(http).takeIf { "ted" in enabledSources },
         DecpSource(
@@ -156,43 +106,43 @@ class AppContext {
             buyerName = { siren -> registry.bySiren(siren)?.name },
             wasSeen = { repo.wasSeen(it, 365) },
             markSeen = { key, kept, reason -> repo.markSeen(key, kept, reason) },
-            maxMonths = env("DECP_RENEWAL_MONTHS", "12").toLong(),
+            maxMonths = config.discovery.decpRenewalMonths,
         ).takeIf { "decp" in enabledSources },
         PressSource(http).takeIf { "press" in enabledSources },
-        GitHubSource(http, optionalEnv("GITHUB_TOKEN"), wasSeen = { repo.wasSeen(it, 90) }, markSeen = { key, kept, reason -> repo.markSeen(key, kept, reason) })
+        GitHubSource(http, config.discovery.githubToken, wasSeen = { repo.wasSeen(it, 90) }, markSeen = { key, kept, reason -> repo.markSeen(key, kept, reason) })
             .takeIf { "github" in enabledSources },
     )
 
     val discovery = DiscoveryService(
         repo, appStore, registry, jobs,
         DiscoveryConfig(
-            appsPerRun = env("DISCOVERY_APPS_PER_RUN", "400").toInt(),
-            // Clients actuels et partenaires à ne jamais prospecter, séparés par des virgules
-            extraExclusions = env("DISCOVERY_EXCLUDE", "").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
+            appsPerRun = config.discovery.appsPerRun,
+            // Clients actuels et partenaires à ne jamais prospecter
+            extraExclusions = config.discovery.extraExclusions,
         ),
         sources = discoverySources,
         jobBoards = JobBoardSource(http).takeIf { "jobboards" in enabledSources },
-        codeur = CodeurSource(http, minBudgetEur = env("CODEUR_MIN_BUDGET", "1000").toInt()).takeIf { "codeur" in enabledSources },
+        codeur = CodeurSource(http, minBudgetEur = config.discovery.codeurMinBudgetEur).takeIf { "codeur" in enabledSources },
+        clock = clock,
     )
-    val writer = WriterAgent(llm, repo, tracker, senderName = env("SENDER_NAME", "l'équipe Doppio"))
+    val writer = WriterAgent(llm, repo, tracker, senderName = config.sending.senderName)
     val orchestrator = Orchestrator(
-        repo, writer, research, ReplyClassifierAgent(llm, tracker), WeeklyCoachAgent(llm, repo, tracker),
-        gateway, ImapPoller(mail), mail, policy, discovery,
+        repo, writer, research, ReplyClassifierAgent(llm, tracker, clock), WeeklyCoachAgent(llm, repo, tracker, clock),
+        gateway, ImapPoller(mail, clock), mail, policy, discovery,
+        clock = clock,
     )
 }
 
 fun main() {
-    // Fail before touching the database when a secret or DRY_RUN is unusable
-    requireSecret("ADMIN_PASSWORD", System.getenv("ADMIN_PASSWORD"))
-    requireSecret("UNSUBSCRIBE_SECRET", System.getenv("UNSUBSCRIBE_SECRET"))
-    parseFlag("DRY_RUN", System.getenv("DRY_RUN"), default = true)
-    Db.connect(DbConfig(env("DATABASE_URL", "jdbc:postgresql://localhost:5432/bloom"), env("DB_USER", "bloom"), env("DB_PASSWORD", "bloom")))
-    val ctx = AppContext()
+    // Fail before touching the database when a secret, DRY_RUN or any other setting is unusable
+    val config = BloomConfig.from(System.getenv())
+    Db.connect(config.database)
+    val ctx = AppContext(config)
     org.slf4j.LoggerFactory.getLogger("bloom").info("LLM : {}", ctx.llm.describe())
     runBlocking { ctx.repo.ensureSequences(DefaultSequences.all()) }
     val loops = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     ctx.orchestrator.start(loops)
-    val server = embeddedServer(Netty, port = env("PORT", "8080").toInt()) { module(ctx) }
+    val server = embeddedServer(Netty, port = config.server.port) { module(ctx) }
     // SIGTERM (docker stop) stops the server first, then the loops and the database, lock included
     server.monitor.subscribe(ApplicationStopped) {
         loops.cancel()
@@ -220,7 +170,7 @@ fun Application.module(ctx: AppContext) {
             call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "erreur interne"))
         }
     }
-    val adminPassword = requireSecret("ADMIN_PASSWORD", System.getenv("ADMIN_PASSWORD")).toByteArray()
+    val adminPassword = ctx.config.server.adminPassword.toByteArray()
     install(Authentication) {
         basic("admin") {
             realm = "Doppio Bloom"

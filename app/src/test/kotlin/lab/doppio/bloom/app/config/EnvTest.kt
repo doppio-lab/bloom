@@ -1,4 +1,4 @@
-package lab.doppio.bloom.app
+package lab.doppio.bloom.app.config
 
 import kotlin.test.Test
 import kotlin.test.assertEquals

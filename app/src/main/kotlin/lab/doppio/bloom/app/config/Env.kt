@@ -1,4 +1,4 @@
-package lab.doppio.bloom.app
+package lab.doppio.bloom.app.config
 
 /** Values copied from .env.example that must never reach a running server. */
 private val placeholders = setOf("change-me", "une-longue-chaine-aleatoire")

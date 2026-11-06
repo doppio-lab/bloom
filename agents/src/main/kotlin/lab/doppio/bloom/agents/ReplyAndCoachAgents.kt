@@ -1,5 +1,6 @@
 package lab.doppio.bloom.agents
 
+import java.time.Clock
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
@@ -19,7 +20,7 @@ import java.time.temporal.ChronoUnit
  * Classifieur de réponses. Modèle rapide, sortie structurée.
  * Les décisions qui comptent (arrêt de séquence, opposition) sont prises par le code, pas par le LLM.
  */
-class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker) {
+class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker, private val clock: Clock = Clock.systemDefaultZone()) {
 
     @Serializable
     @SerialName("ReplyClassification")
@@ -43,7 +44,7 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
     /** Mots qui déclenchent l'opposition sans attendre le LLM, par prudence. */
     private val hardStop = Regex("(?i)(désinscri|unsubscribe|ne plus me contacter|retirez[- ]moi|\\bstop\\b|remove me|opt[- ]out)")
 
-    suspend fun classify(subject: String?, body: String, accountId: Long?, today: LocalDate = LocalDate.now()): Result {
+    suspend fun classify(subject: String?, body: String, accountId: Long?, today: LocalDate = LocalDate.now(clock)): Result {
         val trimmed = body.lines().takeWhile { line -> !line.startsWith(">") && !line.contains("a écrit") && !line.contains("wrote:") }.joinToString("\n").take(4_000)
         if (hardStop.containsMatchIn(trimmed.take(400))) {
             return Result(ReplyIntent.UNSUBSCRIBE, 1.0, null, null, "Demande d'arrêt détectée par mot-clé", null)
@@ -72,14 +73,14 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
 
 /** Outils de lecture des métriques pour le coach hebdomadaire. Lecture seule. */
 @LLMDescription("Lecture des métriques de prospection de Doppio")
-class MetricsTools(private val repo: Repository) : ToolSet {
+class MetricsTools(private val repo: Repository, private val clock: Clock = Clock.systemDefaultZone()) : ToolSet {
 
     @Tool
     @LLMDescription("Compte les événements d'un type sur les N derniers jours. Types : EMAIL_SENT, REPLY_RECEIVED, REPLY_POSITIVE, MEETING_BOOKED, UNSUBSCRIBED, BOUNCED, DRAFT_APPROVED, DRAFT_REJECTED, LINKEDIN_TASK_DONE")
     suspend fun countEvents(
         @LLMDescription("Type d'événement") type: String,
         @LLMDescription("Nombre de jours") days: Int,
-    ): String = repo.countEvents(type, Instant.now().minus(days.toLong(), ChronoUnit.DAYS)).toString()
+    ): String = repo.countEvents(type, clock.instant().minus(days.toLong(), ChronoUnit.DAYS)).toString()
 
     @Tool
     @LLMDescription("Liste les 15 comptes les mieux classés avec score, offre recommandée et raisons")
@@ -96,7 +97,7 @@ class MetricsTools(private val repo: Repository) : ToolSet {
     @Tool
     @LLMDescription("Taux de réponse positive par type de signal à l'origine du contact, sur 90 jours")
     suspend fun replyRateBySignal(): String {
-        val since = Instant.now().minus(90, ChronoUnit.DAYS)
+        val since = clock.instant().minus(90, ChronoUnit.DAYS)
         val events = repo.eventsSince(since)
         val sentByAccount = events.filter { it.first == "EMAIL_SENT" }.mapNotNull { it.second }.toSet()
         val positiveByAccount = events.filter { it.first == "REPLY_POSITIVE" }.mapNotNull { it.second }.toSet()
@@ -109,24 +110,24 @@ class MetricsTools(private val repo: Repository) : ToolSet {
 
     @Tool
     @LLMDescription("Coût et fiabilité des agents sur 7 jours")
-    suspend fun agentCosts(): String = repo.agentStats(Instant.now().minus(7, ChronoUnit.DAYS)).joinToString("\n") {
+    suspend fun agentCosts(): String = repo.agentStats(clock.instant().minus(7, ChronoUnit.DAYS)).joinToString("\n") {
         "${it.agent} : ${it.runs} exécutions, ${it.failures} échecs, ${it.inputTokens} tokens en entrée, ${it.outputTokens} en sortie, ${it.avgMs} ms en moyenne"
     }
 }
 
-class WeeklyCoachAgent(private val llm: Llm, private val repo: Repository, private val tracker: RunTracker) {
+class WeeklyCoachAgent(private val llm: Llm, private val repo: Repository, private val tracker: RunTracker, private val clock: Clock = Clock.systemDefaultZone()) {
     suspend fun weeklyMemo(): String {
         val tokens = TokenCounter()
         val agent = AIAgent(
             promptExecutor = llm.executor,
             llmModel = llm.writer,
             systemPrompt = Prompts.coach,
-            toolRegistry = ToolRegistry { tools(MetricsTools(repo)) },
+            toolRegistry = ToolRegistry { tools(MetricsTools(repo, clock)) },
             maxIterations = 15,
             installFeatures = tokens.feature,
         )
         return tracker.trackAgent("weekly-coach", null, llm.writer, tokens) {
-            agent.run("Prépare la note du lundi ${LocalDate.now()}.")
+            agent.run("Prépare la note du lundi ${LocalDate.now(clock)}.")
         }
     }
 }

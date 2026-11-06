@@ -1,5 +1,6 @@
 package lab.doppio.bloom.data.db
 
+import java.time.Clock
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
@@ -104,7 +105,7 @@ data class ReplyRow(
     val subject: String? = null,
 )
 
-class Repository {
+class Repository(private val clock: Clock = Clock.systemDefaultZone()) {
 
     // --- Comptes -------------------------------------------------------------------------------
 
@@ -159,7 +160,7 @@ class Repository {
      * its drafts waiting for review are rejected. Discovery keeps finding it by name and leaves it excluded.
      */
     suspend fun excludeAccount(id: AccountId, reason: String) = dbQuery {
-        Accounts.update({ Accounts.id eq id }) { it[excludedReason] = reason; it[excludedAt] = Instant.now() }
+        Accounts.update({ Accounts.id eq id }) { it[excludedReason] = reason; it[excludedAt] = clock.instant() }
         val contactIds = Contacts.selectAll().where { Contacts.accountId eq id }.map { it[Contacts.id] }
         if (contactIds.isNotEmpty()) {
             val open = Enrollments.selectAll()
@@ -213,7 +214,7 @@ class Repository {
         officers.forEach { o ->
             Officers.insertIgnore { it[this.accountId] = accountId; it[fullName] = o.fullName; it[role] = o.role; it[sourceUrl] = o.sourceUrl }
         }
-        Accounts.update({ Accounts.id eq accountId }) { it[officersCheckedAt] = Instant.now() }
+        Accounts.update({ Accounts.id eq accountId }) { it[officersCheckedAt] = clock.instant() }
     }
 
     suspend fun officersByAccount(): Map<AccountId, List<OfficerRow>> = dbQuery {
@@ -232,12 +233,12 @@ class Repository {
     }
 
     suspend fun wasSeen(key: String, withinDays: Long = 30): Boolean = dbQuery {
-        val since = Instant.now().minus(withinDays, ChronoUnit.DAYS)
+        val since = clock.instant().minus(withinDays, ChronoUnit.DAYS)
         DiscoverySeen.selectAll().where { (DiscoverySeen.key eq key) and (DiscoverySeen.checkedAt greaterEq since) }.any()
     }
 
     suspend fun markSeen(key: String, kept: Boolean, reason: String? = null) = dbQuery {
-        DiscoverySeen.upsert { it[this.key] = key; it[this.kept] = kept; it[this.reason] = reason; it[checkedAt] = Instant.now() }
+        DiscoverySeen.upsert { it[this.key] = key; it[this.kept] = kept; it[this.reason] = reason; it[checkedAt] = clock.instant() }
     }
 
     /** Saves a demand the first time it is seen. True when it is new. */
@@ -257,11 +258,11 @@ class Repository {
 
     /** True when the demand exists. */
     suspend fun dismissDemand(key: String): Boolean = dbQuery {
-        Demands.update({ Demands.key eq key }) { it[dismissedAt] = Instant.now() } > 0
+        Demands.update({ Demands.key eq key }) { it[dismissedAt] = clock.instant() } > 0
     }
 
     /** Demands are only useful while the buyer is choosing: drop them after 90 days. */
-    suspend fun purgeOldDemands(now: Instant = Instant.now()): Int = dbQuery {
+    suspend fun purgeOldDemands(now: Instant = clock.instant()): Int = dbQuery {
         val limit = now.minus(90, ChronoUnit.DAYS)
         Demands.deleteWhere { Demands.createdAt.less(limit) }
     }
@@ -277,7 +278,7 @@ class Repository {
 
     suspend fun saveJobBoard(accountId: AccountId, ref: BoardRef?) = dbQuery {
         AccountJobBoards.upsert {
-            it[this.accountId] = accountId; it[provider] = ref?.provider?.name; it[token] = ref?.token; it[checkedAt] = Instant.now()
+            it[this.accountId] = accountId; it[provider] = ref?.provider?.name; it[token] = ref?.token; it[checkedAt] = clock.instant()
         }
     }
 
@@ -332,7 +333,7 @@ class Repository {
             it[score] = s.total
             it[scoreDetail] = json.encodeToString(ScoreBreakdown.serializer(), s)
             it[recommendedOffer] = s.recommendedOffer?.name
-            it[refreshedAt] = Instant.now()
+            it[refreshedAt] = clock.instant()
         }
     }
 
@@ -362,11 +363,11 @@ class Repository {
     }
 
     suspend fun markInbound(contactId: ContactId) = dbQuery {
-        Contacts.update({ Contacts.id eq contactId }) { it[lastInboundAt] = Instant.now() }
+        Contacts.update({ Contacts.id eq contactId }) { it[lastInboundAt] = clock.instant() }
     }
 
     /** RGPD : purge des contacts sans échange depuis 3 ans (recommandation CNIL). Les oppositions restent. */
-    suspend fun purgeStaleContacts(now: Instant = Instant.now()): Int = dbQuery {
+    suspend fun purgeStaleContacts(now: Instant = clock.instant()): Int = dbQuery {
         val limit = now.minus(3 * 365L, ChronoUnit.DAYS)
         Contacts.deleteWhere {
             (Contacts.createdAt.less(limit)) and (Contacts.lastInboundAt.isNull() or Contacts.lastInboundAt.less(limit))
@@ -374,7 +375,7 @@ class Repository {
     }
 
     /** RGPD : officer names read from the registry more than 3 years ago are deleted, like contacts. */
-    suspend fun purgeStaleOfficers(now: Instant = Instant.now()): Int = dbQuery {
+    suspend fun purgeStaleOfficers(now: Instant = clock.instant()): Int = dbQuery {
         val limit = now.minus(3 * 365L, ChronoUnit.DAYS)
         Officers.deleteWhere { Officers.fetchedAt.less(limit) }
     }
@@ -391,7 +392,7 @@ class Repository {
     }
 
     suspend fun factsOf(accountId: AccountId, maxAgeDays: Long = 120): List<Fact> = dbQuery {
-        val since = Instant.now().minus(maxAgeDays, ChronoUnit.DAYS)
+        val since = clock.instant().minus(maxAgeDays, ChronoUnit.DAYS)
         Facts.selectAll().where { (Facts.accountId eq accountId) and (Facts.retrievedAt greaterEq since) }
             .orderBy(Facts.retrievedAt, SortOrder.DESC)
             .map {
@@ -409,7 +410,7 @@ class Repository {
     }
 
     suspend fun signalsOf(accountId: AccountId, maxAgeDays: Long = 180): List<Signal> = dbQuery {
-        val since = Instant.now().minus(maxAgeDays, ChronoUnit.DAYS)
+        val since = clock.instant().minus(maxAgeDays, ChronoUnit.DAYS)
         Signals.selectAll().where { (Signals.accountId eq accountId) and (Signals.observedAt greaterEq since) }.map {
             Signal(it[Signals.accountId], SignalType.valueOf(it[Signals.type]), it[Signals.strength], it[Signals.observedAt].toString(), it[Signals.factIds].decodeList())
         }
@@ -418,7 +419,7 @@ class Repository {
     suspend fun saveDossier(d: Dossier) = dbQuery {
         Dossiers.upsert {
             it[accountId] = d.accountId; it[summary] = d.summary; it[hypotheses] = d.hypotheses.encode()
-            it[angle] = d.angle; it[offer] = d.offer.name; it[noFit] = d.noFit; it[updatedAt] = Instant.now()
+            it[angle] = d.angle; it[offer] = d.offer.name; it[noFit] = d.noFit; it[updatedAt] = clock.instant()
         }
     }
 
@@ -466,7 +467,7 @@ class Repository {
     suspend fun advance(enrollmentId: Long, nextStep: Int, threadMessageId: String? = null) = dbQuery {
         Enrollments.update({ Enrollments.id eq enrollmentId }) {
             it[this.nextStep] = nextStep
-            it[lastActionAt] = Instant.now()
+            it[lastActionAt] = clock.instant()
             if (threadMessageId != null) it[this.threadMessageId] = threadMessageId
         }
     }
@@ -519,7 +520,7 @@ class Repository {
     suspend fun decideDraft(id: Long, status: DraftStatus, editedSubject: String? = null, editedBody: String? = null) = dbQuery {
         Drafts.update({ Drafts.id eq id }) {
             it[this.status] = status.name
-            it[decidedAt] = Instant.now()
+            it[decidedAt] = clock.instant()
             if (editedBody != null) { it[body] = editedBody; it[editedByHuman] = true }
             if (editedSubject != null) { it[subject] = editedSubject; it[editedByHuman] = true }
         }
@@ -528,7 +529,7 @@ class Repository {
     // --- Envoi : réserver, envoyer, constater. Un brouillon réservé n'est jamais renvoyé. ------------
 
     /** Oldest approved email whose retry delay has passed. */
-    suspend fun nextToSend(now: Instant = Instant.now()): Draft? = dbQuery {
+    suspend fun nextToSend(now: Instant = clock.instant()): Draft? = dbQuery {
         Drafts.selectAll().where {
             (Drafts.status eq DraftStatus.APPROVED.name) and (Drafts.channel eq Channel.EMAIL.name) and
                 (Drafts.nextAttemptAt.isNull() or Drafts.nextAttemptAt.lessEq(now))
@@ -547,7 +548,7 @@ class Repository {
     }
 
     /** The send went through: the draft is sent and the sequence moves on, in one transaction. */
-    suspend fun recordSent(draft: Draft, threadMessageId: String, now: Instant = Instant.now()) = dbQuery {
+    suspend fun recordSent(draft: Draft, threadMessageId: String, now: Instant = clock.instant()) = dbQuery {
         Drafts.update({ (Drafts.id eq draft.id) and (Drafts.status eq DraftStatus.SENDING.name) }) {
             it[status] = DraftStatus.SENT.name; it[sentAt] = now; it[nextAttemptAt] = null; it[lastError] = null
         }
@@ -562,7 +563,7 @@ class Repository {
      * SMTP refused the message. It goes back to the queue after a growing delay (15, 30 min...) so the
      * other emails keep going out, and becomes FAILED after [maxAttempts]. Returns the new status.
      */
-    suspend fun recordSendFailure(id: Long, error: String, now: Instant = Instant.now(), maxAttempts: Int = 3): DraftStatus = dbQuery {
+    suspend fun recordSendFailure(id: Long, error: String, now: Instant = clock.instant(), maxAttempts: Int = 3): DraftStatus = dbQuery {
         val attempts = (Drafts.selectAll().where { Drafts.id eq id }.firstOrNull()?.get(Drafts.sendAttempts) ?: 0) + 1
         val next = if (attempts >= maxAttempts) DraftStatus.FAILED else DraftStatus.APPROVED
         Drafts.update({ (Drafts.id eq id) and (Drafts.status eq DraftStatus.SENDING.name) }) {
@@ -660,7 +661,7 @@ class Repository {
         } else {
             Deals.update({ Deals.id eq d.id }) {
                 it[stage] = d.stage.name; it[amountEur] = d.amountEur; it[offer] = d.offer.name
-                it[expectedClose] = d.expectedClose?.let(LocalDate::parse); it[updatedAt] = Instant.now()
+                it[expectedClose] = d.expectedClose?.let(LocalDate::parse); it[updatedAt] = clock.instant()
             }
             d.id
         }
@@ -678,7 +679,7 @@ class Repository {
      * Claims a job for a period (a day, the Monday of a week, the 1st of a month). True only for the first
      * caller of that period, across restarts and instances.
      */
-    suspend fun claimJob(name: String, period: LocalDate, now: Instant = Instant.now()): Boolean = dbQuery {
+    suspend fun claimJob(name: String, period: LocalDate, now: Instant = clock.instant()): Boolean = dbQuery {
         JobRuns.upsert(
             onUpdate = { it[JobRuns.period] = period; it[JobRuns.startedAt] = now; it[JobRuns.finishedAt] = null; it[JobRuns.error] = null },
             where = { JobRuns.period less period },
@@ -687,7 +688,7 @@ class Repository {
         }.insertedCount > 0
     }
 
-    suspend fun finishJob(name: String, error: String? = null, now: Instant = Instant.now()) = dbQuery {
+    suspend fun finishJob(name: String, error: String? = null, now: Instant = clock.instant()) = dbQuery {
         JobRuns.update({ JobRuns.name eq name }) { it[finishedAt] = now; it[this.error] = error?.take(500) }
     }
 
