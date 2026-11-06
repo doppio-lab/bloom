@@ -24,9 +24,9 @@ import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Signal
-import lab.doppio.bloom.data.db.AccountRow
-import lab.doppio.bloom.data.db.Dossier
-import lab.doppio.bloom.data.db.ReplyRow
+import lab.doppio.bloom.core.port.AccountRow
+import lab.doppio.bloom.core.model.Dossier
+import lab.doppio.bloom.core.port.ReplyRow
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
@@ -60,7 +60,7 @@ private suspend fun activity(ctx: AppContext): List<DayCount> {
     val zone = java.time.ZoneId.of(ctx.policy.timezone)
     val today = java.time.LocalDate.now(ctx.clock.withZone(zone))
     val first = today.minusDays(ACTIVITY_DAYS - 1)
-    val events = ctx.repo.eventTimes(setOf("EMAIL_SENT", "REPLY_RECEIVED"), first.atStartOfDay(zone).toInstant())
+    val events = ctx.eventRepo.eventTimes(setOf("EMAIL_SENT", "REPLY_RECEIVED"), first.atStartOfDay(zone).toInstant())
         .groupBy({ it.second.atZone(zone).toLocalDate() }, { it.first })
     return (0 until ACTIVITY_DAYS).map { first.plusDays(it) }.map { day ->
         val types = events[day].orEmpty()
@@ -83,33 +83,32 @@ private fun launchResearch(ctx: AppContext, accountId: Long) {
 }
 
 fun Route.apiRoutes(ctx: AppContext) = route("/api") {
-    val repo = ctx.repo
 
     get("/overview") {
         val days = call.request.queryParameters["days"]?.toIntOrNull() ?: 30
         val since = ctx.clock.instant().minus(days.toLong(), ChronoUnit.DAYS)
-        val sent = repo.countEvents("EMAIL_SENT", since)
-        val replies = repo.countEvents("REPLY_RECEIVED", since)
-        val positive = repo.countEvents("REPLY_POSITIVE", since)
-        val unsub = repo.countEvents("UNSUBSCRIBED", since)
-        val bounced = repo.countEvents("BOUNCED", since)
+        val sent = ctx.eventRepo.countEvents("EMAIL_SENT", since)
+        val replies = ctx.eventRepo.countEvents("REPLY_RECEIVED", since)
+        val positive = ctx.eventRepo.countEvents("REPLY_POSITIVE", since)
+        val unsub = ctx.eventRepo.countEvents("UNSUBSCRIBED", since)
+        val bounced = ctx.eventRepo.countEvents("BOUNCED", since)
         fun rate(n: Int) = if (sent == 0) 0.0 else n.toDouble() / sent
-        val deals = repo.deals()
+        val deals = ctx.dealRepo.deals()
         call.respond(
             Overview(
                 periodDays = days,
-                kpis = Kpis(sent, replies, positive, repo.countEvents("MEETING_BOOKED", since), unsub, bounced, rate(replies), rate(positive), rate(unsub), rate(bounced)),
+                kpis = Kpis(sent, replies, positive, ctx.eventRepo.countEvents("MEETING_BOOKED", since), unsub, bounced, rate(replies), rate(positive), rate(unsub), rate(bounced)),
                 queues = Queues(
-                    pendingReview = repo.draftsByStatus(DraftStatus.PENDING_REVIEW).size,
-                    approvedEmails = repo.draftsByStatus(DraftStatus.APPROVED, Channel.EMAIL).size,
-                    tasks = repo.draftsByStatus(DraftStatus.APPROVED).count { it.channel != Channel.EMAIL },
-                    openReplies = repo.countOpenReplies().toInt(),
-                    toComplete = repo.accountsToComplete().size,
-                    discoveredThisWeek = repo.countEvents("ACCOUNT_DISCOVERED", ctx.clock.instant().minus(7, ChronoUnit.DAYS)),
+                    pendingReview = ctx.draftRepo.draftsByStatus(DraftStatus.PENDING_REVIEW).size,
+                    approvedEmails = ctx.draftRepo.draftsByStatus(DraftStatus.APPROVED, Channel.EMAIL).size,
+                    tasks = ctx.draftRepo.draftsByStatus(DraftStatus.APPROVED).count { it.channel != Channel.EMAIL },
+                    openReplies = ctx.replyRepo.countOpenReplies().toInt(),
+                    toComplete = ctx.accountRepo.accountsToComplete().size,
+                    discoveredThisWeek = ctx.eventRepo.countEvents("ACCOUNT_DISCOVERED", ctx.clock.instant().minus(7, ChronoUnit.DAYS)),
                 ),
                 pipeline = DealStage.entries.map { s -> deals.filter { it.stage == s }.let { StageRow(s, it.size, it.sumOf { d -> d.amountEur }) } },
-                accounts = repo.accountsByScore(50),
-                agents = repo.agentStats(ctx.clock.instant().minus(7, ChronoUnit.DAYS)).map { AgentRow(it.agent, it.runs, it.failures, it.inputTokens, it.outputTokens, it.avgMs) },
+                accounts = ctx.accountRepo.accountsByScore(50),
+                agents = ctx.agentRunRepo.agentStats(ctx.clock.instant().minus(7, ChronoUnit.DAYS)).map { AgentRow(it.agent, it.runs, it.failures, it.inputTokens, it.outputTokens, it.avgMs) },
                 dryRun = ctx.mail.dryRun,
                 bySignal = conversionBySignal(ctx),
                 activity = activity(ctx),
@@ -120,12 +119,12 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     }
 
     // --- Comptes ---------------------------------------------------------------------------------
-    get("/accounts") { call.respond(repo.accountsByScore(500)) }
+    get("/accounts") { call.respond(ctx.accountRepo.accountsByScore(500)) }
 
     post("/accounts") {
         val req = call.receive<NewAccount>()
-        val id = repo.upsertAccount(req.account)
-        req.contacts.forEach { repo.addContact(it.copy(accountId = id)) }
+        val id = ctx.accountRepo.upsertAccount(req.account)
+        req.contacts.forEach { ctx.contactRepo.addContact(it.copy(accountId = id)) }
         // The research takes minutes: it runs in the background, the dossier appears when it is done
         if (req.researchNow) launchResearch(ctx, id)
         call.respond(HttpStatusCode.Created, mapOf("id" to id.toString(), "research" to if (req.researchNow) "lancée" else "non demandée"))
@@ -133,32 +132,32 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
 
     get("/accounts/{id}") {
         val id = call.parameters["id"]!!.toLong()
-        val account = repo.account(id) ?: return@get call.respond(HttpStatusCode.NotFound)
-        call.respond(AccountDetail(account, repo.factsOf(id), repo.signalsOf(id), repo.dossier(id), repo.contactsOf(id)))
+        val account = ctx.accountRepo.account(id) ?: return@get call.respond(HttpStatusCode.NotFound)
+        call.respond(AccountDetail(account, ctx.factRepo.factsOf(id), ctx.factRepo.signalsOf(id), ctx.factRepo.dossier(id), ctx.contactRepo.contactsOf(id)))
     }
 
     post("/accounts/{id}/research") {
         val id = call.parameters["id"]!!.toLong()
-        repo.account(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+        ctx.accountRepo.account(id) ?: return@post call.respond(HttpStatusCode.NotFound)
         launchResearch(ctx, id)
         call.respond(HttpStatusCode.Accepted, mapOf("status" to "lancée"))
     }
 
     post("/contacts") {
         val c = call.receive<Contact>()
-        call.respond(HttpStatusCode.Created, mapOf("id" to repo.addContact(c)))
+        call.respond(HttpStatusCode.Created, mapOf("id" to ctx.contactRepo.addContact(c)))
     }
 
     post("/contacts/{id}/enroll") {
-        val contact = repo.contact(call.parameters["id"]!!.toLong()) ?: return@post call.respond(HttpStatusCode.NotFound)
-        require(contact.email == null || !repo.isSuppressed(contact.email!!)) { "Ce contact s'est opposé à la prospection" }
-        val dossier = repo.dossier(contact.accountId)
+        val contact = ctx.contactRepo.contact(call.parameters["id"]!!.toLong()) ?: return@post call.respond(HttpStatusCode.NotFound)
+        require(contact.email == null || !ctx.replyRepo.isSuppressed(contact.email!!)) { "Ce contact s'est opposé à la prospection" }
+        val dossier = ctx.factRepo.dossier(contact.accountId)
         val requested = call.receive<EnrollRequest>().offer
         require(requested != null || dossier?.noFit != true) { "Le dossier conclut qu'aucune offre ne convient : choisir l'offre explicitement" }
         val offer = requested ?: dossier?.offer ?: Offer.DISCOVERY
-        val seq = repo.sequenceFor(offer) ?: repo.sequenceFor(Offer.DISCOVERY)!!
-        val id = repo.enroll(contact.id, seq.id)
-        repo.logEvent("ENROLLED", contact.accountId, contact.id)
+        val seq = ctx.sequenceRepo.sequenceFor(offer) ?: ctx.sequenceRepo.sequenceFor(Offer.DISCOVERY)!!
+        val id = ctx.sequenceRepo.enroll(contact.id, seq.id)
+        ctx.eventRepo.logEvent("ENROLLED", contact.accountId, contact.id)
         ctx.orchestrator.planSoon()
         call.respond(HttpStatusCode.Created, mapOf("enrollmentId" to id))
     }
@@ -166,11 +165,11 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     // --- File de validation -------------------------------------------------------------------
     get("/drafts") {
         val status = call.request.queryParameters["status"]?.let(DraftStatus::valueOf) ?: DraftStatus.PENDING_REVIEW
-        val views = repo.draftsByStatus(status).mapNotNull { d ->
-            val e = repo.enrollment(d.enrollmentId) ?: return@mapNotNull null
-            val c = repo.contact(e.contactId) ?: return@mapNotNull null
-            val a = repo.account(c.accountId) ?: return@mapNotNull null
-            DraftView(d, c.fullName, c.role, a.name, repo.factsOf(a.id).filter { it.id in d.citedFactIds || "[F:${it.id}]" in d.body }, c.linkedinUrl)
+        val views = ctx.draftRepo.draftsByStatus(status).mapNotNull { d ->
+            val e = ctx.sequenceRepo.enrollment(d.enrollmentId) ?: return@mapNotNull null
+            val c = ctx.contactRepo.contact(e.contactId) ?: return@mapNotNull null
+            val a = ctx.accountRepo.account(c.accountId) ?: return@mapNotNull null
+            DraftView(d, c.fullName, c.role, a.name, ctx.factRepo.factsOf(a.id).filter { it.id in d.citedFactIds || "[F:${it.id}]" in d.body }, c.linkedinUrl)
         }
         call.respond(views)
     }
@@ -178,40 +177,40 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     post("/drafts/{id}/approve") {
         val id = call.parameters["id"]!!.toLong()
         val req = runCatching { call.receive<DecisionRequest>() }.getOrDefault(DecisionRequest())
-        val draft = repo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+        val draft = ctx.draftRepo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
         // A draft already decided elsewhere (other user, blacklist, sent) is never approved again
         if (draft.status != DraftStatus.PENDING_REVIEW) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to NOT_PENDING))
-        val e = repo.enrollment(draft.enrollmentId)!!
-        val c = repo.contact(e.contactId)!!
-        val a = repo.account(c.accountId)!!
-        val seq = repo.sequences().first { it.id == e.sequenceId }
+        val e = ctx.sequenceRepo.enrollment(draft.enrollmentId)!!
+        val c = ctx.contactRepo.contact(e.contactId)!!
+        val a = ctx.accountRepo.account(c.accountId)!!
+        val seq = ctx.sequenceRepo.all().first { it.id == e.sequenceId }
         // Le garde-fou s'applique aussi aux corrections humaines
         val violations = MessageGuard.check(
             GuardInput(
                 draft.channel, draft.stepIndex, req.subject ?: draft.subject, req.body ?: draft.body, draft.citedFactIds,
-                repo.factsOf(a.id), draft.referenceUsed, a.sector, seq.offer, c.language,
+                ctx.factRepo.factsOf(a.id), draft.referenceUsed, a.sector, seq.offer, c.language,
             ),
         )
         if (!MessageGuard.isPublishable(violations)) {
             return@post call.respond(HttpStatusCode.UnprocessableEntity, violations.map { it.toString() })
         }
-        repo.decideDraft(id, DraftStatus.APPROVED, req.subject, req.body)
-        repo.logEvent(if (req.body != null) "DRAFT_EDITED_APPROVED" else "DRAFT_APPROVED", a.id, c.id, id)
+        ctx.draftRepo.decideDraft(id, DraftStatus.APPROVED, req.subject, req.body)
+        ctx.eventRepo.logEvent(if (req.body != null) "DRAFT_EDITED_APPROVED" else "DRAFT_APPROVED", a.id, c.id, id)
         call.respond(HttpStatusCode.OK, mapOf("status" to "APPROVED"))
     }
 
     post("/drafts/{id}/reject") {
         val id = call.parameters["id"]!!.toLong()
-        val draft = repo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+        val draft = ctx.draftRepo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
         if (draft.status != DraftStatus.PENDING_REVIEW) return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to NOT_PENDING))
-        repo.decideDraft(id, DraftStatus.REJECTED)
-        repo.logEvent("DRAFT_REJECTED", draftId = id)
+        ctx.draftRepo.decideDraft(id, DraftStatus.REJECTED)
+        ctx.eventRepo.logEvent("DRAFT_REJECTED", draftId = id)
         call.respond(HttpStatusCode.OK, mapOf("status" to "REJECTED"))
     }
 
     post("/drafts/{id}/done") {
         val id = call.parameters["id"]!!.toLong()
-        val draft = repo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
+        val draft = ctx.draftRepo.draft(id) ?: return@post call.respond(HttpStatusCode.NotFound)
         if (draft.status != DraftStatus.APPROVED || draft.channel == Channel.EMAIL) {
             return@post call.respond(HttpStatusCode.Conflict, mapOf("error" to "cette tâche n'est plus à faire"))
         }
@@ -220,17 +219,17 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
     }
 
     // --- Réponses, pipeline, agents --------------------------------------------------------------
-    get("/replies") { call.respond<List<ReplyRow>>(repo.openReplies()) }
+    get("/replies") { call.respond<List<ReplyRow>>(ctx.replyRepo.openReplies()) }
     post("/replies/{id}/handled") {
-        repo.markReplyHandled(call.parameters["id"]!!.toLong())
+        ctx.replyRepo.markReplyHandled(call.parameters["id"]!!.toLong())
         call.respond(HttpStatusCode.OK, mapOf("status" to "handled"))
     }
 
-    get("/deals") { call.respond(repo.deals()) }
+    get("/deals") { call.respond(ctx.dealRepo.deals()) }
     post("/deals") {
         val d = call.receive<Deal>()
-        val id = repo.upsertDeal(d)
-        if (d.stage == DealStage.MEETING) repo.logEvent("MEETING_BOOKED", d.accountId)
+        val id = ctx.dealRepo.upsertDeal(d)
+        if (d.stage == DealStage.MEETING) ctx.eventRepo.logEvent("MEETING_BOOKED", d.accountId)
         call.respond(HttpStatusCode.OK, mapOf("id" to id))
     }
 }
@@ -238,10 +237,10 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
 fun Route.unsubscribeRoutes(ctx: AppContext) {
     suspend fun unsubscribe(token: String): Boolean {
         val contactId = ctx.tokens.verify(token) ?: return false
-        val contact = ctx.repo.contact(contactId)
-        contact?.email?.let { ctx.repo.suppress(it, "lien de désinscription") }
-        contact?.let { c -> ctx.repo.enrollmentsOfContact(c.id).forEach { ctx.repo.setEnrollmentStatus(it.id, lab.doppio.bloom.core.model.EnrollmentStatus.STOPPED_UNSUBSCRIBE) } }
-        ctx.repo.logEvent("UNSUBSCRIBED", contact?.accountId, contactId)
+        val contact = ctx.contactRepo.contact(contactId)
+        contact?.email?.let { ctx.replyRepo.suppress(it, "lien de désinscription") }
+        contact?.let { c -> ctx.sequenceRepo.enrollmentsOfContact(c.id).forEach { ctx.sequenceRepo.setEnrollmentStatus(it.id, lab.doppio.bloom.core.model.EnrollmentStatus.STOPPED_UNSUBSCRIBE) } }
+        ctx.eventRepo.logEvent("UNSUBSCRIBED", contact?.accountId, contactId)
         return true
     }
 
@@ -274,10 +273,10 @@ private val signalLabels = mapOf(
 
 /** Réponses positives par signal dominant des comptes contactés, sur 90 jours. */
 private suspend fun conversionBySignal(ctx: AppContext): List<SignalRow> {
-    val events = ctx.repo.eventsSince(ctx.clock.instant().minus(90, ChronoUnit.DAYS))
+    val events = ctx.eventRepo.eventsSince(ctx.clock.instant().minus(90, ChronoUnit.DAYS))
     val sent = events.filter { it.first == "EMAIL_SENT" }.mapNotNull { it.second }.toSet()
     val positive = events.filter { it.first == "REPLY_POSITIVE" }.mapNotNull { it.second }.toSet()
-    return sent.groupBy { ctx.repo.dominantSignal(it)?.name ?: "NONE" }
+    return sent.groupBy { ctx.factRepo.dominantSignal(it)?.name ?: "NONE" }
         .map { (type, ids) -> SignalRow(signalLabels[type] ?: "Sans signal", ids.size, ids.count { it in positive }) }
         .sortedByDescending { it.sent }
 }

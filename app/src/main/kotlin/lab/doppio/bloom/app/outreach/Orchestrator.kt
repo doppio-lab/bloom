@@ -1,5 +1,15 @@
 package lab.doppio.bloom.app.outreach
 
+import lab.doppio.bloom.core.port.AccountRepository
+import lab.doppio.bloom.core.port.ContactRepository
+import lab.doppio.bloom.core.port.DiscoveryStateRepository
+import lab.doppio.bloom.core.port.DraftRepository
+import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.port.FactRepository
+import lab.doppio.bloom.core.port.JobRunRepository
+import lab.doppio.bloom.core.port.OfficerRepository
+import lab.doppio.bloom.core.port.ReplyRepository
+import lab.doppio.bloom.core.port.SequenceRepository
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
@@ -18,7 +28,6 @@ import lab.doppio.bloom.core.model.ReplyIntent
 import lab.doppio.bloom.core.model.SendingPolicy
 import lab.doppio.bloom.core.sequence.NextAction
 import lab.doppio.bloom.core.sequence.SequenceEngine
-import lab.doppio.bloom.data.db.Repository
 import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.DayOfWeek
@@ -40,7 +49,16 @@ import kotlin.time.Duration.Companion.minutes
 private const val MAX_REJECTIONS_PER_STEP = 3
 
 class Orchestrator(
-    private val repo: Repository,
+    private val accountRepo: AccountRepository,
+    private val contactRepo: ContactRepository,
+    private val discoveryState: DiscoveryStateRepository,
+    private val draftRepo: DraftRepository,
+    private val eventRepo: EventRepository,
+    private val factRepo: FactRepository,
+    private val jobRunRepo: JobRunRepository,
+    private val officerRepo: OfficerRepository,
+    private val replyRepo: ReplyRepository,
+    private val sequenceRepo: SequenceRepository,
     private val writer: WriterAgent,
     private val research: ResearchAgent,
     private val classifier: ReplyClassifierAgent,
@@ -52,7 +70,7 @@ class Orchestrator(
     private val discovery: lab.doppio.bloom.data.discovery.DiscoveryService,
     private val nightlyResearchBudget: Int = 25,
     private val clock: Clock = Clock.systemDefaultZone(),
-    private val instanceLock: () -> Boolean = { lab.doppio.bloom.data.db.Db.tryHoldSingleInstanceLock() },
+    private val instanceLock: () -> Boolean = { lab.doppio.bloom.data.persistence.Db.tryHoldSingleInstanceLock() },
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val zone = ZoneId.of(policy.timezone)
@@ -73,7 +91,7 @@ class Orchestrator(
             }
             leader = true
             // Avant toute boucle : un brouillon resté SENDING date d'avant le redémarrage
-            val interrupted = repo.reconcileInterruptedSends()
+            val interrupted = draftRepo.reconcileInterruptedSends()
             if (interrupted > 0) log.warn("$interrupted email(s) interrompu(s) pendant l'envoi, passés en FAILED : vérifier la boîte d'envoi")
             loop("planification", 10.minutes) { planDrafts() }
             loop("envoi", 2.minutes) { sendApproved() }
@@ -112,20 +130,20 @@ class Orchestrator(
     suspend fun planDrafts(now: Instant = clock.instant()) = planning.withLock { planDraftsLocked(now) }
 
     private suspend fun planDraftsLocked(now: Instant) {
-        val sequences = repo.sequences().associateBy { it.id }
-        for (e in repo.activeEnrollments()) {
+        val sequences = sequenceRepo.all().associateBy { it.id }
+        for (e in sequenceRepo.activeEnrollments()) {
             val seq = sequences[e.sequenceId] ?: continue
             when (val action = SequenceEngine.next(e, seq, policy, now)) {
-                is NextAction.PrepareDraft -> if (!repo.hasOpenDraft(e.id, action.step.index)) {
-                    val contact = repo.contact(e.contactId) ?: continue
-                    if (contact.email != null && repo.isSuppressed(contact.email!!)) {
-                        repo.setEnrollmentStatus(e.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE)
+                is NextAction.PrepareDraft -> if (!draftRepo.hasOpenDraft(e.id, action.step.index)) {
+                    val contact = contactRepo.contact(e.contactId) ?: continue
+                    if (contact.email != null && replyRepo.isSuppressed(contact.email!!)) {
+                        sequenceRepo.setEnrollmentStatus(e.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE)
                         continue
                     }
                     // Trois brouillons rejetés pour la même étape : la séquence s'arrête au lieu d'en réécrire sans fin
-                    if (repo.rejectedDrafts(e.id, action.step.index) >= MAX_REJECTIONS_PER_STEP) {
-                        repo.setEnrollmentStatus(e.id, EnrollmentStatus.STOPPED_MANUAL)
-                        repo.logEvent("ENROLLMENT_STOPPED_REJECTIONS", contact.accountId, contact.id)
+                    if (draftRepo.rejectedDrafts(e.id, action.step.index) >= MAX_REJECTIONS_PER_STEP) {
+                        sequenceRepo.setEnrollmentStatus(e.id, EnrollmentStatus.STOPPED_MANUAL)
+                        eventRepo.logEvent("ENROLLMENT_STOPPED_REJECTIONS", contact.accountId, contact.id)
                         continue
                     }
                     val key = e.id to action.step.index
@@ -142,7 +160,7 @@ class Orchestrator(
                         log.warn("Brouillon impossible pour l'inscription ${e.id} ($failures échec(s), nouvel essai dans $wait min)", ex)
                     }
                 }
-                is NextAction.Finish -> if (action.status != e.status) repo.setEnrollmentStatus(e.id, action.status)
+                is NextAction.Finish -> if (action.status != e.status) sequenceRepo.setEnrollmentStatus(e.id, action.status)
                 is NextAction.WaitUntil -> {}
             }
         }
@@ -151,30 +169,30 @@ class Orchestrator(
     suspend fun sendApproved(now: Instant = clock.instant()) {
         if (!SequenceEngine.inWindow(now, policy)) return
         val startOfDay = now.atZone(zone).toLocalDate().atStartOfDay(zone).toInstant()
-        val draft = repo.nextToSend(now) ?: return
+        val draft = draftRepo.nextToSend(now) ?: return
 
         // Une seule boîte disponible par passage : on respecte l'écart minimal entre deux envois.
         val mailbox = mail.mailboxes.firstOrNull { mb ->
-            repo.sentTodayBy(mb.address, startOfDay) < policy.maxPerMailboxPerDay &&
-                (repo.lastSentAt(mb.address)?.let { Duration.between(it, now).seconds >= policy.minSecondsBetweenSends } ?: true)
+            draftRepo.sentTodayBy(mb.address, startOfDay) < policy.maxPerMailboxPerDay &&
+                (draftRepo.lastSentAt(mb.address)?.let { Duration.between(it, now).seconds >= policy.minSecondsBetweenSends } ?: true)
         } ?: return
 
-        val enrollment = repo.enrollment(draft.enrollmentId) ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return }
+        val enrollment = sequenceRepo.enrollment(draft.enrollmentId) ?: run { draftRepo.decideDraft(draft.id, DraftStatus.REJECTED); return }
         if (enrollment.status != EnrollmentStatus.ACTIVE) {
-            repo.decideDraft(draft.id, DraftStatus.REJECTED); return
+            draftRepo.decideDraft(draft.id, DraftStatus.REJECTED); return
         }
-        val contact = repo.contact(enrollment.contactId) ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return }
-        val to = contact.email ?: run { repo.decideDraft(draft.id, DraftStatus.REJECTED); return }
-        if (repo.isSuppressed(to)) {
-            repo.decideDraft(draft.id, DraftStatus.REJECTED)
-            repo.setEnrollmentStatus(enrollment.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE)
+        val contact = contactRepo.contact(enrollment.contactId) ?: run { draftRepo.decideDraft(draft.id, DraftStatus.REJECTED); return }
+        val to = contact.email ?: run { draftRepo.decideDraft(draft.id, DraftStatus.REJECTED); return }
+        if (replyRepo.isSuppressed(to)) {
+            draftRepo.decideDraft(draft.id, DraftStatus.REJECTED)
+            sequenceRepo.setEnrollmentStatus(enrollment.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE)
             return
         }
 
         // Réservé avant l'appel SMTP : après un crash, ce brouillon ne repart jamais tout seul.
         val messageId = gateway.newMessageId(mailbox)
-        if (!repo.claimForSending(draft.id, messageId, mailbox.address)) return
-        val thread = repo.threadMessageId(enrollment.id)
+        if (!draftRepo.claimForSending(draft.id, messageId, mailbox.address)) return
+        val thread = sequenceRepo.threadMessageId(enrollment.id)
         try {
             gateway.send(
                 mailbox = mailbox,
@@ -189,23 +207,23 @@ class Orchestrator(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            val status = repo.recordSendFailure(draft.id, e.message ?: e.javaClass.simpleName, now)
+            val status = draftRepo.recordSendFailure(draft.id, e.message ?: e.javaClass.simpleName, now)
             log.warn("Envoi du brouillon ${draft.id} refusé, statut $status", e)
-            if (status == DraftStatus.FAILED) repo.logEvent("EMAIL_FAILED", contact.accountId, contact.id, draft.id)
+            if (status == DraftStatus.FAILED) eventRepo.logEvent("EMAIL_FAILED", contact.accountId, contact.id, draft.id)
             return
         }
-        repo.recordSent(draft, threadMessageId = thread ?: messageId, now = now)
-        repo.logEvent("EMAIL_SENT", contact.accountId, contact.id, draft.id)
+        draftRepo.recordSent(draft, threadMessageId = thread ?: messageId, now = now)
+        eventRepo.logEvent("EMAIL_SENT", contact.accountId, contact.id, draft.id)
     }
 
     /** Une tâche LinkedIn ou téléphone faite à la main fait avancer la séquence. */
     suspend fun completeTask(draftId: Long) {
-        val draft = repo.draft(draftId) ?: return
-        repo.decideDraft(draftId, DraftStatus.TASK_DONE)
-        repo.advance(draft.enrollmentId, draft.stepIndex + 1)
-        val e = repo.enrollment(draft.enrollmentId)
-        val c = e?.let { repo.contact(it.contactId) }
-        repo.logEvent("${draft.channel}_TASK_DONE", c?.accountId, c?.id, draftId)
+        val draft = draftRepo.draft(draftId) ?: return
+        draftRepo.decideDraft(draftId, DraftStatus.TASK_DONE)
+        sequenceRepo.advance(draft.enrollmentId, draft.stepIndex + 1)
+        val e = sequenceRepo.enrollment(draft.enrollmentId)
+        val c = e?.let { contactRepo.contact(it.contactId) }
+        eventRepo.logEvent("${draft.channel}_TASK_DONE", c?.accountId, c?.id, draftId)
     }
 
     /**
@@ -216,7 +234,7 @@ class Orchestrator(
         val processed = mutableMapOf<String, MutableList<Long>>()
         for (mail in poller.poll()) {
             try {
-                if (!repo.replyRecorded(mail.key)) processReply(mail)
+                if (!replyRepo.replyRecorded(mail.key)) processReply(mail)
                 processed.getOrPut(mail.mailbox) { mutableListOf() } += mail.uid
             } catch (e: CancellationException) {
                 throw e
@@ -230,10 +248,10 @@ class Orchestrator(
     }
 
     private suspend fun processReply(mail: InboundMail) {
-        val enrollmentId = mail.inReplyTo.firstNotNullOfOrNull { repo.enrollmentByMessageId(it) }
-        val enrolled = enrollmentId?.let { repo.enrollment(it) }?.let { repo.contact(it.contactId) }
+        val enrollmentId = mail.inReplyTo.firstNotNullOfOrNull { draftRepo.enrollmentByMessageId(it) }
+        val enrolled = enrollmentId?.let { sequenceRepo.enrollment(it) }?.let { contactRepo.contact(it.contactId) }
         // Un rebond vient du serveur de messagerie : le contact est celui de l'email d'origine
-        val contact = if (mail.isBounce) enrolled else repo.contactByEmail(mail.from) ?: enrolled
+        val contact = if (mail.isBounce) enrolled else contactRepo.contactByEmail(mail.from) ?: enrolled
         val accountId = contact?.accountId
         val result = if (mail.isBounce) {
             ReplyClassifierAgent.Result(ReplyIntent.BOUNCE, 1.0, null, null, "Rebond : adresse invalide", null)
@@ -242,26 +260,26 @@ class Orchestrator(
         }
 
         // Arrêt de toutes les séquences du contact, quelle que soit l'intention
-        val enrollments = contact?.let { repo.enrollmentsOfContact(it.id) }.orEmpty()
+        val enrollments = contact?.let { sequenceRepo.enrollmentsOfContact(it.id) }.orEmpty()
             .filter { it.status == EnrollmentStatus.ACTIVE || it.status == EnrollmentStatus.PAUSED }
-        enrollments.forEach { repo.setEnrollmentStatus(it.id, SequenceEngine.onReply(result.intent)) }
+        enrollments.forEach { sequenceRepo.setEnrollmentStatus(it.id, SequenceEngine.onReply(result.intent)) }
         when (result.intent) {
-            ReplyIntent.UNSUBSCRIBE -> repo.suppress(mail.from, "réponse : ${result.summary}")
-            ReplyIntent.BOUNCE -> contact?.email?.let { repo.suppress(it, "rebond") }
+            ReplyIntent.UNSUBSCRIBE -> replyRepo.suppress(mail.from, "réponse : ${result.summary}")
+            ReplyIntent.BOUNCE -> contact?.email?.let { replyRepo.suppress(it, "rebond") }
             else -> {}
         }
-        if (!mail.isBounce) contact?.let { repo.markInbound(it.id) }
+        if (!mail.isBounce) contact?.let { contactRepo.markInbound(it.id) }
 
         // Enregistrée en dernier : si une étape plus haut échoue, le message sera retraité en entier
-        repo.saveReply(enrollmentId, mail.from, mail.subject, mail.body, result.intent, result.confidence, result.followUpOn,
+        replyRepo.saveReply(enrollmentId, mail.from, mail.subject, mail.body, result.intent, result.confidence, result.followUpOn,
             result.summary, mail.receivedAt, inboundKey = mail.key)
         when (result.intent) {
-            ReplyIntent.UNSUBSCRIBE -> repo.logEvent("UNSUBSCRIBED", accountId, contact?.id)
-            ReplyIntent.BOUNCE -> repo.logEvent("BOUNCED", accountId, contact?.id)
-            ReplyIntent.INTERESTED, ReplyIntent.MEETING_REQUEST, ReplyIntent.REFERRAL -> repo.logEvent("REPLY_POSITIVE", accountId, contact?.id)
+            ReplyIntent.UNSUBSCRIBE -> eventRepo.logEvent("UNSUBSCRIBED", accountId, contact?.id)
+            ReplyIntent.BOUNCE -> eventRepo.logEvent("BOUNCED", accountId, contact?.id)
+            ReplyIntent.INTERESTED, ReplyIntent.MEETING_REQUEST, ReplyIntent.REFERRAL -> eventRepo.logEvent("REPLY_POSITIVE", accountId, contact?.id)
             else -> {}
         }
-        repo.logEvent("REPLY_RECEIVED", accountId, contact?.id, payload = """{"intent":"${result.intent}"}""")
+        eventRepo.logEvent("REPLY_RECEIVED", accountId, contact?.id, payload = """{"intent":"${result.intent}"}""")
     }
 
     private val discoveryFlag = java.util.concurrent.atomic.AtomicBoolean(false)
@@ -280,8 +298,8 @@ class Orchestrator(
      */
     suspend fun researchBatch() {
         val stale = clock.instant().minus(14, ChronoUnit.DAYS)
-        val rows = repo.accountsByScore(500).filter { it.score >= 45 }
-        val withoutDossier = rows.filter { repo.dossier(it.account.id) == null }
+        val rows = accountRepo.accountsByScore(500).filter { it.score >= 45 }
+        val withoutDossier = rows.filter { factRepo.dossier(it.account.id) == null }
         val staleOnes = rows.filter { it !in withoutDossier && (it.refreshedAt == null || Instant.parse(it.refreshedAt) < stale) }
         (withoutDossier + staleOnes).take(nightlyResearchBudget).forEach { row ->
             runCatching { research.research(row.account.id) }.onFailure { log.warn("Recherche échouée : ${row.account.name}", it) }
@@ -302,28 +320,28 @@ class Orchestrator(
 
         if (now.hour in 2..4) job("discovery", today) {
             runDiscovery()
-            if (repo.claimJob("research", today)) runJob("research") { researchBatch() }
+            if (jobRunRepo.claimJob("research", today)) runJob("research") { researchBatch() }
         }
         if (now.hour >= 5) job("research", today) { researchBatch() }
 
         val monday = today.with(java.time.temporal.TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
         if (today != monday || now.hour >= 7) job("coach", monday) {
             val memo = coach.weeklyMemo()
-            repo.logEvent("WEEKLY_MEMO", payload = kotlinx.serialization.json.JsonPrimitive(memo).toString())
+            eventRepo.logEvent("WEEKLY_MEMO", payload = kotlinx.serialization.json.JsonPrimitive(memo).toString())
         }
 
         val firstOfMonth = today.withDayOfMonth(1)
         if (today != firstOfMonth || now.hour >= 4) job("gdpr-purge", firstOfMonth) {
-            val purged = repo.purgeStaleContacts()
-            val officers = repo.purgeStaleOfficers()
-            val demands = repo.purgeOldDemands()
-            repo.logEvent("GDPR_PURGE", payload = """{"contacts":$purged,"officers":$officers,"demands":$demands}""")
+            val purged = contactRepo.purgeStaleContacts()
+            val officers = officerRepo.purgeStaleOfficers()
+            val demands = discoveryState.purgeOldDemands()
+            eventRepo.logEvent("GDPR_PURGE", payload = """{"contacts":$purged,"officers":$officers,"demands":$demands}""")
         }
     }
 
     /** Claims the job for its period, then runs it apart from the loops. */
     private suspend fun job(name: String, period: java.time.LocalDate, block: suspend () -> Unit) {
-        if (!repo.claimJob(name, period)) return
+        if (!jobRunRepo.claimJob(name, period)) return
         val scope = jobs
         if (scope == null) runJob(name, block) else scope.launch { runJob(name, block) }
     }
@@ -331,12 +349,12 @@ class Orchestrator(
     private suspend fun runJob(name: String, block: suspend () -> Unit) {
         try {
             block()
-            repo.finishJob(name)
+            jobRunRepo.finishJob(name)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             log.error("Tâche $name en échec", e)
-            repo.finishJob(name, e.message ?: e.javaClass.simpleName)
+            jobRunRepo.finishJob(name, e.message ?: e.javaClass.simpleName)
         }
     }
 }

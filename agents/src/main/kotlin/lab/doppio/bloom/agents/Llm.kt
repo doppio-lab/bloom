@@ -1,5 +1,6 @@
 package lab.doppio.bloom.agents
 
+import lab.doppio.bloom.core.port.AgentRunRepository
 import ai.koog.agents.features.eventHandler.feature.EventHandler
 import ai.koog.prompt.executor.clients.anthropic.AnthropicLLMClient
 import ai.koog.prompt.executor.clients.anthropic.AnthropicModels
@@ -13,7 +14,6 @@ import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.structure.StructuredResponse
-import lab.doppio.bloom.data.db.Repository
 
 enum class LlmProvider {
     /** Anthropic API, paid. The default, meant for production. */
@@ -133,7 +133,7 @@ class TokenCounter {
 
 /** Mesure chaque exécution d'agent (durée, tokens, échec) dans agent_runs pour le dashboard. */
 class RunTracker(
-    private val repo: Repository,
+    private val agentRunRepo: AgentRunRepository,
     /** Tokens allowed per day, all agents together. 0: no limit. */
     private val dailyTokenBudget: Long = 0,
     private val zone: java.time.ZoneId = java.time.ZoneId.of("Europe/Paris"),
@@ -143,7 +143,7 @@ class RunTracker(
     private suspend fun checkBudget(agent: String) {
         if (dailyTokenBudget <= 0) return
         val startOfDay = java.time.LocalDate.now(clock.withZone(zone)).atStartOfDay(zone).toInstant()
-        val used = repo.tokensSince(startOfDay)
+        val used = agentRunRepo.tokensSince(startOfDay)
         if (used >= dailyTokenBudget) throw TokenBudgetExceeded("Budget de $dailyTokenBudget tokens du jour atteint ($used) : $agent attend demain")
     }
 
@@ -153,10 +153,10 @@ class RunTracker(
         val start = System.currentTimeMillis()
         return try {
             block().also {
-                repo.logAgentRun(agent, accountId, model.id, counter.inputTokens, counter.outputTokens, System.currentTimeMillis() - start, true, null)
+                agentRunRepo.logAgentRun(agent, accountId, model.id, counter.inputTokens, counter.outputTokens, System.currentTimeMillis() - start, true, null)
             }
         } catch (e: Exception) {
-            repo.logAgentRun(agent, accountId, model.id, counter.inputTokens, counter.outputTokens, System.currentTimeMillis() - start, false, e.message)
+            agentRunRepo.logAgentRun(agent, accountId, model.id, counter.inputTokens, counter.outputTokens, System.currentTimeMillis() - start, false, e.message)
             throw e
         }
     }
@@ -167,10 +167,10 @@ class RunTracker(
         return try {
             val (value, response) = block()
             val meta = response?.message?.metaInfo
-            repo.logAgentRun(agent, accountId, model.id, meta?.inputTokensCount ?: 0, meta?.outputTokensCount ?: 0, System.currentTimeMillis() - start, true, null)
+            agentRunRepo.logAgentRun(agent, accountId, model.id, meta?.inputTokensCount ?: 0, meta?.outputTokensCount ?: 0, System.currentTimeMillis() - start, true, null)
             value
         } catch (e: Exception) {
-            repo.logAgentRun(agent, accountId, model.id, 0, 0, System.currentTimeMillis() - start, false, e.message)
+            agentRunRepo.logAgentRun(agent, accountId, model.id, 0, 0, System.currentTimeMillis() - start, false, e.message)
             throw e
         }
     }

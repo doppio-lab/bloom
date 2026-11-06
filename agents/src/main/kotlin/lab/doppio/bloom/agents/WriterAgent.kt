@@ -1,5 +1,10 @@
 package lab.doppio.bloom.agents
 
+import lab.doppio.bloom.core.port.AccountRepository
+import lab.doppio.bloom.core.port.ContactRepository
+import lab.doppio.bloom.core.port.DraftRepository
+import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.port.FactRepository
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.model.executeStructured
@@ -15,7 +20,6 @@ import lab.doppio.bloom.core.model.Enrollment
 import lab.doppio.bloom.core.model.Sequence
 import lab.doppio.bloom.core.model.SequenceStep
 import lab.doppio.bloom.core.references.ReferenceLibrary
-import lab.doppio.bloom.data.db.Repository
 
 /**
  * Agent rédacteur. Boucle : rédiger, vérifier avec MessageGuard, corriger (2 fois maximum).
@@ -24,7 +28,11 @@ import lab.doppio.bloom.data.db.Repository
  */
 class WriterAgent(
     private val llm: Llm,
-    private val repo: Repository,
+    private val accountRepo: AccountRepository,
+    private val contactRepo: ContactRepository,
+    private val draftRepo: DraftRepository,
+    private val eventRepo: EventRepository,
+    private val factRepo: FactRepository,
     private val tracker: RunTracker,
     private val senderName: String,
     private val maxRepairs: Int = 2,
@@ -46,13 +54,13 @@ class WriterAgent(
     )
 
     suspend fun draft(enrollment: Enrollment, sequence: Sequence, step: SequenceStep): Long {
-        val contact = repo.contact(enrollment.contactId) ?: error("Contact introuvable")
-        val account = repo.account(contact.accountId) ?: error("Compte introuvable")
-        val facts = repo.factsOf(account.id)
-        val dossier = repo.dossier(account.id)
+        val contact = contactRepo.contact(enrollment.contactId) ?: error("Contact introuvable")
+        val account = accountRepo.account(contact.accountId) ?: error("Compte introuvable")
+        val facts = factRepo.factsOf(account.id)
+        val dossier = factRepo.dossier(account.id)
         val references = ReferenceLibrary.eligible(account.sector, sequence.offer)
-        val examples = repo.humanEditedExamples(3)
-        val previous = repo.draftsByStatus(DraftStatus.SENT).filter { it.enrollmentId == enrollment.id }
+        val examples = draftRepo.humanEditedExamples(3)
+        val previous = draftRepo.draftsByStatus(DraftStatus.SENT).filter { it.enrollmentId == enrollment.id }
 
         val context = buildString {
             appendLine("Destinataire : ${contact.fullName}, ${contact.role} chez ${account.name}. Langue : ${contact.language}.")
@@ -111,7 +119,7 @@ class WriterAgent(
             attempt++
         } while (!MessageGuard.isPublishable(violations) && attempt <= maxRepairs)
 
-        val draftId = repo.createDraft(
+        val draftId = draftRepo.createDraft(
             Draft(
                 enrollmentId = enrollment.id,
                 stepIndex = step.index,
@@ -125,7 +133,7 @@ class WriterAgent(
                 guardReport = violations.map { it.toString() },
             ),
         )
-        repo.logEvent("DRAFT_CREATED", account.id, contact.id, draftId, """{"attempts":$attempt,"publishable":${MessageGuard.isPublishable(violations)}}""")
+        eventRepo.logEvent("DRAFT_CREATED", account.id, contact.id, draftId, """{"attempts":$attempt,"publishable":${MessageGuard.isPublishable(violations)}}""")
         return draftId
     }
 }

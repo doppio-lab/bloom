@@ -1,5 +1,8 @@
 package lab.doppio.bloom.agents
 
+import lab.doppio.bloom.core.port.AccountRepository
+import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.port.FactRepository
 import java.time.Clock
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
@@ -18,8 +21,7 @@ import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.scoring.ScoreBreakdown
 import lab.doppio.bloom.core.scoring.Scoring
-import lab.doppio.bloom.data.db.Dossier
-import lab.doppio.bloom.data.db.Repository
+import lab.doppio.bloom.core.model.Dossier
 import lab.doppio.bloom.data.sources.AppStoreSource
 import lab.doppio.bloom.data.sources.CompanyRegistrySource
 import lab.doppio.bloom.data.sources.FranceTravailSource
@@ -37,7 +39,9 @@ import java.time.Instant
  */
 class ResearchAgent(
     private val llm: Llm,
-    private val repo: Repository,
+    private val accountRepo: AccountRepository,
+    private val eventRepo: EventRepository,
+    private val factRepo: FactRepository,
     private val tracker: RunTracker,
     private val appStore: AppStoreSource,
     private val registry: CompanyRegistrySource,
@@ -48,7 +52,7 @@ class ResearchAgent(
     private val log = LoggerFactory.getLogger(javaClass)
 
     suspend fun research(accountId: Long): ScoreBreakdown {
-        val account = repo.account(accountId) ?: error("Compte $accountId introuvable")
+        val account = accountRepo.account(accountId) ?: error("Compte $accountId introuvable")
 
         // 1. Sources déterministes. Chaque source échoue isolément.
         val facts = mutableListOf<Fact>()
@@ -66,8 +70,8 @@ class ResearchAgent(
                 .onSuccess { facts += it.facts; signals += it.signals }
                 .onFailure { log.warn("France Travail indisponible", it) }
         }
-        repo.saveFacts(facts)
-        repo.saveSignals(signals)
+        factRepo.saveFacts(facts)
+        factRepo.saveSignals(signals)
 
         // 2. Exploration du site, outillée et vérifiée (seulement si le site est connu)
         val domain = account.domain
@@ -90,17 +94,17 @@ class ResearchAgent(
                     )
                 }
             }.onFailure { log.warn("Exploration du site échouée pour ${account.name}", it) }
-            repo.saveFacts(siteTools.recorded)
-            repo.saveSignals(siteTools.signals)
+            factRepo.saveFacts(siteTools.recorded)
+            factRepo.saveSignals(siteTools.signals)
         }
 
         // 3. Synthèse
-        val allFacts = repo.factsOf(account.id)
+        val allFacts = factRepo.factsOf(account.id)
         if (allFacts.isNotEmpty()) synthesize(account, allFacts)
 
-        val score = Scoring.score(account, repo.signalsOf(account.id), clock.instant())
-        repo.saveScore(score)
-        repo.logEvent("ACCOUNT_RESEARCHED", accountId = account.id, payload = """{"score":${score.total}}""")
+        val score = Scoring.score(account, factRepo.signalsOf(account.id), clock.instant())
+        accountRepo.saveScore(score)
+        eventRepo.logEvent("ACCOUNT_RESEARCHED", accountId = account.id, payload = """{"score":${score.total}}""")
         return score
     }
 
@@ -147,7 +151,7 @@ class ResearchAgent(
             .filter { h -> h.factIds.isNotEmpty() && h.factIds.all { it in known } }
             .map { h -> "${h.statement} " + h.factIds.joinToString(" ") { "[F:$it]" } }
         val offer = Offer.entries.firstOrNull { it.name == output.offer.uppercase() }
-        repo.saveDossier(
+        factRepo.saveDossier(
             Dossier(
                 accountId = account.id,
                 summary = output.summary + (if (output.disqualifiers.isNotEmpty()) "\nÀ ne pas contacter si : " + output.disqualifiers.joinToString("; ") else ""),
@@ -157,7 +161,7 @@ class ResearchAgent(
                 noFit = offer == null,
             ),
         )
-        if (offer == null) repo.logEvent("DOSSIER_NO_FIT", accountId = account.id)
+        if (offer == null) eventRepo.logEvent("DOSSIER_NO_FIT", accountId = account.id)
     }
 }
 

@@ -1,7 +1,7 @@
 package lab.doppio.bloom.data
 
-import lab.doppio.bloom.data.db.Db
-import lab.doppio.bloom.data.db.DbConfig
+import lab.doppio.bloom.data.persistence.Db
+import lab.doppio.bloom.data.persistence.DbConfig
 import org.jetbrains.exposed.sql.transactions.TransactionManager
 import org.jetbrains.exposed.sql.transactions.transaction
 import org.testcontainers.postgresql.PostgreSQLContainer

@@ -5,7 +5,7 @@ import lab.doppio.bloom.agents.LlmProvider
 import lab.doppio.bloom.app.outreach.MailConfig
 import lab.doppio.bloom.app.outreach.Mailbox
 import lab.doppio.bloom.core.model.SendingPolicy
-import lab.doppio.bloom.data.db.DbConfig
+import lab.doppio.bloom.data.persistence.DbConfig
 
 /** HTTP server and the dashboard login. */
 data class ServerConfig(val port: Int, val adminPassword: String)

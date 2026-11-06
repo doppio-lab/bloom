@@ -22,8 +22,8 @@ import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.scoring.Scoring
-import lab.doppio.bloom.data.db.AccountRow
-import lab.doppio.bloom.data.db.OfficerRow
+import lab.doppio.bloom.core.port.AccountRow
+import lab.doppio.bloom.core.port.OfficerRow
 import lab.doppio.bloom.data.discovery.DiscoveryReport
 import org.slf4j.LoggerFactory
 
@@ -54,16 +54,16 @@ private val log = LoggerFactory.getLogger("DiscoveryRoutes")
 /** Inscrit un contact dans la séquence de l'offre recommandée. Renvoie vrai si c'est fait. */
 suspend fun enrollContact(ctx: AppContext, contact: Contact): Boolean {
     val email = contact.email ?: return false
-    if (ctx.repo.isSuppressed(email)) return false
-    if (ctx.repo.enrollmentsOfContact(contact.id).isNotEmpty()) return false
+    if (ctx.replyRepo.isSuppressed(email)) return false
+    if (ctx.sequenceRepo.enrollmentsOfContact(contact.id).isNotEmpty()) return false
     // The researcher found no offer that fits: no sequence starts on its own
-    if (ctx.repo.dossier(contact.accountId)?.noFit == true) return false
-    val offer = ctx.repo.dossier(contact.accountId)?.offer
-        ?: ctx.repo.accountsByScore(500).firstOrNull { it.account.id == contact.accountId }?.recommendedOffer
+    if (ctx.factRepo.dossier(contact.accountId)?.noFit == true) return false
+    val offer = ctx.factRepo.dossier(contact.accountId)?.offer
+        ?: ctx.accountRepo.accountsByScore(500).firstOrNull { it.account.id == contact.accountId }?.recommendedOffer
         ?: Offer.DISCOVERY
-    val seq = ctx.repo.sequenceFor(offer) ?: ctx.repo.sequenceFor(Offer.DISCOVERY) ?: return false
-    ctx.repo.enroll(contact.id, seq.id)
-    ctx.repo.logEvent("ENROLLED", contact.accountId, contact.id)
+    val seq = ctx.sequenceRepo.sequenceFor(offer) ?: ctx.sequenceRepo.sequenceFor(Offer.DISCOVERY) ?: return false
+    ctx.sequenceRepo.enroll(contact.id, seq.id)
+    ctx.eventRepo.logEvent("ENROLLED", contact.accountId, contact.id)
     ctx.orchestrator.planSoon()
     return true
 }
@@ -80,13 +80,12 @@ data class LastDiscovery(
 
 /** Accounts above the display threshold, or that already have a contact, with the people known for each. */
 private suspend fun book(ctx: AppContext): List<BookEntry> {
-    val repo = ctx.repo
-    val contacts = repo.contactsByAccount()
-    val officers = repo.officersByAccount()
-    val enrolled = repo.activeEnrollments().map { it.contactId }.toSet()
-    return repo.accountsByScore(500).filter { it.score >= 45 || it.account.id in contacts }.take(150).map { row ->
+    val contacts = ctx.contactRepo.contactsByAccount()
+    val officers = ctx.officerRepo.officersByAccount()
+    val enrolled = ctx.sequenceRepo.activeEnrollments().map { it.contactId }.toSet()
+    return ctx.accountRepo.accountsByScore(500).filter { it.score >= 45 || it.account.id in contacts }.take(150).map { row ->
         val id = row.account.id
-        val offer = repo.dossier(id)?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
+        val offer = ctx.factRepo.dossier(id)?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
         val persona = Targeting.personaFor(offer)
         val known = contacts[id].orEmpty()
         val knownNames = known.map { CompanyNames.normalize(it.fullName) }.toSet()
@@ -102,7 +101,6 @@ private suspend fun book(ctx: AppContext): List<BookEntry> {
 private val lenientJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
 fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
-    val repo = ctx.repo
 
     /** Lancer la découverte sans attendre la nuit. Elle tourne en tâche de fond (plusieurs minutes). */
     post("/discovery/run") {
@@ -117,15 +115,15 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
     /** What the last discovery run found, per source, and what failed or is switched off. */
     get("/discovery/last") {
         // Before any finished run, the line still says whether one is in progress
-        val (payload, at) = repo.lastEvent("DISCOVERY_RUN") ?: return@get call.respond(LastDiscovery(running = ctx.orchestrator.discoveryRunning))
+        val (payload, at) = ctx.eventRepo.lastEvent("DISCOVERY_RUN") ?: return@get call.respond(LastDiscovery(running = ctx.orchestrator.discoveryRunning))
         val report = runCatching { lenientJson.decodeFromString(DiscoveryReport.serializer(), payload) }.getOrDefault(DiscoveryReport())
         call.respond(LastDiscovery(at.toString(), ctx.orchestrator.discoveryRunning, report.bySource, report.notes))
     }
 
     /** Comptes qui valent le coup mais à qui il manque la personne à contacter. */
     get("/to-complete") {
-        val items = repo.accountsToComplete().filter { repo.dossier(it.account.id)?.noFit != true }.map { row ->
-            val offer = repo.dossier(row.account.id)?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
+        val items = ctx.accountRepo.accountsToComplete().filter { ctx.factRepo.dossier(it.account.id)?.noFit != true }.map { row ->
+            val offer = ctx.factRepo.dossier(row.account.id)?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
             val persona = Targeting.personaFor(offer)
             ToComplete(
                 row = row,
@@ -134,10 +132,10 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
                 why = persona.why,
                 searches = persona.roles.map { PeopleSearch(it, Targeting.linkedinSearchUrl(it, row.account.name)) },
                 // The facts behind the strongest signals come first: they are why the account is in the list
-                facts = repo.signalsOf(row.account.id)
+                facts = ctx.factRepo.signalsOf(row.account.id)
                     .sortedByDescending { Scoring.rules.getValue(it.type).weight * it.strength }
                     .flatMap { it.factIds }.distinct().withIndex().associate { (rank, id) -> id to rank }
-                    .let { rank -> repo.factsOf(row.account.id).sortedBy { rank[it.id] ?: Int.MAX_VALUE }.take(3) },
+                    .let { rank -> ctx.factRepo.factsOf(row.account.id).sortedBy { rank[it.id] ?: Int.MAX_VALUE }.take(3) },
             )
         }
         call.respond(items)
@@ -145,10 +143,10 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
 
     post("/accounts/{id}/contacts") {
         val accountId = call.parameters["id"]!!.toLong()
-        val account = repo.account(accountId) ?: return@post call.respond(HttpStatusCode.NotFound)
+        val account = ctx.accountRepo.account(accountId) ?: return@post call.respond(HttpStatusCode.NotFound)
         val req = call.receive<NewContactRequest>()
         require(req.fullName.isNotBlank() && req.role.isNotBlank()) { "Nom et rôle sont obligatoires" }
-        req.email?.let { require(!repo.isSuppressed(it)) { "Cette personne s'est opposée à la prospection" } }
+        req.email?.let { require(!ctx.replyRepo.isSuppressed(it)) { "Cette personne s'est opposée à la prospection" } }
 
         val contact = Contact(
             accountId = accountId,
@@ -159,7 +157,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
             linkedinUrl = req.linkedinUrl?.trim()?.takeIf { it.startsWith("https://") },
             dataSource = if (req.fromRegistry) "Annuaire des entreprises (dirigeant publié au registre)" else "saisie manuelle (profil public LinkedIn ou site de l'entreprise)",
         )
-        val id = repo.addContact(contact)
+        val id = ctx.contactRepo.addContact(contact)
         val saved = contact.copy(id = id)
 
         if (saved.email != null) {
@@ -175,11 +173,11 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
             runCatching {
                 val found = finder.findEmail(saved.fullName, account.name, account.domain)
                 if (found != null) {
-                    repo.updateContactEmail(id, found.email, "Dropcontact (${found.qualification}) à partir du nom saisi")
-                    repo.logEvent("EMAIL_FOUND", accountId, id)
-                    if (req.enroll) repo.contact(id)?.let { enrollContact(ctx, it) }
+                    ctx.contactRepo.updateContactEmail(id, found.email, "Dropcontact (${found.qualification}) à partir du nom saisi")
+                    ctx.eventRepo.logEvent("EMAIL_FOUND", accountId, id)
+                    if (req.enroll) ctx.contactRepo.contact(id)?.let { enrollContact(ctx, it) }
                 } else {
-                    repo.logEvent("EMAIL_NOT_FOUND", accountId, id)
+                    ctx.eventRepo.logEvent("EMAIL_NOT_FOUND", accountId, id)
                 }
             }.onFailure { log.warn("Dropcontact en échec pour le contact $id", it) }
         }
@@ -187,10 +185,10 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
     }
 
     /** Requests published on marketplaces, to answer on the platform. Never turned into email sequences. */
-    get("/demands") { call.respond(repo.openDemands()) }
+    get("/demands") { call.respond(ctx.discoveryState.openDemands()) }
 
     post("/demands/dismiss") {
-        if (!repo.dismissDemand(call.receive<DismissDemand>().key)) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Demande introuvable"))
+        if (!ctx.discoveryState.dismissDemand(call.receive<DismissDemand>().key)) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Demande introuvable"))
         call.respond(HttpStatusCode.OK, mapOf("status" to "écartée"))
     }
 
@@ -198,31 +196,31 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
     post("/accounts/{id}/exclude") {
         val id = call.parameters["id"]!!.toLong()
         val reason = runCatching { call.receive<ExcludeRequest>().reason }.getOrDefault("").ifBlank { "écarté à la main" }
-        repo.excludeAccount(id, reason)
-        repo.logEvent("ACCOUNT_EXCLUDED", id)
+        ctx.accountRepo.excludeAccount(id, reason)
+        ctx.eventRepo.logEvent("ACCOUNT_EXCLUDED", id)
         call.respond(HttpStatusCode.OK, mapOf("status" to "écarté"))
     }
 
     post("/accounts/{id}/restore") {
         val id = call.parameters["id"]!!.toLong()
-        repo.restoreAccount(id)
-        repo.logEvent("ACCOUNT_RESTORED", id)
+        ctx.accountRepo.restoreAccount(id)
+        ctx.eventRepo.logEvent("ACCOUNT_RESTORED", id)
         call.respond(HttpStatusCode.OK, mapOf("status" to "réintégré"))
     }
 
-    get("/blacklist") { call.respond(repo.blacklist()) }
+    get("/blacklist") { call.respond(ctx.accountRepo.blacklist()) }
 
     /** Block a company by name, before or after discovery found it. */
     post("/blacklist") {
         val req = call.receive<BlockRequest>()
         require(CompanyNames.normalize(req.name).isNotEmpty()) { "Nom obligatoire" }
-        val accountId = repo.blockName(req.name, req.reason?.trim()?.takeIf { it.isNotEmpty() })
-        if (accountId != null) repo.logEvent("ACCOUNT_EXCLUDED", accountId)
+        val accountId = ctx.accountRepo.blockName(req.name, req.reason?.trim()?.takeIf { it.isNotEmpty() })
+        if (accountId != null) ctx.eventRepo.logEvent("ACCOUNT_EXCLUDED", accountId)
         call.respond(HttpStatusCode.Created, mapOf("status" to "ajouté"))
     }
 
     post("/blacklist/{id}/remove") {
-        repo.unblockName(call.parameters["id"]!!.toLong())
+        ctx.accountRepo.unblockName(call.parameters["id"]!!.toLong())
         call.respond(HttpStatusCode.OK, mapOf("status" to "retiré"))
     }
 
@@ -249,7 +247,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
         val rows = Csv.parse(call.receiveText())
         var created = 0; var updated = 0; var contacts = 0
         val errors = mutableListOf<String>()
-        val knownSlugs = repo.accountsByScore(5000).map { CompanyNames.normalize(it.account.name) }.toMutableSet()
+        val knownSlugs = ctx.accountRepo.accountsByScore(5000).map { CompanyNames.normalize(it.account.name) }.toMutableSet()
         rows.forEachIndexed { i, r ->
             val line = i + 2
             val name = r["name"].orEmpty()
@@ -267,16 +265,16 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
                     warmPath = r["warm_path"]?.takeIf { it.isNotBlank() },
                     source = "import",
                 )
-                val id = repo.upsertAccount(account)
+                val id = ctx.accountRepo.upsertAccount(account)
                 if (existed) updated++ else created++
-                repo.saveScore(Scoring.score(account.copy(id = id), repo.signalsOf(id), ctx.clock.instant()))
+                ctx.accountRepo.saveScore(Scoring.score(account.copy(id = id), ctx.factRepo.signalsOf(id), ctx.clock.instant()))
                 val contactName = r["contact_name"].orEmpty()
                 if (contactName.isNotBlank()) {
                     val email = r["contact_email"]?.trim()?.takeIf { it.contains('@') }
-                    if (email != null && repo.isSuppressed(email)) {
+                    if (email != null && ctx.replyRepo.isSuppressed(email)) {
                         errors += "ligne $line : $email s'est opposé à la prospection, contact ignoré"
                     } else {
-                        repo.addContact(
+                        ctx.contactRepo.addContact(
                             Contact(
                                 accountId = id, fullName = contactName, role = r["contact_role"].orEmpty().ifBlank { "inconnu" },
                                 persona = Targeting.personaFromRole(r["contact_role"].orEmpty()), email = email,
@@ -289,7 +287,7 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
                 }
             }.onFailure { errors += "ligne $line : ${it.message}" }
         }
-        repo.logEvent("IMPORT", payload = """{"created":$created,"updated":$updated,"contacts":$contacts}""")
+        ctx.eventRepo.logEvent("IMPORT", payload = """{"created":$created,"updated":$updated,"contacts":$contacts}""")
         call.respond(ImportReport(created, updated, contacts, errors))
     }
 }

@@ -47,8 +47,19 @@ import lab.doppio.bloom.app.web.apiRoutes
 import lab.doppio.bloom.app.web.discoveryRoutes
 import lab.doppio.bloom.app.web.unsubscribeRoutes
 import lab.doppio.bloom.core.sequence.DefaultSequences
-import lab.doppio.bloom.data.db.Db
-import lab.doppio.bloom.data.db.Repository
+import lab.doppio.bloom.data.persistence.Db
+import lab.doppio.bloom.data.persistence.account.ExposedAccountRepository
+import lab.doppio.bloom.data.persistence.agentrun.ExposedAgentRunRepository
+import lab.doppio.bloom.data.persistence.contact.ExposedContactRepository
+import lab.doppio.bloom.data.persistence.deal.ExposedDealRepository
+import lab.doppio.bloom.data.persistence.discovery.ExposedDiscoveryStateRepository
+import lab.doppio.bloom.data.persistence.draft.ExposedDraftRepository
+import lab.doppio.bloom.data.persistence.event.ExposedEventRepository
+import lab.doppio.bloom.data.persistence.fact.ExposedFactRepository
+import lab.doppio.bloom.data.persistence.job.ExposedJobRunRepository
+import lab.doppio.bloom.data.persistence.officer.ExposedOfficerRepository
+import lab.doppio.bloom.data.persistence.reply.ExposedReplyRepository
+import lab.doppio.bloom.data.persistence.sequence.ExposedSequenceRepository
 import lab.doppio.bloom.data.sources.AppStoreSource
 import lab.doppio.bloom.data.sources.BoampSource
 import lab.doppio.bloom.data.sources.BodaccSource
@@ -71,10 +82,21 @@ import kotlin.time.Duration.Companion.minutes
 
 /** Câblage manuel : pas de framework d'injection pour une douzaine de composants. */
 class AppContext(val config: BloomConfig, val clock: Clock = Clock.systemDefaultZone()) {
-    val repo = Repository(clock)
+    val accountRepo = ExposedAccountRepository(clock)
+    val officerRepo = ExposedOfficerRepository(clock)
+    val contactRepo = ExposedContactRepository(clock)
+    val factRepo = ExposedFactRepository(clock)
+    val sequenceRepo = ExposedSequenceRepository(clock)
+    val draftRepo = ExposedDraftRepository(clock)
+    val replyRepo = ExposedReplyRepository()
+    val dealRepo = ExposedDealRepository(clock)
+    val jobRunRepo = ExposedJobRunRepository(clock)
+    val eventRepo = ExposedEventRepository()
+    val agentRunRepo = ExposedAgentRunRepository()
+    val discoveryState = ExposedDiscoveryStateRepository(clock)
     private val http = defaultHttpClient()
     val llm = Llm(config.llm.client)
-    private val tracker = RunTracker(repo, dailyTokenBudget = config.llm.dailyTokenBudget, clock = clock)
+    private val tracker = RunTracker(agentRunRepo, dailyTokenBudget = config.llm.dailyTokenBudget, clock = clock)
     /** Portée des tâches de fond déclenchées depuis le dashboard (découverte, recherche). */
     val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     val policy = config.sending.policy
@@ -90,7 +112,7 @@ class AppContext(val config: BloomConfig, val clock: Clock = Clock.systemDefault
     /** Optionnel : sans clé Dropcontact, les contacts sont saisis à la main (nom, email ou profil LinkedIn). */
     val dropcontact = config.discovery.dropcontactApiKey?.let { DropcontactSource(http, it) }
 
-    val research = ResearchAgent(llm, repo, tracker, appStore = appStore, registry = registry, jobs = jobs, web = WebPageSource(http), clock = clock)
+    val research = ResearchAgent(llm, accountRepo, eventRepo, factRepo, tracker, appStore = appStore, registry = registry, jobs = jobs, web = WebPageSource(http), clock = clock)
 
     /**
      * Sources added to discovery, chosen by DISCOVERY_SOURCES. The press feeds are left out of the default:
@@ -104,17 +126,17 @@ class AppContext(val config: BloomConfig, val clock: Clock = Clock.systemDefault
         DecpSource(
             http,
             buyerName = { siren -> registry.bySiren(siren)?.name },
-            wasSeen = { repo.wasSeen(it, 365) },
-            markSeen = { key, kept, reason -> repo.markSeen(key, kept, reason) },
+            wasSeen = { discoveryState.wasSeen(it, 365) },
+            markSeen = { key, kept, reason -> discoveryState.markSeen(key, kept, reason) },
             maxMonths = config.discovery.decpRenewalMonths,
         ).takeIf { "decp" in enabledSources },
         PressSource(http).takeIf { "press" in enabledSources },
-        GitHubSource(http, config.discovery.githubToken, wasSeen = { repo.wasSeen(it, 90) }, markSeen = { key, kept, reason -> repo.markSeen(key, kept, reason) })
+        GitHubSource(http, config.discovery.githubToken, wasSeen = { discoveryState.wasSeen(it, 90) }, markSeen = { key, kept, reason -> discoveryState.markSeen(key, kept, reason) })
             .takeIf { "github" in enabledSources },
     )
 
     val discovery = DiscoveryService(
-        repo, appStore, registry, jobs,
+        accountRepo, discoveryState, eventRepo, factRepo, officerRepo, appStore, registry, jobs,
         DiscoveryConfig(
             appsPerRun = config.discovery.appsPerRun,
             // Clients actuels et partenaires à ne jamais prospecter
@@ -125,9 +147,10 @@ class AppContext(val config: BloomConfig, val clock: Clock = Clock.systemDefault
         codeur = CodeurSource(http, minBudgetEur = config.discovery.codeurMinBudgetEur).takeIf { "codeur" in enabledSources },
         clock = clock,
     )
-    val writer = WriterAgent(llm, repo, tracker, senderName = config.sending.senderName)
+    val writer = WriterAgent(llm, accountRepo, contactRepo, draftRepo, eventRepo, factRepo, tracker, senderName = config.sending.senderName)
     val orchestrator = Orchestrator(
-        repo, writer, research, ReplyClassifierAgent(llm, tracker, clock), WeeklyCoachAgent(llm, repo, tracker, clock),
+        accountRepo, contactRepo, discoveryState, draftRepo, eventRepo, factRepo, jobRunRepo, officerRepo, replyRepo, sequenceRepo,
+        writer, research, ReplyClassifierAgent(llm, tracker, clock), WeeklyCoachAgent(llm, eventRepo, accountRepo, dealRepo, agentRunRepo, tracker, clock),
         gateway, ImapPoller(mail, clock), mail, policy, discovery,
         clock = clock,
     )
@@ -139,7 +162,7 @@ fun main() {
     Db.connect(config.database)
     val ctx = AppContext(config)
     org.slf4j.LoggerFactory.getLogger("bloom").info("LLM : {}", ctx.llm.describe())
-    runBlocking { ctx.repo.ensureSequences(DefaultSequences.all()) }
+    runBlocking { ctx.sequenceRepo.ensureSequences(DefaultSequences.all()) }
     val loops = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     ctx.orchestrator.start(loops)
     val server = embeddedServer(Netty, port = config.server.port) { module(ctx) }

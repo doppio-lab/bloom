@@ -29,8 +29,8 @@ référence client hors sujet. Les LLM cherchent et rédigent ; le code score, v
 ## Modules
 
 ```
-core/    domaine pur, testé : modèles, scoring, MessageGuard, moteur de séquences, références clients
-data/    PostgreSQL (Exposed + Flyway), clients des sources de faits
+core/    domaine pur, testé : modèles, scoring, MessageGuard, moteur de séquences, références clients, ports (interfaces des dépôts)
+data/    PostgreSQL (Exposed + Flyway) : un dépôt par agrégat, qui implémente un port de core ; clients des sources de faits
 agents/  agents Koog : recherche, synthèse, rédaction, classification des réponses, coach
 app/     serveur Ktor : API, dashboard, envoi SMTP, relève IMAP, boucles de fond, désinscription
 ```

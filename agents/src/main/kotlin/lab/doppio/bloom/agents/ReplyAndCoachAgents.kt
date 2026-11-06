@@ -1,5 +1,9 @@
 package lab.doppio.bloom.agents
 
+import lab.doppio.bloom.core.port.AccountRepository
+import lab.doppio.bloom.core.port.AgentRunRepository
+import lab.doppio.bloom.core.port.DealRepository
+import lab.doppio.bloom.core.port.EventRepository
 import java.time.Clock
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
@@ -11,7 +15,6 @@ import ai.koog.prompt.executor.model.executeStructured
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.model.ReplyIntent
-import lab.doppio.bloom.data.db.Repository
 import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -73,24 +76,30 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
 
 /** Outils de lecture des métriques pour le coach hebdomadaire. Lecture seule. */
 @LLMDescription("Lecture des métriques de prospection de Doppio")
-class MetricsTools(private val repo: Repository, private val clock: Clock = Clock.systemDefaultZone()) : ToolSet {
+class MetricsTools(
+    private val eventRepo: EventRepository,
+    private val accountRepo: AccountRepository,
+    private val dealRepo: DealRepository,
+    private val agentRunRepo: AgentRunRepository,
+    private val clock: Clock = Clock.systemDefaultZone(),
+) : ToolSet {
 
     @Tool
     @LLMDescription("Compte les événements d'un type sur les N derniers jours. Types : EMAIL_SENT, REPLY_RECEIVED, REPLY_POSITIVE, MEETING_BOOKED, UNSUBSCRIBED, BOUNCED, DRAFT_APPROVED, DRAFT_REJECTED, LINKEDIN_TASK_DONE")
     suspend fun countEvents(
         @LLMDescription("Type d'événement") type: String,
         @LLMDescription("Nombre de jours") days: Int,
-    ): String = repo.countEvents(type, clock.instant().minus(days.toLong(), ChronoUnit.DAYS)).toString()
+    ): String = eventRepo.countEvents(type, clock.instant().minus(days.toLong(), ChronoUnit.DAYS)).toString()
 
     @Tool
     @LLMDescription("Liste les 15 comptes les mieux classés avec score, offre recommandée et raisons")
-    suspend fun topAccounts(): String = repo.accountsByScore(15).joinToString("\n") {
+    suspend fun topAccounts(): String = accountRepo.accountsByScore(15).joinToString("\n") {
         "${it.account.name} : ${it.score} pts, offre ${it.recommendedOffer ?: "aucune"}, ${it.reasons.take(3).joinToString("; ")}"
     }
 
     @Tool
     @LLMDescription("Pipeline commercial : affaires par étape et par offre, avec montants")
-    suspend fun pipeline(): String = repo.deals().groupBy { it.stage }.entries.joinToString("\n") { (stage, deals) ->
+    suspend fun pipeline(): String = dealRepo.deals().groupBy { it.stage }.entries.joinToString("\n") { (stage, deals) ->
         "$stage : ${deals.size} affaires, ${deals.sumOf { it.amountEur }} euros, offres ${deals.groupingBy { it.offer }.eachCount()}"
     }
 
@@ -98,10 +107,10 @@ class MetricsTools(private val repo: Repository, private val clock: Clock = Cloc
     @LLMDescription("Taux de réponse positive par type de signal à l'origine du contact, sur 90 jours")
     suspend fun replyRateBySignal(): String {
         val since = clock.instant().minus(90, ChronoUnit.DAYS)
-        val events = repo.eventsSince(since)
+        val events = eventRepo.eventsSince(since)
         val sentByAccount = events.filter { it.first == "EMAIL_SENT" }.mapNotNull { it.second }.toSet()
         val positiveByAccount = events.filter { it.first == "REPLY_POSITIVE" }.mapNotNull { it.second }.toSet()
-        val rows = repo.accountsByScore(500).filter { it.account.id in sentByAccount }
+        val rows = accountRepo.accountsByScore(500).filter { it.account.id in sentByAccount }
         return rows.groupBy { it.recommendedOffer }.entries.joinToString("\n") { (offer, list) ->
             val pos = list.count { it.account.id in positiveByAccount }
             "${offer ?: "sans offre"} : ${list.size} comptes contactés, $pos réponses positives"
@@ -110,19 +119,27 @@ class MetricsTools(private val repo: Repository, private val clock: Clock = Cloc
 
     @Tool
     @LLMDescription("Coût et fiabilité des agents sur 7 jours")
-    suspend fun agentCosts(): String = repo.agentStats(clock.instant().minus(7, ChronoUnit.DAYS)).joinToString("\n") {
+    suspend fun agentCosts(): String = agentRunRepo.agentStats(clock.instant().minus(7, ChronoUnit.DAYS)).joinToString("\n") {
         "${it.agent} : ${it.runs} exécutions, ${it.failures} échecs, ${it.inputTokens} tokens en entrée, ${it.outputTokens} en sortie, ${it.avgMs} ms en moyenne"
     }
 }
 
-class WeeklyCoachAgent(private val llm: Llm, private val repo: Repository, private val tracker: RunTracker, private val clock: Clock = Clock.systemDefaultZone()) {
+class WeeklyCoachAgent(
+    private val llm: Llm,
+    private val eventRepo: EventRepository,
+    private val accountRepo: AccountRepository,
+    private val dealRepo: DealRepository,
+    private val agentRunRepo: AgentRunRepository,
+    private val tracker: RunTracker,
+    private val clock: Clock = Clock.systemDefaultZone(),
+) {
     suspend fun weeklyMemo(): String {
         val tokens = TokenCounter()
         val agent = AIAgent(
             promptExecutor = llm.executor,
             llmModel = llm.writer,
             systemPrompt = Prompts.coach,
-            toolRegistry = ToolRegistry { tools(MetricsTools(repo, clock)) },
+            toolRegistry = ToolRegistry { tools(MetricsTools(eventRepo, accountRepo, dealRepo, agentRunRepo, clock)) },
             maxIterations = 15,
             installFeatures = tokens.feature,
         )
