@@ -24,7 +24,12 @@ import lab.doppio.bloom.core.model.Sequence
 import lab.doppio.bloom.core.model.SequenceStep
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
+import lab.doppio.bloom.core.model.Deal
 import lab.doppio.bloom.core.port.AccountRepository
+import lab.doppio.bloom.core.port.AgentRunRepository
+import lab.doppio.bloom.core.port.AgentStats
+import lab.doppio.bloom.core.port.DealRepository
+import lab.doppio.bloom.core.port.InstanceLock
 import lab.doppio.bloom.core.port.AccountRow
 import lab.doppio.bloom.core.port.Blocked
 import lab.doppio.bloom.core.port.Coach
@@ -304,3 +309,25 @@ class FakeDiscovery : Discovery {
 }
 
 fun emailSequence(offer: Offer = Offer.DISCOVERY, id: Long = 1) = Sequence(id, "test", offer, listOf(SequenceStep(0, Channel.EMAIL, 0, "intent"), SequenceStep(1, Channel.EMAIL, 2, "relance")))
+
+class FakeDealRepository : DealRepository {
+    val deals = mutableListOf<Deal>()
+
+    override suspend fun upsertDeal(d: Deal): Long {
+        val id = if (d.id == 0L) deals.size + 1L else d.id
+        deals.removeAll { it.id == id }
+        deals += d.copy(id = id)
+        return id
+    }
+    override suspend fun deals(): List<Deal> = deals
+}
+
+class FakeAgentRunRepository : AgentRunRepository {
+    override suspend fun logAgentRun(agent: String, accountId: AccountId?, model: String, inTok: Int, outTok: Int, durationMs: Long, success: Boolean, error: String?) {}
+    override suspend fun tokensSince(since: Instant): Long = 0
+    override suspend fun agentStats(since: Instant): List<AgentStats> = emptyList()
+}
+
+class FakeInstanceLock(var held: Boolean = true) : InstanceLock {
+    override fun tryHold(): Boolean = held
+}

@@ -35,6 +35,13 @@ agents/  agents Koog : recherche, synthèse, rédaction, classification des rép
 app/     serveur Ktor : API, dashboard, envoi SMTP, relève IMAP, boucles de fond, désinscription
 ```
 
+Le câblage est fait par Koin, uniquement dans `app` (`app/.../di/Modules.kt`) : un module par couche
+(configuration, persistance, sources, agents, courrier, cas d'usage, boucles de fond, routes), chaque
+implémentation liée au port de `core` qu'elle réalise. `core`, `data` et `agents` ne connaissent pas Koin. Un
+composant facultatif (France Travail, Dropcontact) n'est déclaré que si sa clé est configurée. Les tests de
+routes remplacent les ports par les faux en mémoire de `core` (`testFixtures`) et un test vérifie que chaque
+module se résout, donc une dépendance oubliée fait échouer le build.
+
 ## Interface : la source de vérité est dans Claude Design
 
 L'UI et l'UX de Bloom sont conçues dans le projet Claude Design
@@ -251,6 +258,7 @@ Garanties :
 ./gradlew build                    # compile tout et lance les tests (Docker requis pour ceux de data)
 ./gradlew :core:test               # tests du domaine seulement
 ./gradlew :data:test               # tests sur un vrai Postgres (Testcontainers)
+./gradlew :app:test                # routes (testApplication) et graphe Koin, avec des faux en mémoire, sans base
 docker compose logs -f app         # logs du serveur (option A)
 docker compose exec db psql -U bloom bloom   # console SQL
 docker compose down                # arrêter, en gardant les données
@@ -425,7 +433,7 @@ Vélomoov;velomoov.fr;123456789;;MOBILITY_TRANSPORT;120;Recommandé par Julie;Cl
   (`itunes.apple.com/fr/rss/topfreeapplications/limit=200/genre=…/json`) et le champ `entreprise.url` des offres
   France Travail. Si l'un ne répond plus, la découverte continue avec l'autre source.
 - Mise en production prête pour la phase 1 (`deploy/`, image publiée sur GHCR) : pas encore déployée.
-- Non fait : page de détail d'un compte dans le dashboard, tests de l'orchestrateur et des routes, Google Play.
+- Non fait : page de détail d'un compte dans le dashboard, Google Play.
 
 ## Garde-fous de conformité intégrés
 
