@@ -30,7 +30,7 @@ référence client hors sujet. Les LLM cherchent et rédigent ; le code score, v
 
 ```
 core/    domaine pur, testé : modèles, scoring, MessageGuard, moteur de séquences, références clients, ports (dépôts, sources de faits, rôles des agents, verrou d'instance, courrier, découverte) et cas d'usage (`usecase/` : planification, envoi, réponses, inscription, validation, tâches périodiques), testés avec des faux en mémoire
-data/    PostgreSQL (Exposed + Flyway) : un dépôt par agrégat, qui implémente un port de core ; clients des sources de faits
+data/    PostgreSQL (Exposed + Flyway) : un dépôt par agrégat, qui implémente un port de core ; une classe par source dans `sources/` (`facts/` : App Store, France Travail, annuaire, pages web ; `discovery/` : BODACC, BOAMP, TED, DECP, Codeur, presse, GitHub ; `http/` : client, limiteur de débit), testées sur des réponses enregistrées (`MockEngine`, sans réseau) ; `DiscoveryService` coordonne la découverte
 agents/  agents Koog : recherche, synthèse, rédaction, classification des réponses, coach ; ne dépend que de core, le LLM (PromptExecutor) est injecté
 app/     serveur Ktor : API, dashboard, envoi SMTP, relève IMAP, boucles de fond, désinscription
 ```
