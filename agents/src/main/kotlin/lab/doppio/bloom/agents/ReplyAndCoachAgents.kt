@@ -2,7 +2,9 @@ package lab.doppio.bloom.agents
 
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.AgentRunRepository
+import lab.doppio.bloom.core.port.Coach
 import lab.doppio.bloom.core.port.DealRepository
+import lab.doppio.bloom.core.port.ReplyClassifier
 import lab.doppio.bloom.core.port.EventRepository
 import java.time.Clock
 import ai.koog.agents.core.agent.AIAgent
@@ -14,8 +16,8 @@ import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.model.executeStructured
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import lab.doppio.bloom.core.model.ReplyClassification
 import lab.doppio.bloom.core.model.ReplyIntent
-import java.time.Instant
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -23,7 +25,7 @@ import java.time.temporal.ChronoUnit
  * Classifieur de réponses. Modèle rapide, sortie structurée.
  * Les décisions qui comptent (arrêt de séquence, opposition) sont prises par le code, pas par le LLM.
  */
-class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker, private val clock: Clock = Clock.systemDefaultZone()) {
+class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker, private val clock: Clock = Clock.systemDefaultZone()) : ReplyClassifier {
 
     @Serializable
     @SerialName("ReplyClassification")
@@ -42,15 +44,11 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
         val suggestedReply: String,
     )
 
-    data class Result(val intent: ReplyIntent, val confidence: Double, val followUpOn: LocalDate?, val referral: String?, val summary: String, val suggestedReply: String?)
-
-    /** Mots qui déclenchent l'opposition sans attendre le LLM, par prudence. */
-    private val hardStop = Regex("(?i)(désinscri|unsubscribe|ne plus me contacter|retirez[- ]moi|\\bstop\\b|remove me|opt[- ]out)")
-
-    suspend fun classify(subject: String?, body: String, accountId: Long?, today: LocalDate = LocalDate.now(clock)): Result {
-        val trimmed = body.lines().takeWhile { line -> !line.startsWith(">") && !line.contains("a écrit") && !line.contains("wrote:") }.joinToString("\n").take(4_000)
-        if (hardStop.containsMatchIn(trimmed.take(400))) {
-            return Result(ReplyIntent.UNSUBSCRIBE, 1.0, null, null, "Demande d'arrêt détectée par mot-clé", null)
+    override suspend fun classify(subject: String?, body: String, accountId: Long?): ReplyClassification {
+        val today = LocalDate.now(clock)
+        val trimmed = trimQuoted(body)
+        if (isHardStop(trimmed)) {
+            return ReplyClassification(ReplyIntent.UNSUBSCRIBE, 1.0, null, null, "Demande d'arrêt détectée par mot-clé", null)
         }
         val c = tracker.track("reply-classifier", accountId, llm.fast) {
             val r = llm.executor.executeStructured<Classification>(
@@ -63,7 +61,7 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
             r.data to r
         }
         val intent = ReplyIntent.entries.firstOrNull { it.name == c.intent.uppercase() } ?: ReplyIntent.OTHER
-        return Result(
+        return ReplyClassification(
             intent = intent,
             confidence = c.confidence.coerceIn(0.0, 1.0),
             followUpOn = runCatching { LocalDate.parse(c.followUpOn) }.getOrNull(),
@@ -73,6 +71,16 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
         )
     }
 }
+
+/** Mots qui déclenchent l'opposition sans attendre le LLM, par prudence. */
+private val hardStop = Regex("(?i)(désinscri|unsubscribe|ne plus me contacter|retirez[- ]moi|\\bstop\\b|remove me|opt[- ]out)")
+
+/** Keeps the reply itself: cuts at the first quoted line, then at 4000 characters. */
+internal fun trimQuoted(body: String): String =
+    body.lines().takeWhile { line -> !line.startsWith(">") && !line.contains("a écrit") && !line.contains("wrote:") }.joinToString("\n").take(4_000)
+
+/** True when the start of the reply holds an unambiguous request to stop. */
+internal fun isHardStop(trimmed: String): Boolean = hardStop.containsMatchIn(trimmed.take(400))
 
 /** Outils de lecture des métriques pour le coach hebdomadaire. Lecture seule. */
 @LLMDescription("Lecture des métriques de prospection de Doppio")
@@ -132,8 +140,8 @@ class WeeklyCoachAgent(
     private val agentRunRepo: AgentRunRepository,
     private val tracker: RunTracker,
     private val clock: Clock = Clock.systemDefaultZone(),
-) {
-    suspend fun weeklyMemo(): String {
+) : Coach {
+    override suspend fun weeklyMemo(): String {
         val tokens = TokenCounter()
         val agent = AIAgent(
             promptExecutor = llm.executor,

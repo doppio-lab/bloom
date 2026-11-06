@@ -47,7 +47,10 @@ import lab.doppio.bloom.app.web.apiRoutes
 import lab.doppio.bloom.app.web.discoveryRoutes
 import lab.doppio.bloom.app.web.unsubscribeRoutes
 import lab.doppio.bloom.core.sequence.DefaultSequences
+import lab.doppio.bloom.core.port.Drafter
+import lab.doppio.bloom.core.port.Researcher
 import lab.doppio.bloom.data.persistence.Db
+import lab.doppio.bloom.data.persistence.PostgresInstanceLock
 import lab.doppio.bloom.data.persistence.account.ExposedAccountRepository
 import lab.doppio.bloom.data.persistence.agentrun.ExposedAgentRunRepository
 import lab.doppio.bloom.data.persistence.contact.ExposedContactRepository
@@ -95,7 +98,7 @@ class AppContext(val config: BloomConfig, val clock: Clock = Clock.systemDefault
     val agentRunRepo = ExposedAgentRunRepository()
     val discoveryState = ExposedDiscoveryStateRepository(clock)
     private val http = defaultHttpClient()
-    val llm = Llm(config.llm.client)
+    val llm = Llm.from(config.llm.client)
     private val tracker = RunTracker(agentRunRepo, dailyTokenBudget = config.llm.dailyTokenBudget, clock = clock)
     /** Portée des tâches de fond déclenchées depuis le dashboard (découverte, recherche). */
     val background = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -112,7 +115,7 @@ class AppContext(val config: BloomConfig, val clock: Clock = Clock.systemDefault
     /** Optionnel : sans clé Dropcontact, les contacts sont saisis à la main (nom, email ou profil LinkedIn). */
     val dropcontact = config.discovery.dropcontactApiKey?.let { DropcontactSource(http, it) }
 
-    val research = ResearchAgent(llm, accountRepo, eventRepo, factRepo, tracker, appStore = appStore, registry = registry, jobs = jobs, web = WebPageSource(http), clock = clock)
+    val research: Researcher = ResearchAgent(llm, accountRepo, eventRepo, factRepo, tracker, appStore = appStore, registry = registry, jobs = jobs, web = WebPageSource(http), clock = clock)
 
     /**
      * Sources added to discovery, chosen by DISCOVERY_SOURCES. The press feeds are left out of the default:
@@ -147,12 +150,13 @@ class AppContext(val config: BloomConfig, val clock: Clock = Clock.systemDefault
         codeur = CodeurSource(http, minBudgetEur = config.discovery.codeurMinBudgetEur).takeIf { "codeur" in enabledSources },
         clock = clock,
     )
-    val writer = WriterAgent(llm, accountRepo, contactRepo, draftRepo, eventRepo, factRepo, tracker, senderName = config.sending.senderName)
+    val writer: Drafter = WriterAgent(llm, accountRepo, contactRepo, draftRepo, eventRepo, factRepo, tracker, senderName = config.sending.senderName)
     val orchestrator = Orchestrator(
         accountRepo, contactRepo, discoveryState, draftRepo, eventRepo, factRepo, jobRunRepo, officerRepo, replyRepo, sequenceRepo,
         writer, research, ReplyClassifierAgent(llm, tracker, clock), WeeklyCoachAgent(llm, eventRepo, accountRepo, dealRepo, agentRunRepo, tracker, clock),
         gateway, ImapPoller(mail, clock), mail, policy, discovery,
         clock = clock,
+        instanceLock = PostgresInstanceLock(),
     )
 }
 

@@ -17,13 +17,13 @@ import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.scoring.Scoring
 import lab.doppio.bloom.core.model.Demand
 import lab.doppio.bloom.core.port.OfficerRow
-import lab.doppio.bloom.data.sources.AppMeta
+import lab.doppio.bloom.core.model.AppMeta
 import lab.doppio.bloom.data.sources.AppStoreSource
 import lab.doppio.bloom.data.sources.CodeurSource
 import lab.doppio.bloom.data.sources.CompanyRegistrySource
 import lab.doppio.bloom.data.sources.FranceTravailSource
 import lab.doppio.bloom.data.sources.JobBoardSource
-import lab.doppio.bloom.data.sources.SourceResult
+import lab.doppio.bloom.core.model.SourceResult
 import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.temporal.ChronoUnit

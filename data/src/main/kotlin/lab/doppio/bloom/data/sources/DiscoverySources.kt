@@ -1,5 +1,8 @@
 package lab.doppio.bloom.data.sources
 
+import lab.doppio.bloom.core.model.SourceResult
+import lab.doppio.bloom.core.model.fact
+import lab.doppio.bloom.core.model.FactIds
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.request.header

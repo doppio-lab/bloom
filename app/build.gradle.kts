@@ -9,6 +9,8 @@ application {
 }
 
 dependencies {
+    implementation(project(":core"))
+    implementation(project(":data"))
     implementation(project(":agents"))
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)

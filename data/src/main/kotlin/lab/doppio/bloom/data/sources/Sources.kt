@@ -30,12 +30,18 @@ import lab.doppio.bloom.core.discovery.HiringRules
 import lab.doppio.bloom.core.discovery.Officer
 import lab.doppio.bloom.core.discovery.Registry
 import lab.doppio.bloom.core.model.AccountId
+import lab.doppio.bloom.core.model.AppMeta
+import lab.doppio.bloom.core.model.SourceResult
+import lab.doppio.bloom.core.model.fact
+import lab.doppio.bloom.core.port.AppStoreFacts
+import lab.doppio.bloom.core.port.CompanyRegistryFacts
+import lab.doppio.bloom.core.port.JobOfferFacts
+import lab.doppio.bloom.core.port.WebPages
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
 import org.jsoup.Jsoup
-import java.security.MessageDigest
 import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
@@ -55,18 +61,6 @@ fun defaultHttpClient(): HttpClient = HttpClient(CIO) {
     defaultRequest { header("User-Agent", "DoppioBloom/0.1 (+https://doppio-lab.com)") }
 }
 
-object FactIds {
-    fun of(sourceUrl: String, statement: String): String =
-        MessageDigest.getInstance("SHA-1").digest("$sourceUrl|$statement".toByteArray())
-            .joinToString("") { "%02x".format(it) }.take(8)
-}
-
-fun fact(accountId: AccountId, kind: FactKind, statement: String, sourceUrl: String, excerpt: String? = null) =
-    Fact(FactIds.of(sourceUrl, statement), accountId, kind, statement, sourceUrl, Instant.now().toString(), excerpt?.take(500))
-
-data class AppMeta(val appId: Long, val name: String, val sellerName: String?, val sellerUrl: String?, val genreId: Int?)
-
-data class SourceResult(val facts: List<Fact>, val signals: List<Signal>, val app: AppMeta? = null)
 
 private fun JsonElement?.str(): String? = (this as? kotlinx.serialization.json.JsonPrimitive)?.contentOrNull
 private fun JsonObject.label(key: String): String? = this[key]?.jsonObject?.get("label").str()
@@ -87,7 +81,7 @@ class RateLimiter(private val minInterval: Duration) {
 // App Store : métadonnées (Lookup API) et avis récents (flux RSS public)
 // ---------------------------------------------------------------------------------------------
 
-class AppStoreSource(private val http: HttpClient, private val country: String = "fr") {
+class AppStoreSource(private val http: HttpClient, private val country: String = "fr") : AppStoreFacts {
     private val limiter = RateLimiter(Duration.ofSeconds(3))
 
     data class Review(val rating: Int, val title: String, val content: String, val version: String?, val updated: Instant?)
@@ -97,7 +91,7 @@ class AppStoreSource(private val http: HttpClient, private val country: String =
         "connexion", "déconnect", "impossible", "batterie", "mise à jour", "écran blanc", "slow", "doesn't work", "login",
     )
 
-    suspend fun analyze(accountId: AccountId, appId: Long, now: Instant = Instant.now()): SourceResult {
+    override suspend fun analyze(accountId: AccountId, appId: Long, now: Instant): SourceResult {
         val facts = mutableListOf<Fact>()
         val signals = mutableListOf<Signal>()
 
@@ -243,7 +237,7 @@ class FranceTravailSource(
     private val http: HttpClient,
     private val clientId: String,
     private val clientSecret: String,
-) {
+) : JobOfferFacts {
     private var token: String? = null
     private var tokenExpiry: Instant = Instant.EPOCH
 
@@ -321,7 +315,7 @@ class FranceTravailSource(
     }
 
     /** Offres mobiles d'une entreprise donnée (pour rafraîchir un compte connu). */
-    suspend fun mobileJobs(accountId: AccountId, companyName: String, now: Instant = Instant.now()): SourceResult {
+    override suspend fun mobileJobs(accountId: AccountId, companyName: String, now: Instant): SourceResult {
         val offers = search("mobile,$companyName", maxPages = 1)
             .filter { o -> companyName(o)?.let { lab.doppio.bloom.core.discovery.CompanyNames.sameCompany(it, companyName) } == true }
         return factsFromOffers(accountId, offers, now)
@@ -332,7 +326,7 @@ class FranceTravailSource(
 // Annuaire des entreprises (API Recherche d'entreprises, data.gouv, sans clé)
 // ---------------------------------------------------------------------------------------------
 
-class CompanyRegistrySource(private val http: HttpClient) {
+class CompanyRegistrySource(private val http: HttpClient) : CompanyRegistryFacts {
     private val limiter = RateLimiter(Duration.ofMillis(200))
 
     data class Company(val siren: String, val name: String, val headcountRange: String?, val naf: String?, val createdOn: String?)
@@ -378,7 +372,7 @@ class CompanyRegistrySource(private val http: HttpClient) {
     /** Exact lookup: the search endpoint accepts a SIREN as query. */
     suspend fun bySiren(siren: String): Company? = search(siren).firstOrNull { it.siren == siren }
 
-    suspend fun facts(accountId: AccountId, siren: String): List<Fact> {
+    override suspend fun facts(accountId: AccountId, siren: String): List<Fact> {
         val company = bySiren(siren) ?: return emptyList()
         val url = "https://annuaire-entreprises.data.gouv.fr/entreprise/$siren"
         return listOfNotNull(
@@ -407,11 +401,11 @@ class CompanyRegistrySource(private val http: HttpClient) {
 // Pages web publiques de l'entreprise (site, page carrières, blog tech)
 // ---------------------------------------------------------------------------------------------
 
-class WebPageSource(private val http: HttpClient) {
+class WebPageSource(private val http: HttpClient) : WebPages {
     private val limiter = RateLimiter(Duration.ofSeconds(1))
 
     /** Renvoie le texte visible d'une page, tronqué. Le fait créé contient l'URL exacte lue. */
-    suspend fun read(accountId: AccountId, url: String, maxChars: Int = 6_000): Pair<Fact, String>? {
+    override suspend fun read(accountId: AccountId, url: String, maxChars: Int): Pair<Fact, String>? {
         val html = runCatching { limiter.run { http.get(url).bodyAsText() } }.getOrNull() ?: return null
         val doc = Jsoup.parse(html, url)
         doc.select("script, style, nav, footer, noscript, svg").remove()

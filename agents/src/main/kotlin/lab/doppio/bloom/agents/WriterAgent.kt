@@ -2,6 +2,7 @@ package lab.doppio.bloom.agents
 
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.ContactRepository
+import lab.doppio.bloom.core.port.Drafter
 import lab.doppio.bloom.core.port.DraftRepository
 import lab.doppio.bloom.core.port.EventRepository
 import lab.doppio.bloom.core.port.FactRepository
@@ -36,7 +37,7 @@ class WriterAgent(
     private val tracker: RunTracker,
     private val senderName: String,
     private val maxRepairs: Int = 2,
-) {
+) : Drafter {
     @Serializable
     @SerialName("OutreachDraft")
     @LLMDescription("Brouillon de message de prospection")
@@ -53,7 +54,7 @@ class WriterAgent(
         val rationale: String,
     )
 
-    suspend fun draft(enrollment: Enrollment, sequence: Sequence, step: SequenceStep): Long {
+    override suspend fun draft(enrollment: Enrollment, sequence: Sequence, step: SequenceStep): Long {
         val contact = contactRepo.contact(enrollment.contactId) ?: error("Contact introuvable")
         val account = accountRepo.account(contact.accountId) ?: error("Compte introuvable")
         val facts = factRepo.factsOf(account.id)

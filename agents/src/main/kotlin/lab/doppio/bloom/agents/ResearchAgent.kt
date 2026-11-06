@@ -22,13 +22,13 @@ import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.scoring.ScoreBreakdown
 import lab.doppio.bloom.core.scoring.Scoring
 import lab.doppio.bloom.core.model.Dossier
-import lab.doppio.bloom.data.sources.AppStoreSource
-import lab.doppio.bloom.data.sources.CompanyRegistrySource
-import lab.doppio.bloom.data.sources.FranceTravailSource
-import lab.doppio.bloom.data.sources.WebPageSource
-import lab.doppio.bloom.data.sources.fact
+import lab.doppio.bloom.core.model.fact
+import lab.doppio.bloom.core.port.AppStoreFacts
+import lab.doppio.bloom.core.port.CompanyRegistryFacts
+import lab.doppio.bloom.core.port.JobOfferFacts
+import lab.doppio.bloom.core.port.Researcher
+import lab.doppio.bloom.core.port.WebPages
 import org.slf4j.LoggerFactory
-import java.time.Instant
 
 /**
  * Agent de recherche, en trois temps :
@@ -43,22 +43,22 @@ class ResearchAgent(
     private val eventRepo: EventRepository,
     private val factRepo: FactRepository,
     private val tracker: RunTracker,
-    private val appStore: AppStoreSource,
-    private val registry: CompanyRegistrySource,
-    private val jobs: FranceTravailSource?,
-    private val web: WebPageSource,
+    private val appStore: AppStoreFacts,
+    private val registry: CompanyRegistryFacts,
+    private val jobs: JobOfferFacts?,
+    private val web: WebPages,
     private val clock: Clock = Clock.systemDefaultZone(),
-) {
+) : Researcher {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    suspend fun research(accountId: Long): ScoreBreakdown {
+    override suspend fun research(accountId: Long): ScoreBreakdown {
         val account = accountRepo.account(accountId) ?: error("Compte $accountId introuvable")
 
         // 1. Sources déterministes. Chaque source échoue isolément.
         val facts = mutableListOf<Fact>()
         val signals = mutableListOf<Signal>()
         account.iosAppId?.let { id ->
-            runCatching { appStore.analyze(account.id, id) }
+            runCatching { appStore.analyze(account.id, id, clock.instant()) }
                 .onSuccess { facts += it.facts; signals += it.signals }
                 .onFailure { log.warn("App Store indisponible pour ${account.name}", it) }
         }
@@ -66,7 +66,7 @@ class ResearchAgent(
             runCatching { registry.facts(account.id, siren) }.onSuccess { facts += it }.onFailure { log.warn("Annuaire indisponible", it) }
         }
         jobs?.let { j ->
-            runCatching { j.mobileJobs(account.id, account.name) }
+            runCatching { j.mobileJobs(account.id, account.name, clock.instant()) }
                 .onSuccess { facts += it.facts; signals += it.signals }
                 .onFailure { log.warn("France Travail indisponible", it) }
         }
@@ -146,10 +146,7 @@ class ResearchAgent(
             ).getOrThrow()
             r.data to r
         }
-        // Les hypothèses qui citent des faits inexistants sont écartées : pas d'hypothèse sans preuve.
-        val hypotheses = output.hypotheses
-            .filter { h -> h.factIds.isNotEmpty() && h.factIds.all { it in known } }
-            .map { h -> "${h.statement} " + h.factIds.joinToString(" ") { "[F:$it]" } }
+        val hypotheses = provenHypotheses(output.hypotheses, known.keys)
         val offer = Offer.entries.firstOrNull { it.name == output.offer.uppercase() }
         factRepo.saveDossier(
             Dossier(
@@ -166,17 +163,26 @@ class ResearchAgent(
 }
 
 /**
+ * Les hypothèses qui citent des faits inexistants sont écartées : pas d'hypothèse sans preuve.
+ * Les identifiants retenus deviennent des marqueurs [F:id].
+ */
+internal fun provenHypotheses(hypotheses: List<ResearchAgent.Hypothesis>, knownFactIds: Set<String>): List<String> =
+    hypotheses
+        .filter { h -> h.factIds.isNotEmpty() && h.factIds.all { it in knownFactIds } }
+        .map { h -> "${h.statement} " + h.factIds.joinToString(" ") { "[F:$it]" } }
+
+/**
  * Outils exposés à l'agent d'exploration. L'agent lit des pages et propose des citations ;
  * le code vérifie qu'elles existent mot pour mot avant d'en faire des faits.
  */
 @LLMDescription("Outils pour lire le site public d'une entreprise et enregistrer des citations vérifiées")
-class SiteResearchTools(private val accountId: Long, private val domain: String, private val web: WebPageSource, private val clock: Clock = Clock.systemDefaultZone()) : ToolSet {
+class SiteResearchTools(private val accountId: Long, private val domain: String, private val web: WebPages, private val clock: Clock = Clock.systemDefaultZone()) : ToolSet {
     private val pages = mutableMapOf<String, String>()
     val recorded = mutableListOf<Fact>()
     val signals = mutableListOf<Signal>()
     private val maxPages = 6
 
-    private val sameSite = Regex("^https?://([a-z0-9-]+\\.)*${Regex.escape(domain)}(/.*)?$", RegexOption.IGNORE_CASE)
+    internal val sameSite = Regex("^https?://([a-z0-9-]+\\.)*${Regex.escape(domain)}(/.*)?$", RegexOption.IGNORE_CASE)
 
     @Tool
     @LLMDescription("Lit une page du site de l'entreprise et renvoie son texte visible (tronqué) et ses liens internes")
@@ -209,7 +215,7 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
         if (!page.replace(Regex("\\s+"), " ").contains(normalized, ignoreCase = true)) {
             return "Refusé : citation introuvable mot pour mot sur la page. Copie le texte exact."
         }
-        val f = fact(accountId, FactKind.WEB_PAGE, "$meaning (« $normalized »)", url, excerpt = normalized)
+        val f = fact(accountId, FactKind.WEB_PAGE, "$meaning (« $normalized »)", url, excerpt = normalized, at = clock.instant())
         recorded += f
         when (category.uppercase()) {
             "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, 0.6, clock.instant().toString(), listOf(f.id))

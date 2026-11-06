@@ -1,7 +1,7 @@
 package lab.doppio.bloom.data.discovery
 
 import lab.doppio.bloom.core.model.AccountId
-import lab.doppio.bloom.data.sources.SourceResult
+import lab.doppio.bloom.core.model.SourceResult
 import java.time.Instant
 
 /**

@@ -1,6 +1,11 @@
 package lab.doppio.bloom.app.outreach
 
 import lab.doppio.bloom.core.port.AccountRepository
+import lab.doppio.bloom.core.port.Coach
+import lab.doppio.bloom.core.port.Drafter
+import lab.doppio.bloom.core.port.InstanceLock
+import lab.doppio.bloom.core.port.ReplyClassifier
+import lab.doppio.bloom.core.port.Researcher
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.DiscoveryStateRepository
 import lab.doppio.bloom.core.port.DraftRepository
@@ -16,14 +21,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
-import lab.doppio.bloom.agents.ReplyClassifierAgent
-import lab.doppio.bloom.agents.ResearchAgent
-import lab.doppio.bloom.agents.WeeklyCoachAgent
-import lab.doppio.bloom.agents.WriterAgent
 import lab.doppio.bloom.core.guard.MessageGuard
-import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.ReplyClassification
 import lab.doppio.bloom.core.model.ReplyIntent
 import lab.doppio.bloom.core.model.SendingPolicy
 import lab.doppio.bloom.core.sequence.NextAction
@@ -59,10 +60,10 @@ class Orchestrator(
     private val officerRepo: OfficerRepository,
     private val replyRepo: ReplyRepository,
     private val sequenceRepo: SequenceRepository,
-    private val writer: WriterAgent,
-    private val research: ResearchAgent,
-    private val classifier: ReplyClassifierAgent,
-    private val coach: WeeklyCoachAgent,
+    private val writer: Drafter,
+    private val research: Researcher,
+    private val classifier: ReplyClassifier,
+    private val coach: Coach,
     private val gateway: EmailGateway,
     private val poller: ImapPoller,
     private val mail: MailConfig,
@@ -70,7 +71,7 @@ class Orchestrator(
     private val discovery: lab.doppio.bloom.data.discovery.DiscoveryService,
     private val nightlyResearchBudget: Int = 25,
     private val clock: Clock = Clock.systemDefaultZone(),
-    private val instanceLock: () -> Boolean = { lab.doppio.bloom.data.persistence.Db.tryHoldSingleInstanceLock() },
+    private val instanceLock: InstanceLock,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
     private val zone = ZoneId.of(policy.timezone)
@@ -85,7 +86,7 @@ class Orchestrator(
         jobs = scope
         scope.launch {
             // Une seule instance fait tourner les boucles : sinon chaque email partirait deux fois
-            while (!runCatching { instanceLock() }.getOrDefault(false)) {
+            while (!runCatching { instanceLock.tryHold() }.getOrDefault(false)) {
                 log.warn("Une autre instance de Bloom tient les boucles de fond : nouvel essai dans 30 s")
                 delay(30_000)
             }
@@ -254,7 +255,7 @@ class Orchestrator(
         val contact = if (mail.isBounce) enrolled else contactRepo.contactByEmail(mail.from) ?: enrolled
         val accountId = contact?.accountId
         val result = if (mail.isBounce) {
-            ReplyClassifierAgent.Result(ReplyIntent.BOUNCE, 1.0, null, null, "Rebond : adresse invalide", null)
+            ReplyClassification(ReplyIntent.BOUNCE, 1.0, null, null, "Rebond : adresse invalide", null)
         } else {
             classifier.classify(mail.subject, mail.body, accountId)
         }
