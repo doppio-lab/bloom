@@ -31,6 +31,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import lab.doppio.bloom.agents.Llm
 import lab.doppio.bloom.app.config.BloomConfig
+import lab.doppio.bloom.app.config.DotEnv
 import lab.doppio.bloom.app.di.LOOPS
 import lab.doppio.bloom.app.di.bloomModules
 import lab.doppio.bloom.app.outreach.Scheduler
@@ -44,13 +45,17 @@ import lab.doppio.bloom.data.persistence.Db
 import org.koin.ktor.ext.get
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
+import java.nio.file.Path
 import kotlin.time.Duration.Companion.minutes
 
 private val log = org.slf4j.LoggerFactory.getLogger("bloom")
 
 fun main() {
     // Fail before touching the database when a secret, DRY_RUN or any other setting is unusable
-    val config = BloomConfig.from(System.getenv())
+    val dotEnv = DotEnv.find(Path.of(""))
+    // The path only: the file holds secrets
+    dotEnv?.let { log.info("Variables locales lues dans {} (les variables d'environnement restent prioritaires)", it) }
+    val config = BloomConfig.from(DotEnv.merged(System.getenv(), dotEnv))
     Db.connect(config.database)
     // The Koin graph is built when the server loads the module, right before it starts listening. It is also
     // where the sequences are ensured and the loops started, so nothing runs before the graph resolved.

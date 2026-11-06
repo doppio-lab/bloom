@@ -141,13 +141,15 @@ Pour le lancer en arrière-plan : `docker compose up --build -d`, puis `docker c
 
 ```bash
 docker compose up -d db                 # PostgreSQL sur 127.0.0.1:5432
-set -a; source .env; set +a             # charge le .env dans le shell courant
 ./gradlew :app:run
 ```
 
+Le serveur lit tout seul le `.env` de la racine du projet, qu'il soit lancé depuis la racine ou depuis `app/`.
+Une variable déjà définie dans l'environnement l'emporte sur le fichier. Le log de démarrage indique le fichier lu.
+En production, rien ne change : le `.env` n'entre pas dans l'image Docker et Compose passe les variables.
+
 Le serveur redémarre avec `Ctrl+C` puis `./gradlew :app:run`, sans reconstruire d'image. Dans IntelliJ :
-lancer `main` dans `app/src/main/kotlin/lab/doppio/bloom/app/Application.kt` en fournissant les mêmes
-variables d'environnement (champ « Environment variables » de la configuration, ou plugin EnvFile).
+lancer `main` dans `app/src/main/kotlin/lab/doppio/bloom/app/Application.kt`, rien à configurer.
 
 ### 3. Ouvrir le dashboard
 
