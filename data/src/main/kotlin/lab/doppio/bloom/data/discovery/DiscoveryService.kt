@@ -6,7 +6,6 @@ import lab.doppio.bloom.core.port.EventRepository
 import lab.doppio.bloom.core.port.FactRepository
 import lab.doppio.bloom.core.port.OfficerRepository
 import java.time.Clock
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.Exclusions
@@ -16,6 +15,8 @@ import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.scoring.Scoring
 import lab.doppio.bloom.core.model.Demand
+import lab.doppio.bloom.core.model.DiscoveryReport
+import lab.doppio.bloom.core.port.Discovery
 import lab.doppio.bloom.core.port.OfficerRow
 import lab.doppio.bloom.core.model.AppMeta
 import lab.doppio.bloom.data.sources.AppStoreSource
@@ -41,23 +42,6 @@ import java.time.temporal.ChronoUnit
  * Tout est déterministe : pas de LLM ici. Chaque compte découvert reçoit ses faits, ses signaux et un
  * score immédiat. Seuls les comptes au-dessus du seuil passent ensuite par l'agent de recherche (coûteux).
  */
-@Serializable
-data class DiscoveryReport(
-    val newAccounts: Int = 0,
-    val refreshedAccounts: Int = 0,
-    val excluded: Int = 0,
-    val offersRead: Int = 0,
-    val appsChecked: Int = 0,
-    val notes: List<String> = emptyList(),
-    /** New accounts per source label, in the order the sources ran. */
-    val bySource: Map<String, Int> = emptyMap(),
-) {
-    operator fun plus(other: DiscoveryReport) = DiscoveryReport(
-        newAccounts + other.newAccounts, refreshedAccounts + other.refreshedAccounts, excluded + other.excluded,
-        offersRead + other.offersRead, appsChecked + other.appsChecked, notes + other.notes, bySource + other.bySource,
-    )
-}
-
 data class DiscoveryConfig(
     val jobKeywords: List<String> = listOf(
         "développeur iOS", "développeur Android", "développeur mobile", "Swift iOS", "Kotlin Android", "Kotlin Multiplatform",
@@ -99,7 +83,7 @@ class DiscoveryService(
     private val jobBoards: JobBoardSource? = null,
     private val codeur: CodeurSource? = null,
     private val clock: Clock = Clock.systemDefaultZone(),
-) {
+) : Discovery {
     private val log = LoggerFactory.getLogger(javaClass)
 
     /** Names never prospected: the configured ones plus the blacklist kept in the dashboard, read at each run. */
@@ -111,7 +95,9 @@ class DiscoveryService(
         const val DEMANDS_LABEL = "Codeur"
     }
 
-    suspend fun run(now: Instant = clock.instant()): DiscoveryReport {
+    override suspend fun run(): DiscoveryReport = run(clock.instant())
+
+    suspend fun run(now: Instant): DiscoveryReport {
         blocked = config.extraExclusions + runCatching { accountRepo.blockedNames() }.getOrDefault(emptySet())
         // Before the sources, for the accounts already known; again at the end, for the ones this run creates
         runCatching { refreshOfficers() }.onFailure { log.warn("Lecture des dirigeants en échec", it) }
@@ -337,7 +323,7 @@ class DiscoveryService(
      * Reads the Codeur feed and keeps the new mobile projects. The feed only holds the latest projects,
      * so this is also called between two nightly runs. Returns how many were new.
      */
-    suspend fun pollDemands(): Int {
+    override suspend fun pollDemands(): Int {
         val source = codeur ?: return 0
         return source.mobileProjects().count { p ->
             discoveryState.saveDemand(Demand("codeur:${p.id}", DEMANDS_LABEL, p.title, p.url, p.budget, p.categories, p.publishedAt?.toString()))

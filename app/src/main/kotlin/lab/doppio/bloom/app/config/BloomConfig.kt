@@ -3,7 +3,7 @@ package lab.doppio.bloom.app.config
 import lab.doppio.bloom.agents.LlmConfig
 import lab.doppio.bloom.agents.LlmProvider
 import lab.doppio.bloom.app.outreach.MailConfig
-import lab.doppio.bloom.app.outreach.Mailbox
+import lab.doppio.bloom.core.model.Mailbox
 import lab.doppio.bloom.core.model.SendingPolicy
 import lab.doppio.bloom.data.persistence.DbConfig
 

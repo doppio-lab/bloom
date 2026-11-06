@@ -1,5 +1,6 @@
 package lab.doppio.bloom.app.web
 
+import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.request.receiveText
@@ -10,103 +11,32 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import kotlinx.coroutines.launch
-import kotlinx.serialization.Serializable
 import lab.doppio.bloom.app.AppContext
 import lab.doppio.bloom.core.discovery.CompanyNames
-import lab.doppio.bloom.core.discovery.Csv
-import lab.doppio.bloom.core.discovery.Targeting
-import lab.doppio.bloom.core.model.Account
-import lab.doppio.bloom.core.model.Contact
-import lab.doppio.bloom.core.model.Fact
-import lab.doppio.bloom.core.model.Market
-import lab.doppio.bloom.core.model.Offer
-import lab.doppio.bloom.core.model.Sector
-import lab.doppio.bloom.core.scoring.Scoring
-import lab.doppio.bloom.core.port.AccountRow
-import lab.doppio.bloom.core.port.OfficerRow
-import lab.doppio.bloom.data.discovery.DiscoveryReport
+import lab.doppio.bloom.core.model.DiscoveryReport
+import lab.doppio.bloom.core.usecase.AddContact
+import lab.doppio.bloom.core.usecase.BookEntry
 import org.slf4j.LoggerFactory
-
-@Serializable data class PeopleSearch(val role: String, val url: String)
-@Serializable data class ToComplete(
-    val row: AccountRow, val offer: Offer, val roles: List<String>, val why: String,
-    val searches: List<PeopleSearch>, val facts: List<Fact>,
-)
-@Serializable data class NewContactRequest(
-    val fullName: String, val role: String, val email: String? = null, val linkedinUrl: String? = null,
-    /** Lancer la séquence tout de suite si un email est connu (ou trouvé). */
-    val enroll: Boolean = true,
-    /** True when the person was picked among the legal officers published by the company registry. */
-    val fromRegistry: Boolean = false,
-)
-@Serializable data class NewContactResult(val contactId: Long, val enrolled: Boolean, val message: String)
-@Serializable data class ExcludeRequest(val reason: String)
-@Serializable data class BlockRequest(val name: String, val reason: String? = null)
-@Serializable data class BookContact(val contact: Contact, /** "sequence", "email" (email known, no sequence) or "no-email". */ val status: String)
-@Serializable data class BookEntry(
-    val accountId: Long, val name: String, val score: Int, val source: String, val offer: Offer, val why: String,
-    val contacts: List<BookContact>, val officers: List<OfficerRow>, val searches: List<PeopleSearch>,
-)
-@Serializable data class ImportReport(val created: Int, val updated: Int, val contacts: Int, val errors: List<String>)
 
 private val log = LoggerFactory.getLogger("DiscoveryRoutes")
 
-/** Inscrit un contact dans la séquence de l'offre recommandée. Renvoie vrai si c'est fait. */
-suspend fun enrollContact(ctx: AppContext, contact: Contact): Boolean {
-    val email = contact.email ?: return false
-    if (ctx.replyRepo.isSuppressed(email)) return false
-    if (ctx.sequenceRepo.enrollmentsOfContact(contact.id).isNotEmpty()) return false
-    // The researcher found no offer that fits: no sequence starts on its own
-    if (ctx.factRepo.dossier(contact.accountId)?.noFit == true) return false
-    val offer = ctx.factRepo.dossier(contact.accountId)?.offer
-        ?: ctx.accountRepo.accountsByScore(500).firstOrNull { it.account.id == contact.accountId }?.recommendedOffer
-        ?: Offer.DISCOVERY
-    val seq = ctx.sequenceRepo.sequenceFor(offer) ?: ctx.sequenceRepo.sequenceFor(Offer.DISCOVERY) ?: return false
-    ctx.sequenceRepo.enroll(contact.id, seq.id)
-    ctx.eventRepo.logEvent("ENROLLED", contact.accountId, contact.id)
-    ctx.orchestrator.planSoon()
-    return true
-}
-
-@Serializable data class DismissDemand(val key: String)
-
-@Serializable
-data class LastDiscovery(
-    val ranAt: String? = null,
-    val running: Boolean = false,
-    val bySource: Map<String, Int> = emptyMap(),
-    val notes: List<String> = emptyList(),
-)
-
-/** Accounts above the display threshold, or that already have a contact, with the people known for each. */
-private suspend fun book(ctx: AppContext): List<BookEntry> {
-    val contacts = ctx.contactRepo.contactsByAccount()
-    val officers = ctx.officerRepo.officersByAccount()
-    val enrolled = ctx.sequenceRepo.activeEnrollments().map { it.contactId }.toSet()
-    return ctx.accountRepo.accountsByScore(500).filter { it.score >= 45 || it.account.id in contacts }.take(150).map { row ->
-        val id = row.account.id
-        val offer = ctx.factRepo.dossier(id)?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
-        val persona = Targeting.personaFor(offer)
-        val known = contacts[id].orEmpty()
-        val knownNames = known.map { CompanyNames.normalize(it.fullName) }.toSet()
-        BookEntry(
-            accountId = id, name = row.account.name, score = row.score, source = row.account.source, offer = offer, why = persona.why,
-            contacts = known.map { c -> BookContact(c, if (c.id in enrolled) "sequence" else if (c.email != null) "email" else "no-email") },
-            officers = officers[id].orEmpty().filter { CompanyNames.normalize(it.fullName) !in knownNames },
-            searches = persona.roles.map { PeopleSearch(it, Targeting.linkedinSearchUrl(it, row.account.name)) },
-        )
-    }
-}
-
 private val lenientJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+
+private fun bookCsv(book: List<BookEntry>): String {
+    val lines = listOf("entreprise;nom;role;email;linkedin;statut;source") + book.flatMap { e ->
+        e.contacts.map { c -> listOf(e.name, c.contact.fullName, c.contact.role, c.contact.email.orEmpty(), c.contact.linkedinUrl.orEmpty(), "contact", c.contact.dataSource) } +
+            e.officers.map { o -> listOf(e.name, o.fullName, o.role, "", "", "suggestion", o.sourceUrl) }
+    }.map { cells -> cells.joinToString(";") { "\"" + it.replace("\"", "\"\"") + "\"" } }
+    return "﻿" + lines.joinToString("\r\n")
+}
 
 fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
 
     /** Lancer la découverte sans attendre la nuit. Elle tourne en tâche de fond (plusieurs minutes). */
     post("/discovery/run") {
-        if (ctx.orchestrator.discoveryRunning) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to "déjà en cours"))
+        if (ctx.runDiscovery.running) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to "déjà en cours"))
         ctx.background.launch {
-            runCatching { ctx.orchestrator.runDiscovery(); ctx.orchestrator.researchBatch() }
+            runCatching { ctx.runDiscovery(); ctx.researchBatch() }
                 .onFailure { log.error("Découverte manuelle en échec", it) }
         }
         call.respond(HttpStatusCode.Accepted, mapOf("status" to "lancée"))
@@ -115,73 +45,29 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
     /** What the last discovery run found, per source, and what failed or is switched off. */
     get("/discovery/last") {
         // Before any finished run, the line still says whether one is in progress
-        val (payload, at) = ctx.eventRepo.lastEvent("DISCOVERY_RUN") ?: return@get call.respond(LastDiscovery(running = ctx.orchestrator.discoveryRunning))
+        val (payload, at) = ctx.eventRepo.lastEvent("DISCOVERY_RUN") ?: return@get call.respond(LastDiscovery(running = ctx.runDiscovery.running))
         val report = runCatching { lenientJson.decodeFromString(DiscoveryReport.serializer(), payload) }.getOrDefault(DiscoveryReport())
-        call.respond(LastDiscovery(at.toString(), ctx.orchestrator.discoveryRunning, report.bySource, report.notes))
+        call.respond(LastDiscovery(at.toString(), ctx.runDiscovery.running, report.bySource, report.notes))
     }
 
     /** Comptes qui valent le coup mais à qui il manque la personne à contacter. */
-    get("/to-complete") {
-        val items = ctx.accountRepo.accountsToComplete().filter { ctx.factRepo.dossier(it.account.id)?.noFit != true }.map { row ->
-            val offer = ctx.factRepo.dossier(row.account.id)?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
-            val persona = Targeting.personaFor(offer)
-            ToComplete(
-                row = row,
-                offer = offer,
-                roles = persona.roles,
-                why = persona.why,
-                searches = persona.roles.map { PeopleSearch(it, Targeting.linkedinSearchUrl(it, row.account.name)) },
-                // The facts behind the strongest signals come first: they are why the account is in the list
-                facts = ctx.factRepo.signalsOf(row.account.id)
-                    .sortedByDescending { Scoring.rules.getValue(it.type).weight * it.strength }
-                    .flatMap { it.factIds }.distinct().withIndex().associate { (rank, id) -> id to rank }
-                    .let { rank -> ctx.factRepo.factsOf(row.account.id).sortedBy { rank[it.id] ?: Int.MAX_VALUE }.take(3) },
-            )
-        }
-        call.respond(items)
-    }
+    get("/to-complete") { call.respond(ctx.toComplete()) }
 
     post("/accounts/{id}/contacts") {
-        val accountId = call.parameters["id"]!!.toLong()
-        val account = ctx.accountRepo.account(accountId) ?: return@post call.respond(HttpStatusCode.NotFound)
+        val account = ctx.accountRepo.account(call.parameters["id"]!!.toLong()) ?: return@post call.respond(HttpStatusCode.NotFound)
         val req = call.receive<NewContactRequest>()
-        require(req.fullName.isNotBlank() && req.role.isNotBlank()) { "Nom et rôle sont obligatoires" }
-        req.email?.let { require(!ctx.replyRepo.isSuppressed(it)) { "Cette personne s'est opposée à la prospection" } }
-
-        val contact = Contact(
-            accountId = accountId,
-            fullName = req.fullName.trim(),
-            role = req.role.trim(),
-            persona = Targeting.personaFromRole(req.role),
-            email = req.email?.trim()?.takeIf { it.contains('@') },
-            linkedinUrl = req.linkedinUrl?.trim()?.takeIf { it.startsWith("https://") },
-            dataSource = if (req.fromRegistry) "Annuaire des entreprises (dirigeant publié au registre)" else "saisie manuelle (profil public LinkedIn ou site de l'entreprise)",
-        )
-        val id = ctx.contactRepo.addContact(contact)
-        val saved = contact.copy(id = id)
-
-        if (saved.email != null) {
-            val enrolled = req.enroll && enrollContact(ctx, saved)
-            return@post call.respond(HttpStatusCode.Created, NewContactResult(id, enrolled, if (enrolled) "Séquence lancée" else "Contact ajouté"))
+        val added = ctx.addContact(account, AddContact.Request(req.fullName, req.role, req.email, req.linkedinUrl, req.enroll, req.fromRegistry))
+        val contact = added.contact
+        if (contact.email != null) {
+            return@post call.respond(HttpStatusCode.Created, NewContactResult(contact.id, added.enrolled, if (added.enrolled) "Séquence lancée" else "Contact ajouté"))
         }
-        val finder = ctx.dropcontact
-        if (finder == null) {
-            return@post call.respond(HttpStatusCode.Created, NewContactResult(id, false, "Contact ajouté. Ajoutez son email pour lancer la séquence."))
-        }
+        val finder = ctx.findContactEmail
+            ?: return@post call.respond(HttpStatusCode.Created, NewContactResult(contact.id, false, "Contact ajouté. Ajoutez son email pour lancer la séquence."))
         // Recherche d'email en tâche de fond : Dropcontact répond en une à trois minutes
         ctx.background.launch {
-            runCatching {
-                val found = finder.findEmail(saved.fullName, account.name, account.domain)
-                if (found != null) {
-                    ctx.contactRepo.updateContactEmail(id, found.email, "Dropcontact (${found.qualification}) à partir du nom saisi")
-                    ctx.eventRepo.logEvent("EMAIL_FOUND", accountId, id)
-                    if (req.enroll) ctx.contactRepo.contact(id)?.let { enrollContact(ctx, it) }
-                } else {
-                    ctx.eventRepo.logEvent("EMAIL_NOT_FOUND", accountId, id)
-                }
-            }.onFailure { log.warn("Dropcontact en échec pour le contact $id", it) }
+            runCatching { finder(contact, account, req.enroll) }.onFailure { log.warn("Dropcontact en échec pour le contact ${contact.id}", it) }
         }
-        call.respond(HttpStatusCode.Accepted, NewContactResult(id, false, "Contact ajouté, recherche de l'email en cours"))
+        call.respond(HttpStatusCode.Accepted, NewContactResult(contact.id, false, "Contact ajouté, recherche de l'email en cours"))
     }
 
     /** Requests published on marketplaces, to answer on the platform. Never turned into email sequences. */
@@ -228,66 +114,12 @@ fun Route.discoveryRoutes(ctx: AppContext) = route("/api") {
      * The contact book: for each account worth writing to, the people already chosen, the legal officers
      * published by the company registry, and the searches to find the right role.
      */
-    get("/book") { call.respond(book(ctx)) }
+    get("/book") { call.respond(ctx.contactBook()) }
 
     get("/book.csv") {
-        val lines = listOf("entreprise;nom;role;email;linkedin;statut;source") + book(ctx).flatMap { e ->
-            e.contacts.map { c -> listOf(e.name, c.contact.fullName, c.contact.role, c.contact.email.orEmpty(), c.contact.linkedinUrl.orEmpty(), "contact", c.contact.dataSource) } +
-                e.officers.map { o -> listOf(e.name, o.fullName, o.role, "", "", "suggestion", o.sourceUrl) }
-        }.map { cells -> cells.joinToString(";") { "\"" + it.replace("\"", "\"\"") + "\"" } }
         call.response.headers.append("Content-Disposition", "attachment; filename=\"carnet-bloom.csv\"")
-        call.respondText("\uFEFF" + lines.joinToString("\r\n"), io.ktor.http.ContentType.Text.CSV)
+        call.respondText(bookCsv(ctx.contactBook()), ContentType.Text.CSV)
     }
 
-    /**
-     * Import de ta propre liste (réseau, anciens clients, salons). CSV avec en-tête, virgule ou point-virgule :
-     * name, domain, siren, ios_app_id, sector, headcount, warm_path, contact_name, contact_role, contact_email, contact_linkedin
-     */
-    post("/import") {
-        val rows = Csv.parse(call.receiveText())
-        var created = 0; var updated = 0; var contacts = 0
-        val errors = mutableListOf<String>()
-        val knownSlugs = ctx.accountRepo.accountsByScore(5000).map { CompanyNames.normalize(it.account.name) }.toMutableSet()
-        rows.forEachIndexed { i, r ->
-            val line = i + 2
-            val name = r["name"].orEmpty()
-            if (name.isBlank()) { errors += "ligne $line : nom manquant"; return@forEachIndexed }
-            runCatching {
-                val existed = !knownSlugs.add(CompanyNames.normalize(name))
-                val account = Account(
-                    name = name,
-                    domain = CompanyNames.domainOf(r["domain"]) ?: r["domain"]?.takeIf { it.contains('.') }?.lowercase(),
-                    siren = r["siren"]?.filter { it.isDigit() }?.takeIf { it.length == 9 },
-                    sector = r["sector"]?.uppercase()?.let { s -> Sector.entries.firstOrNull { it.name == s } } ?: Sector.OTHER,
-                    market = Market.FR,
-                    headcount = r["headcount"]?.toIntOrNull(),
-                    iosAppId = r["ios_app_id"]?.toLongOrNull(),
-                    warmPath = r["warm_path"]?.takeIf { it.isNotBlank() },
-                    source = "import",
-                )
-                val id = ctx.accountRepo.upsertAccount(account)
-                if (existed) updated++ else created++
-                ctx.accountRepo.saveScore(Scoring.score(account.copy(id = id), ctx.factRepo.signalsOf(id), ctx.clock.instant()))
-                val contactName = r["contact_name"].orEmpty()
-                if (contactName.isNotBlank()) {
-                    val email = r["contact_email"]?.trim()?.takeIf { it.contains('@') }
-                    if (email != null && ctx.replyRepo.isSuppressed(email)) {
-                        errors += "ligne $line : $email s'est opposé à la prospection, contact ignoré"
-                    } else {
-                        ctx.contactRepo.addContact(
-                            Contact(
-                                accountId = id, fullName = contactName, role = r["contact_role"].orEmpty().ifBlank { "inconnu" },
-                                persona = Targeting.personaFromRole(r["contact_role"].orEmpty()), email = email,
-                                linkedinUrl = r["contact_linkedin"]?.takeIf { it.startsWith("https://") },
-                                dataSource = "import de la liste Doppio",
-                            ),
-                        )
-                        contacts++
-                    }
-                }
-            }.onFailure { errors += "ligne $line : ${it.message}" }
-        }
-        ctx.eventRepo.logEvent("IMPORT", payload = """{"created":$created,"updated":$updated,"contacts":$contacts}""")
-        call.respond(ImportReport(created, updated, contacts, errors))
-    }
+    post("/import") { call.respond(ctx.importAccounts(call.receiveText())) }
 }

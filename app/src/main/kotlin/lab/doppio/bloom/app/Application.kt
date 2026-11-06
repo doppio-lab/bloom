@@ -40,7 +40,7 @@ import lab.doppio.bloom.agents.WriterAgent
 import lab.doppio.bloom.app.config.BloomConfig
 import lab.doppio.bloom.app.outreach.EmailGateway
 import lab.doppio.bloom.app.outreach.ImapPoller
-import lab.doppio.bloom.app.outreach.Orchestrator
+import lab.doppio.bloom.app.outreach.Scheduler
 import lab.doppio.bloom.app.outreach.UnsubscribeTokens
 import lab.doppio.bloom.app.web.CrossSiteGuard
 import lab.doppio.bloom.app.web.apiRoutes
@@ -49,6 +49,24 @@ import lab.doppio.bloom.app.web.unsubscribeRoutes
 import lab.doppio.bloom.core.sequence.DefaultSequences
 import lab.doppio.bloom.core.port.Drafter
 import lab.doppio.bloom.core.port.Researcher
+import lab.doppio.bloom.core.usecase.AddContact
+import lab.doppio.bloom.core.usecase.CompleteTask
+import lab.doppio.bloom.core.usecase.ContactBook
+import lab.doppio.bloom.core.usecase.DecideDraft
+import lab.doppio.bloom.core.usecase.EnrollContact
+import lab.doppio.bloom.core.usecase.FindContactEmail
+import lab.doppio.bloom.core.usecase.GetOverview
+import lab.doppio.bloom.core.usecase.ImportAccounts
+import lab.doppio.bloom.core.usecase.ListToComplete
+import lab.doppio.bloom.core.usecase.PlanDrafts
+import lab.doppio.bloom.core.usecase.ProcessReplies
+import lab.doppio.bloom.core.usecase.ResearchBatch
+import lab.doppio.bloom.core.usecase.ReviewQueue
+import lab.doppio.bloom.core.usecase.RunDiscovery
+import lab.doppio.bloom.core.usecase.RunPeriodicJobs
+import lab.doppio.bloom.core.usecase.SendNextApproved
+import lab.doppio.bloom.core.usecase.StopContactSequences
+import lab.doppio.bloom.core.usecase.UnsubscribeContact
 import lab.doppio.bloom.data.persistence.Db
 import lab.doppio.bloom.data.persistence.PostgresInstanceLock
 import lab.doppio.bloom.data.persistence.account.ExposedAccountRepository
@@ -151,13 +169,32 @@ class AppContext(val config: BloomConfig, val clock: Clock = Clock.systemDefault
         clock = clock,
     )
     val writer: Drafter = WriterAgent(llm, accountRepo, contactRepo, draftRepo, eventRepo, factRepo, tracker, senderName = config.sending.senderName)
-    val orchestrator = Orchestrator(
-        accountRepo, contactRepo, discoveryState, draftRepo, eventRepo, factRepo, jobRunRepo, officerRepo, replyRepo, sequenceRepo,
-        writer, research, ReplyClassifierAgent(llm, tracker, clock), WeeklyCoachAgent(llm, eventRepo, accountRepo, dealRepo, agentRunRepo, tracker, clock),
-        gateway, ImapPoller(mail, clock), mail, policy, discovery,
-        clock = clock,
-        instanceLock = PostgresInstanceLock(),
+    private val coach = WeeklyCoachAgent(llm, eventRepo, accountRepo, dealRepo, agentRunRepo, tracker, clock)
+    private val classifier = ReplyClassifierAgent(llm, tracker, clock)
+
+    // Use cases: what the application does, free of Ktor and of the database
+    val stopContactSequences = StopContactSequences(sequenceRepo)
+    val unsubscribeContact = UnsubscribeContact(contactRepo, replyRepo, eventRepo, stopContactSequences)
+    val planDrafts = PlanDrafts(sequenceRepo, draftRepo, contactRepo, replyRepo, eventRepo, writer, stopContactSequences, policy, clock)
+    val sendNextApproved = SendNextApproved(draftRepo, sequenceRepo, contactRepo, replyRepo, eventRepo, gateway, mail.mailboxes, policy, clock)
+    val processReplies = ProcessReplies(ImapPoller(mail, clock), classifier, replyRepo, draftRepo, sequenceRepo, contactRepo, eventRepo, stopContactSequences)
+    val researchBatch = ResearchBatch(accountRepo, factRepo, research, clock)
+    val runDiscovery = RunDiscovery(discovery)
+    val runPeriodicJobs = RunPeriodicJobs(
+        jobRunRepo, discovery, runDiscovery, researchBatch, coach, eventRepo, contactRepo, officerRepo, discoveryState, policy, clock,
     )
+    val scheduler = Scheduler(PostgresInstanceLock(), draftRepo, planDrafts, sendNextApproved, processReplies, runPeriodicJobs)
+
+    val enrollContact = EnrollContact(sequenceRepo, replyRepo, factRepo, accountRepo, eventRepo, afterEnrolled = scheduler::planSoon)
+    val addContact = AddContact(contactRepo, replyRepo, enrollContact)
+    val findContactEmail = dropcontact?.let { FindContactEmail(it, contactRepo, eventRepo, enrollContact) }
+    val decideDraft = DecideDraft(draftRepo, sequenceRepo, contactRepo, accountRepo, factRepo, eventRepo)
+    val completeTask = CompleteTask(draftRepo, sequenceRepo, contactRepo, eventRepo)
+    val reviewQueue = ReviewQueue(draftRepo, sequenceRepo, contactRepo, accountRepo, factRepo)
+    val overview = GetOverview(eventRepo, dealRepo, draftRepo, replyRepo, accountRepo, agentRunRepo, factRepo, policy, clock, mail.dryRun, mail.mailboxes.size)
+    val contactBook = ContactBook(accountRepo, contactRepo, officerRepo, sequenceRepo, factRepo)
+    val toComplete = ListToComplete(accountRepo, factRepo)
+    val importAccounts = ImportAccounts(accountRepo, factRepo, contactRepo, replyRepo, eventRepo, clock)
 }
 
 fun main() {
@@ -168,7 +205,7 @@ fun main() {
     org.slf4j.LoggerFactory.getLogger("bloom").info("LLM : {}", ctx.llm.describe())
     runBlocking { ctx.sequenceRepo.ensureSequences(DefaultSequences.all()) }
     val loops = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    ctx.orchestrator.start(loops)
+    ctx.scheduler.start(loops)
     val server = embeddedServer(Netty, port = config.server.port) { module(ctx) }
     // SIGTERM (docker stop) stops the server first, then the loops and the database, lock included
     server.monitor.subscribe(ApplicationStopped) {

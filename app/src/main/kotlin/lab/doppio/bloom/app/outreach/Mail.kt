@@ -13,14 +13,15 @@ import jakarta.mail.internet.MimeMessage
 import jakarta.mail.search.FlagTerm
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import lab.doppio.bloom.core.model.InboundMail
+import lab.doppio.bloom.core.model.Mailbox
+import lab.doppio.bloom.core.port.Inbox
+import lab.doppio.bloom.core.port.MailSender
 import org.slf4j.LoggerFactory
-import java.time.Instant
 import java.util.Properties
 import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
-
-data class Mailbox(val address: String, val password: String, val displayName: String)
 
 data class MailConfig(
     val smtpHost: String,
@@ -52,7 +53,7 @@ class UnsubscribeTokens(private val secret: String) {
     }
 }
 
-class EmailGateway(private val config: MailConfig, private val tokens: UnsubscribeTokens) {
+class EmailGateway(private val config: MailConfig, private val tokens: UnsubscribeTokens) : MailSender {
     private val log = LoggerFactory.getLogger(javaClass)
 
     private fun session(mailbox: Mailbox): Session = Session.getInstance(
@@ -74,14 +75,13 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
         else "\n\n--\n${config.legalFooterFr}\nPas intéressé ? Un clic et vous ne recevrez plus rien de notre part : $url"
     }
 
+    override fun newMessageId(mailbox: Mailbox): String = "<${UUID.randomUUID()}@${mailbox.address.substringAfter('@')}>"
+
     /**
      * Envoie un email texte brut (meilleure délivrabilité que du HTML en prospection, et pas de pixel de suivi).
      * Renvoie le Message-ID, qui sert à rattacher les réponses à l'inscription.
      */
-    /** Chosen before the send and stored with the draft, so a reply can always be matched to it. */
-    fun newMessageId(mailbox: Mailbox): String = "<${UUID.randomUUID()}@${mailbox.address.substringAfter('@')}>"
-
-    suspend fun send(
+    override suspend fun send(
         mailbox: Mailbox,
         to: String,
         subject: String,
@@ -117,36 +117,22 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
     }
 }
 
-data class InboundMail(
-    val mailbox: String,
-    val from: String,
-    val subject: String?,
-    val body: String,
-    val inReplyTo: List<String>,
-    val receivedAt: Instant,
-    val isBounce: Boolean,
-    /** IMAP UID, to mark the message seen once it was processed. */
-    val uid: Long,
-    /** Identifies the message across passes: its Message-ID, or the mailbox UID when it has none. */
-    val key: String,
-)
-
 /**
  * Relève IMAP des boîtes d'envoi. Rien n'est supprimé. Un message n'est marqué vu qu'après traitement
  * ([markSeen]) : s'il échoue, il sera relu à la passe suivante.
  */
-class ImapPoller(private val config: MailConfig, private val clock: java.time.Clock = java.time.Clock.systemDefaultZone()) {
+class ImapPoller(private val config: MailConfig, private val clock: java.time.Clock = java.time.Clock.systemDefaultZone()) : Inbox {
     private val log = LoggerFactory.getLogger(javaClass)
     private val messageIdPattern = Regex("<[^<>\\s@]+@[^<>\\s]+>")
 
-    suspend fun poll(): List<InboundMail> = withContext(Dispatchers.IO) {
+    override suspend fun poll(): List<InboundMail> = withContext(Dispatchers.IO) {
         if (config.dryRun) return@withContext emptyList()
         config.mailboxes.flatMap { mb ->
             runCatching { pollOne(mb) }.getOrElse { log.warn("IMAP en échec pour ${mb.address}", it); emptyList() }
         }
     }
 
-    suspend fun markSeen(mailboxAddress: String, uids: List<Long>) = withContext(Dispatchers.IO) {
+    override suspend fun markSeen(mailboxAddress: String, uids: List<Long>) = withContext(Dispatchers.IO) {
         if (uids.isEmpty()) return@withContext
         val mb = config.mailboxes.firstOrNull { it.address == mailboxAddress } ?: return@withContext
         withInbox(mb, Folder.READ_WRITE) { inbox ->

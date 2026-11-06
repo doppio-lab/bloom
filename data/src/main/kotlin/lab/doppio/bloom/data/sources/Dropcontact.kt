@@ -9,6 +9,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.delay
+import lab.doppio.bloom.core.port.EmailFinder
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
@@ -25,12 +26,10 @@ import kotlinx.serialization.json.put
  * Optionnel et payant : sans clé, le contact est ajouté sans email et reste une tâche LinkedIn.
  * On ne garde qu'un email qualifié « nominative@pro » : pas d'adresse générique, pas d'adresse perso.
  */
-class DropcontactSource(private val http: HttpClient, private val apiKey: String) {
+class DropcontactSource(private val http: HttpClient, private val apiKey: String) : EmailFinder {
     private val base = "https://api.dropcontact.com/v1"
 
-    data class Result(val email: String, val qualification: String)
-
-    suspend fun findEmail(fullName: String, company: String, website: String?): Result? {
+    override suspend fun findEmail(fullName: String, company: String, website: String?): EmailFinder.Found? {
         val body = buildJsonObject {
             put("data", buildJsonArray {
                 add(buildJsonObject {
@@ -65,13 +64,13 @@ class DropcontactSource(private val http: HttpClient, private val apiKey: String
         return null
     }
 
-    private fun bestEmail(contact: JsonObject): Result? {
+    private fun bestEmail(contact: JsonObject): EmailFinder.Found? {
         val emails = contact["email"] as? kotlinx.serialization.json.JsonArray ?: return null
         return emails.map { it.jsonObject }
             .mapNotNull { e ->
                 val email = e["email"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
                 val q = e["qualification"]?.jsonPrimitive?.contentOrNull.orEmpty()
-                Result(email, q)
+                EmailFinder.Found(email, q)
             }
             .firstOrNull { it.qualification.startsWith("nominative@pro") }
     }

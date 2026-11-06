@@ -7,7 +7,7 @@ import lab.doppio.bloom.core.model.SequenceStep
 import lab.doppio.bloom.core.scoring.ScoreBreakdown
 
 /**
- * Roles the LLM agents play for the rest of the application. The orchestrator and the routes depend on these,
+ * Roles the LLM agents play for the rest of the application. The use cases and the routes depend on these,
  * never on the Koog classes that implement them, so the orchestration can be tested with fakes.
  */
 
