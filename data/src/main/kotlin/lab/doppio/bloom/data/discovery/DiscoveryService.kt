@@ -29,19 +29,6 @@ import org.slf4j.LoggerFactory
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 
-/**
- * Étape 1 du pipeline : trouver des entreprises qui ont un besoin mobile maintenant, sans que personne
- * ne les saisisse. Deux sources historiques, écrites ici, et des sources ajoutées par [DiscoverySource]
- * (BODACC, BOAMP, presse, GitHub), plus la relecture des pages carrières des comptes connus :
- *
- *  - les offres d'emploi mobiles publiées en France (API France Travail) : une entreprise qui recrute
- *    un développeur iOS ou Android est un prospect pour la régie, la formation KMP ou un forfait ;
- *  - les classements App Store France par genre : une app française dont les avis récents se dégradent
- *    est un prospect pour l'audit.
- *
- * Tout est déterministe : pas de LLM ici. Chaque compte découvert reçoit ses faits, ses signaux et un
- * score immédiat. Seuls les comptes au-dessus du seuil passent ensuite par l'agent de recherche (coûteux).
- */
 data class DiscoveryConfig(
     val jobKeywords: List<String> = listOf(
         "développeur iOS", "développeur Android", "développeur mobile", "Swift iOS", "Kotlin Android", "Kotlin Multiplatform",
@@ -69,6 +56,19 @@ data class DiscoveryConfig(
     val officerLookupsPerRun: Int = 150,
 )
 
+/**
+ * Étape 1 du pipeline : trouver des entreprises qui ont un besoin mobile maintenant, sans que personne
+ * ne les saisisse. Deux sources historiques, écrites ici, et des sources ajoutées par [DiscoverySource]
+ * (BODACC, BOAMP, presse, GitHub), plus la relecture des pages carrières des comptes connus :
+ *
+ *  - les offres d'emploi mobiles publiées en France (API France Travail) : une entreprise qui recrute
+ *    un développeur iOS ou Android est un prospect pour la régie, la formation KMP ou un forfait ;
+ *  - les classements App Store France par genre : une app française dont les avis récents se dégradent
+ *    est un prospect pour l'audit.
+ *
+ * Tout est déterministe : pas de LLM ici. Chaque compte découvert reçoit ses faits, ses signaux et un
+ * score immédiat. Seuls les comptes au-dessus du seuil passent ensuite par l'agent de recherche (coûteux).
+ */
 class DiscoveryService(
     private val accountRepo: AccountRepository,
     private val discoveryState: DiscoveryStateRepository,

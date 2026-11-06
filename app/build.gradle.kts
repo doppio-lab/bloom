@@ -25,4 +25,5 @@ dependencies {
     implementation(libs.logback)
     testImplementation(kotlin("test"))
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(testFixtures(project(":core")))
 }

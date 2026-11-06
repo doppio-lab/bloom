@@ -49,6 +49,35 @@ class EnrollContactTest {
     }
 
     @Test
+    fun `a human can start a new sequence once the previous ones are over, the automatic path cannot`() = runTest {
+        val contact = contacts.add()
+        listOf(
+            EnrollmentStatus.COMPLETED, EnrollmentStatus.REPLIED, EnrollmentStatus.STOPPED_UNSUBSCRIBE,
+        ).forEach { sequences.addEnrollment(contact.id, it) }
+        assertEquals(EnrollContact.Result.AlreadyEnrolled, enroll(contact))
+        assertIs<EnrollContact.Result.Enrolled>(enroll(contact, manual = true))
+        assertEquals(1, sequences.enrollments.values.count { it.status == EnrollmentStatus.ACTIVE })
+        assertEquals(1, planned)
+    }
+
+    @Test
+    fun `a human is still refused while a sequence is active or paused`() = runTest {
+        listOf(EnrollmentStatus.ACTIVE, EnrollmentStatus.PAUSED).forEach { running ->
+            val contact = contacts.add(email = "$running@client.test")
+            sequences.addEnrollment(contact.id, running)
+            assertEquals(EnrollContact.Result.AlreadyEnrolled, enroll(contact, manual = true), running.name)
+        }
+    }
+
+    @Test
+    fun `an opt-out is absolute, even for a human`() = runTest {
+        val contact = contacts.add()
+        replies.suppressed[contact.email!!] = "opposition"
+        assertEquals(EnrollContact.Result.OptedOut, enroll(contact, Offer.REGIE, manual = true))
+        assertTrue(sequences.enrollments.isEmpty())
+    }
+
+    @Test
     fun `no fit blocks an automatic enrollment but not an explicit offer`() = runTest {
         facts.dossier = dossier(Offer.DISCOVERY, noFit = true)
         val contact = contacts.add()

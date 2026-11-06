@@ -70,7 +70,7 @@ fun Route.apiRoutes(ctx: AppContext) = route("/api") {
 
     post("/contacts/{id}/enroll") {
         val contact = ctx.contactRepo.contact(call.parameters["id"]!!.toLong()) ?: return@post call.respond(HttpStatusCode.NotFound)
-        when (val result = ctx.enrollContact(contact, call.receive<EnrollRequest>().offer)) {
+        when (val result = ctx.enrollContact(contact, call.receive<EnrollRequest>().offer, manual = true)) {
             is EnrollContact.Result.Enrolled -> call.respond(HttpStatusCode.Created, mapOf("enrollmentId" to result.enrollmentId))
             EnrollContact.Result.OptedOut -> throw IllegalArgumentException("Ce contact s'est opposé à la prospection")
             EnrollContact.Result.AlreadyEnrolled -> throw IllegalArgumentException("Ce contact est déjà inscrit dans une séquence")
