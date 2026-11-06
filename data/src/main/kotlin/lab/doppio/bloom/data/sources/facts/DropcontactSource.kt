@@ -1,4 +1,4 @@
-package lab.doppio.bloom.data.sources
+package lab.doppio.bloom.data.sources.facts
 
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
@@ -10,6 +10,7 @@ import io.ktor.http.ContentType
 import io.ktor.http.contentType
 import kotlinx.coroutines.delay
 import lab.doppio.bloom.core.port.EmailFinder
+import lab.doppio.bloom.data.sources.http.sourcesJson
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray

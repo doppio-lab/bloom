@@ -17,9 +17,9 @@ import lab.doppio.bloom.core.port.EmailFinder
 import lab.doppio.bloom.core.port.JobOfferFacts
 import lab.doppio.bloom.core.usecase.FindContactEmail
 import lab.doppio.bloom.data.discovery.DiscoveryConfig
-import lab.doppio.bloom.data.sources.JobBoardSource
-import lab.doppio.bloom.data.sources.CodeurSource
-import lab.doppio.bloom.data.sources.FranceTravailSource
+import lab.doppio.bloom.data.sources.facts.JobBoardSource
+import lab.doppio.bloom.data.sources.discovery.CodeurSource
+import lab.doppio.bloom.data.sources.facts.FranceTravailSource
 import org.koin.core.annotation.KoinExperimentalAPI
 import org.koin.core.context.stopKoin
 import org.koin.core.module.Module

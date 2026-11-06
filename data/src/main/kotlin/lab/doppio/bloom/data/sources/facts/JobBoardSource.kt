@@ -1,7 +1,5 @@
-package lab.doppio.bloom.data.sources
+package lab.doppio.bloom.data.sources.facts
 
-import lab.doppio.bloom.core.model.SourceResult
-import lab.doppio.bloom.core.model.fact
 import io.ktor.client.HttpClient
 import io.ktor.client.request.get
 import io.ktor.client.statement.bodyAsText
@@ -15,6 +13,11 @@ import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
+import lab.doppio.bloom.core.model.SourceResult
+import lab.doppio.bloom.core.model.fact
+import lab.doppio.bloom.data.sources.http.RateLimiter
+import lab.doppio.bloom.data.sources.http.sourcesJson
+import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 
@@ -23,8 +26,8 @@ import java.time.Instant
  * they are addressed by company, so this enriches accounts we already know instead of finding new ones.
  * What it adds over France Travail: the exact publication date, hence how long a mobile role has been open.
  */
-class JobBoardSource(private val http: HttpClient) {
-    private val limiter = RateLimiter(Duration.ofSeconds(1))
+class JobBoardSource(private val http: HttpClient, private val clock: Clock = Clock.systemDefaultZone()) {
+    private val limiter = RateLimiter(Duration.ofSeconds(1), clock)
 
     private suspend fun fetch(url: String): String? = runCatching {
         limiter.run { http.get(url).takeIf { it.status.isSuccess() }?.bodyAsText() }
@@ -47,7 +50,7 @@ class JobBoardSource(private val http: HttpClient) {
     }
 
     /** Facts and signals from the mobile postings of a board. Same rules as the France Travail offers. */
-    fun result(accountId: AccountId, postings: List<Posting>, now: Instant = Instant.now(), max: Int = 5): SourceResult {
+    fun result(accountId: AccountId, postings: List<Posting>, now: Instant = clock.instant(), max: Int = 5): SourceResult {
         val facts = mutableListOf<Fact>()
         val signals = mutableListOf<Signal>()
         postings.filter { HiringRules.isMobile(it.title) }.take(max).forEach { p ->
@@ -58,6 +61,7 @@ class JobBoardSource(private val http: HttpClient) {
                 "Offre d'emploi « ${p.title} »" + (age?.let { " publiée il y a $it jours" } ?: ""),
                 p.url,
                 excerpt = p.location,
+                at = now,
             )
             facts += f
             signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, now.toString(), listOf(f.id))

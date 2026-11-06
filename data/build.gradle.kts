@@ -21,5 +21,7 @@ dependencies {
     testImplementation(kotlin("test"))
     testImplementation(libs.testcontainers.postgresql)
     testImplementation(libs.coroutines.test)
+    testImplementation(libs.ktor.client.mock)
+    testImplementation(testFixtures(project(":core")))
     testRuntimeOnly(libs.logback)
 }

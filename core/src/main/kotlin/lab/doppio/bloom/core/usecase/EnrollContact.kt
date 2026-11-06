@@ -40,7 +40,7 @@ class EnrollContact(
      * [manual]: a human asked for this enrollment (see the class comment for what changes).
      */
     suspend operator fun invoke(contact: Contact, offer: Offer? = null, manual: Boolean = false): Result {
-        if (contact.email != null && replyRepo.isSuppressed(contact.email!!)) return Result.OptedOut
+        if (contact.email != null && replyRepo.isSuppressed(contact.email)) return Result.OptedOut
         val existing = sequenceRepo.enrollmentsOfContact(contact.id)
         val blocking = if (manual) existing.filter { it.status in RUNNING } else existing
         if (blocking.isNotEmpty()) return Result.AlreadyEnrolled

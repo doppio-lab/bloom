@@ -51,7 +51,7 @@ class PlanDrafts(
             when (val action = SequenceEngine.next(e, seq, policy, now)) {
                 is NextAction.PrepareDraft -> if (!draftRepo.hasOpenDraft(e.id, action.step.index)) {
                     val contact = contactRepo.contact(e.contactId) ?: continue
-                    if (contact.email != null && replyRepo.isSuppressed(contact.email!!)) {
+                    if (contact.email != null && replyRepo.isSuppressed(contact.email)) {
                         stop(contact.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE)
                         continue
                     }

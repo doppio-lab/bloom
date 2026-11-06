@@ -80,20 +80,20 @@ import lab.doppio.bloom.data.persistence.job.ExposedJobRunRepository
 import lab.doppio.bloom.data.persistence.officer.ExposedOfficerRepository
 import lab.doppio.bloom.data.persistence.reply.ExposedReplyRepository
 import lab.doppio.bloom.data.persistence.sequence.ExposedSequenceRepository
-import lab.doppio.bloom.data.sources.AppStoreSource
-import lab.doppio.bloom.data.sources.BoampSource
-import lab.doppio.bloom.data.sources.BodaccSource
-import lab.doppio.bloom.data.sources.CodeurSource
-import lab.doppio.bloom.data.sources.CompanyRegistrySource
-import lab.doppio.bloom.data.sources.DecpSource
-import lab.doppio.bloom.data.sources.DropcontactSource
-import lab.doppio.bloom.data.sources.FranceTravailSource
-import lab.doppio.bloom.data.sources.GitHubSource
-import lab.doppio.bloom.data.sources.JobBoardSource
-import lab.doppio.bloom.data.sources.PressSource
-import lab.doppio.bloom.data.sources.TedSource
-import lab.doppio.bloom.data.sources.WebPageSource
-import lab.doppio.bloom.data.sources.defaultHttpClient
+import lab.doppio.bloom.data.sources.facts.AppStoreSource
+import lab.doppio.bloom.data.sources.discovery.BoampSource
+import lab.doppio.bloom.data.sources.discovery.BodaccSource
+import lab.doppio.bloom.data.sources.discovery.CodeurSource
+import lab.doppio.bloom.data.sources.facts.CompanyRegistrySource
+import lab.doppio.bloom.data.sources.discovery.DecpSource
+import lab.doppio.bloom.data.sources.facts.DropcontactSource
+import lab.doppio.bloom.data.sources.facts.FranceTravailSource
+import lab.doppio.bloom.data.sources.discovery.GitHubSource
+import lab.doppio.bloom.data.sources.facts.JobBoardSource
+import lab.doppio.bloom.data.sources.discovery.PressSource
+import lab.doppio.bloom.data.sources.discovery.TedSource
+import lab.doppio.bloom.data.sources.facts.WebPageSource
+import lab.doppio.bloom.data.sources.http.defaultHttpClient
 import org.koin.core.module.Module
 import org.koin.core.module.dsl.bind
 import org.koin.core.module.dsl.singleOf
@@ -152,13 +152,13 @@ val persistenceModule: Module = module {
 fun sourcesModule(config: BloomConfig): Module = module {
     val discovery = config.discovery
     single<HttpClient> { defaultHttpClient() } onClose { it?.close() }
-    single { AppStoreSource(get()) } bind AppStoreFacts::class
-    single { CompanyRegistrySource(get()) } bind CompanyRegistryFacts::class
-    single { WebPageSource(get()) } bind WebPages::class
+    single { AppStoreSource(get(), clock = get()) } bind AppStoreFacts::class
+    single { CompanyRegistrySource(get(), get()) } bind CompanyRegistryFacts::class
+    single { WebPageSource(get(), get()) } bind WebPages::class
 
     // Optional: without France Travail credentials the job offer facts and signals are simply absent
     discovery.franceTravail?.let { ft ->
-        single { FranceTravailSource(get(), ft.clientId, ft.clientSecret) } bind JobOfferFacts::class
+        single { FranceTravailSource(get(), ft.clientId, ft.clientSecret, get()) } bind JobOfferFacts::class
     }
     // Optional: without a Dropcontact key, contacts are entered by hand (name, email or LinkedIn profile)
     discovery.dropcontactApiKey?.let { key ->
@@ -170,8 +170,9 @@ fun sourcesModule(config: BloomConfig): Module = module {
         val enabled = discovery.sources
         val discoveryState = get<DiscoveryStateRepository>()
         val http = get<HttpClient>()
+        val clock = get<Clock>()
         listOfNotNull(
-            BodaccSource(http, minCapitalEur = discovery.bodaccMinCapitalEur).takeIf { "bodacc" in enabled },
+            BodaccSource(http, minCapitalEur = discovery.bodaccMinCapitalEur, clock = clock).takeIf { "bodacc" in enabled },
             BoampSource(http).takeIf { "boamp" in enabled },
             TedSource(http).takeIf { "ted" in enabled },
             DecpSource(
@@ -180,12 +181,14 @@ fun sourcesModule(config: BloomConfig): Module = module {
                 wasSeen = { discoveryState.wasSeen(it, 365) },
                 markSeen = { key, kept, reason -> discoveryState.markSeen(key, kept, reason) },
                 maxMonths = discovery.decpRenewalMonths,
+                clock = clock,
             ).takeIf { "decp" in enabled },
             PressSource(http).takeIf { "press" in enabled },
             GitHubSource(
                 http, discovery.githubToken,
                 wasSeen = { discoveryState.wasSeen(it, 90) },
                 markSeen = { key, kept, reason -> discoveryState.markSeen(key, kept, reason) },
+                clock = clock,
             ).takeIf { "github" in enabled },
         )
     }
@@ -200,7 +203,7 @@ fun sourcesModule(config: BloomConfig): Module = module {
                 extraExclusions = discovery.extraExclusions,
             ),
             sources = get(),
-            jobBoards = JobBoardSource(get()).takeIf { "jobboards" in discovery.sources },
+            jobBoards = JobBoardSource(get(), get()).takeIf { "jobboards" in discovery.sources },
             codeur = CodeurSource(get(), minBudgetEur = discovery.codeurMinBudgetEur).takeIf { "codeur" in discovery.sources },
             clock = get(),
         )
