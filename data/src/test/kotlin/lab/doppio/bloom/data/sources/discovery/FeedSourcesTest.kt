@@ -83,6 +83,13 @@ class FeedSourcesTest {
     }
 
     @Test
+    fun `Press with no feed configured reads nothing and does not fail`() = runTest {
+        val http = MockHttp { failure() }
+        assertEquals(emptyList(), PressSource(http.client, feeds = emptyList()).leads(now))
+        assertEquals(emptyList(), http.urls)
+    }
+
+    @Test
     fun `Press fails only when every feed fails`() = runTest {
         val error = assertFailsWith<IllegalStateException> { PressSource(MockHttp { failure() }.client, feeds = listOf(feed, brokenFeed)).leads(now) }
         assertEquals("HTTP 500 sur $feed", error.message)

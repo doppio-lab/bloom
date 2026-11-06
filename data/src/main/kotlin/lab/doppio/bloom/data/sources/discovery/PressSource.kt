@@ -29,6 +29,8 @@ class PressSource(
     override val label = "presse"
 
     override suspend fun leads(now: Instant): List<Lead> {
+        // No feed configured means nothing to read, not a failure
+        if (feeds.isEmpty()) return emptyList()
         // One feed down does not hide the others: the source fails only when none of them answers
         val read = feeds.map { feed ->
             runCatching {

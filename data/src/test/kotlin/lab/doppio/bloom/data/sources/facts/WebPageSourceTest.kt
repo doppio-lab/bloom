@@ -61,8 +61,7 @@ class WebPageSourceTest {
     }
 
     @Test
-    fun `an HTTP error status is not checked, the error body is read as the page`() = runTest {
-        val result = source(MockHttp { failure() }).read(7, "https://acme.fr", 100)
-        assertEquals("boom", result?.second)
+    fun `an HTTP error page gives null, its body is never read as the company's page`() = runTest {
+        assertNull(source(MockHttp { failure() }).read(7, "https://acme.fr", 100))
     }
 }

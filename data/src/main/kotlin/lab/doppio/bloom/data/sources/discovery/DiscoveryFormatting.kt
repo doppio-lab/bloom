@@ -14,6 +14,7 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 
 /** Shared by the discovery sources: dates and amounts as the facts print them, and the open data records endpoint. */
 
@@ -22,7 +23,8 @@ internal val paris: ZoneId = ZoneId.of("Europe/Paris")
 internal fun day(iso: String): String = runCatching { LocalDate.parse(iso.take(10)).format(frDate) }.getOrDefault(iso)
 internal fun startOfDay(iso: String, fallback: Instant): Instant =
     runCatching { LocalDate.parse(iso.take(10)).atStartOfDay(ZoneOffset.UTC).toInstant() }.getOrDefault(fallback)
-internal fun euros(amount: Long): String = "%,d".format(amount).replace(',', ' ') + " €"
+/** Groups thousands with a plain space whatever the JVM locale (a French JVM would use a narrow no-break space). */
+internal fun euros(amount: Long): String = "%,d".format(Locale.ROOT, amount).replace(',', ' ') + " €"
 
 internal suspend fun HttpClient.records(url: String, where: String, limit: Int, offset: Int = 0, orderBy: String = "dateparution desc"): List<JsonObject> {
     val res = get(url) {
