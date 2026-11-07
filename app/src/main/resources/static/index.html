@@ -668,15 +668,15 @@ const DEMO = {
       rationale: "Signal le plus fort et le plus récent ; la persona est Head of Mobile, donc angle technique direct.", guardReport: [], citedFactIds: ["a2f1c9e0", "7b31d2aa"] },
       contactName: "Claire Morel", contactRole: "Head of Mobile", accountName: "Vélomoov",
       facts: [
-        { id: "a2f1c9e0", statement: "Vélomoov : 11 avis sur 30 des 90 derniers jours signalent un problème technique (version la plus citée : 5.2)", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json" },
-        { id: "7b31d2aa", statement: "Vélomoov : moyenne des 30 avis des 90 derniers jours 2,9, contre 4,3 en moyenne globale", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json" }
+        { id: "a2f1c9e0", statement: "Vélomoov : 11 avis sur 30 des 90 derniers jours signalent un problème technique (version la plus citée : 5.2)", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json", retrievedAt: "2026-10-10T00:14:00Z" },
+        { id: "7b31d2aa", statement: "Vélomoov : moyenne des 30 avis des 90 derniers jours 2,9, contre 4,3 en moyenne globale", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json", retrievedAt: "2026-10-10T00:14:00Z" }
       ] },
     { draft: { id: 102, channel: "EMAIL", stepIndex: 0, subject: "votre offre iOS",
       body: "Bonjour Karim,\n\nVotre offre « Développeur iOS senior » est ouverte depuis 74 jours [F:c4d09e11]. Nous accompagnons des banques sur ce type de besoin, dont Crédit Agricole.\n\nUn de nos seniors Swift peut rejoindre l'équipe pendant le recrutement, au mois, sans engagement long. Le sujet est d'actualité ?",
       rationale: "Recrutement bloqué depuis plus de 45 jours, secteur bancaire avec référence directe.",
       guardReport: ["[BLOCK] vocabulaire : expression interdite : « accompagn »"], citedFactIds: ["c4d09e11"] },
       contactName: "Karim Benali", contactRole: "Engineering Manager", accountName: "Banque Ardoise",
-      facts: [{ id: "c4d09e11", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/offres/recherche/detail/000XXXX" }] }
+      facts: [{ id: "c4d09e11", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/offres/recherche/detail/000XXXX", retrievedAt: "2026-10-10T00:14:00Z" }] }
   ],
   lastRun: { ranAt: "2026-10-10T00:14:00Z", running: false, bySource: { "offres d'emploi": 1, "BODACC": 1, "marché public": 1, "Codeur": 2, "presse": 1, "classement App Store": 0, "marché européen": 0, "marché attribué": 0, "GitHub": 0 }, notes: ["pages carrières : 4 lues, 1 avec une offre mobile"] },
   demands: [
@@ -708,15 +708,15 @@ const DEMO = {
     { row: { account: { id: 11, name: "Banque Ardoise", domain: "ardoise.example", source: "offres d'emploi" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile"], refreshedAt: "2026-10-10" },
       offer: "REGIE", roles: ["Engineering Manager", "CTO", "Head of Mobile"], why: "celui qui porte le recrutement en retard",
       searches: [{ role: "Engineering Manager", url: "https://www.linkedin.com/search/results/people/?keywords=Engineering+Manager+Banque+Ardoise" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO+Banque+Ardoise" }],
-      facts: [{ id: "c4d09e11", kind: "JOB_POSTING", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/" }, { id: "9a1b2c3d", kind: "COMPANY_REGISTRY", statement: "Banque Ardoise : tranche d'effectif INSEE 22 (100 à 199)", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }] },
+      facts: [{ id: "c4d09e11", kind: "JOB_POSTING", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/", retrievedAt: "2026-10-10T00:14:00Z" }, { id: "9a1b2c3d", kind: "COMPANY_REGISTRY", statement: "Banque Ardoise : tranche d'effectif INSEE 22 (100 à 199)", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/", retrievedAt: "2026-10-10T00:14:00Z" }] },
     { row: { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "BODACC" }, score: 53, fit: 38, intent: 15, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 augmentation de capital", "+12 app mobile en production"], refreshedAt: "2026-10-08" },
       offer: "FORFAIT", roles: ["CTO", "Head of Product"], why: "celui qui arbitre le prochain chantier produit",
       searches: [{ role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO+Trackr" }, { role: "Head of Product", url: "https://www.linkedin.com/search/results/people/?keywords=Head+of+Product+Trackr" }],
-      facts: [{ id: "b0dacc01", kind: "LEGAL_NOTICE", statement: "Augmentation de capital publiée au BODACC le 08/10/2026, capital porté à 1 250 000 €", sourceUrl: "https://www.bodacc.fr/" }, { id: "5e6f7a8b", kind: "APP_REVIEW", statement: "Trackr : moyenne des 22 avis des 90 derniers jours 2,6, contre 4,1 en moyenne globale", sourceUrl: "https://apps.apple.com/" }] },
+      facts: [{ id: "b0dacc01", kind: "LEGAL_NOTICE", statement: "Augmentation de capital publiée au BODACC le 08/10/2026, capital porté à 1 250 000 €", sourceUrl: "https://www.bodacc.fr/", retrievedAt: "2026-10-08T00:14:00Z" }, { id: "5e6f7a8b", kind: "APP_REVIEW", statement: "Trackr : moyenne des 22 avis des 90 derniers jours 2,6, contre 4,1 en moyenne globale", sourceUrl: "https://apps.apple.com/", retrievedAt: "2026-10-08T00:14:00Z" }] },
     { row: { account: { id: 13, name: "Mairie de Brévanne-sur-Loire", domain: null, source: "marché public" }, score: 49, fit: 4, intent: 45, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+45 appel d'offres ouvert"] },
       offer: "FORFAIT", roles: ["Responsable numérique", "Directeur général des services"], why: "celui qui porte le marché",
       searches: [{ role: "Responsable numérique", url: "https://www.linkedin.com/search/results/people/?keywords=Responsable+num%C3%A9rique+Br%C3%A9vanne" }],
-      facts: [{ id: "b0a4p001", kind: "PUBLIC_TENDER", statement: "Appel d'offres publié le 09/10/2026, réponse avant le 09/11/2026", sourceUrl: "https://www.boamp.fr/" }] }
+      facts: [{ id: "b0a4p001", kind: "PUBLIC_TENDER", statement: "Appel d'offres publié le 09/10/2026, réponse avant le 09/11/2026", sourceUrl: "https://www.boamp.fr/", retrievedAt: "2026-10-10T00:14:00Z" }] }
   ],
   tasks: [
     { draft: { id: 201, channel: "LINKEDIN", body: "Bonjour Inès, j'ai vu que Studio Polka recrute sur Kotlin Multiplatform. On a construit un lecteur en Compose Multiplatform cité par JetBrains. Ravi d'échanger si le sujet vous parle." }, contactName: "Inès Garnier", accountName: "Studio Polka", linkedinUrl: "https://www.linkedin.com/" },
@@ -747,6 +747,8 @@ const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
 const signed = (n, d, unit) => (n >= 0 ? "+" : "−") + dec(Math.abs(n), d) + unit;
 const noCites = (text) => String(text ?? "").replace(/\s*\[F:[^\]]+\]/g, "");
 const day = (iso) => new Date(iso).toLocaleDateString("fr-FR");
+// Every fact shows the date it was read, after its source link
+const retrieved = (f) => f.retrievedAt ? ` · relevé le ${day(f.retrievedAt)}` : "";
 const todayLong = () => new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 // Searches ignore case and accents: "velomoov" finds "Vélomoov"
 const norm = (s) => String(s ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
@@ -1089,7 +1091,7 @@ function bodyWithCites(text) {
 }
 
 function factList(facts) {
-  return `<div class="facts">${(facts || []).map((f) => `<div class="fact" data-fid="${esc(f.id)}" tabindex="-1"><code>${esc(String(f.id).slice(0, 4))}</code><span>${esc(f.statement)} · ${extLink(f.sourceUrl, "source")}</span></div>`).join("")}</div>`;
+  return `<div class="facts">${(facts || []).map((f) => `<div class="fact" data-fid="${esc(f.id)}" tabindex="-1"><code>${esc(String(f.id).slice(0, 4))}</code><span>${esc(f.statement)} · ${extLink(f.sourceUrl, "source")}${retrieved(f)}</span></div>`).join("")}</div>`;
 }
 
 /** Guard report of a draft: blocking reasons first; a report with warnings only asks for a check. */
@@ -1268,7 +1270,7 @@ function prospectCard({ row: r, offer, roles, why, searches, facts }) {
       <div class="stack" style="gap:2px"><span class="name">${esc(r.account.name)}</span><span class="meta">${esc(meta)}</span></div>
       <div class="actions" style="gap:12px">${srcBadge(r.account.source)}${scoreBar(r)}</div>
     </div>
-    ${trigger ? `<div class="panel" style="gap:4px"><span class="kind">${esc(FACT_KINDS[trigger.kind] || "Source")}</span><span>${esc(trigger.statement)} · ${extLink(trigger.sourceUrl, "source")}</span></div>` : ""}
+    ${trigger ? `<div class="panel" style="gap:4px"><span class="kind">${esc(FACT_KINDS[trigger.kind] || "Source")}</span><span>${esc(trigger.statement)} · ${extLink(trigger.sourceUrl, "source")}${retrieved(trigger)}</span></div>` : ""}
     <div><span style="font-weight:500">${esc(OFFERS[offer] || offer)}</span><span class="muted"> · à contacter : ${esc(roles.join(", "))}, ${esc(why)}</span></div>
     ${n ? `<details class="sources"><summary>${icon("chevron")}${n > 1 ? "Autres sources" : "Autre source"}</summary>${factList(others)}</details>` : ""}
     <div class="actions">${searchButtons(searches)}</div>
@@ -1367,7 +1369,7 @@ const ACTORS = { auto: ["Automatique", "secondary"], ai: ["Agent IA", ""], you: 
 const STEPS = [
   { title: "Trouver les entreprises", actors: ["auto"], when: "chaque nuit, entre 2 h et 5 h",
     paras: ["Bloom lit des sources publiques, sans IA, puis écarte les ESN, les cabinets de recrutement et les agences."],
-    bullets: ["Les classements App Store France de 12 catégories : 120 apps examinées par nuit. Seules restent celles d'un éditeur français dont les avis se dégradent ou qui n'est plus mise à jour.", "Les offres d'emploi de développeur mobile publiées en France (API France Travail).", "Selon la configuration : annonces légales (BODACC), appels d'offres publics français et européens, marchés publics d'application mobile qui arrivent à échéance dans l'année, organisations GitHub qui publient du code Kotlin Multiplatform.", "Votre propre liste, importée en CSV depuis la vue Prospects."],
+    bullets: ["Les classements App Store France de 21 catégories : jusqu'à 400 apps examinées par nuit. Seules restent celles d'un éditeur français dont les avis se dégradent ou qui n'est plus mise à jour.", "Les offres d'emploi de développeur mobile publiées en France (API France Travail).", "Selon la configuration : annonces légales (BODACC), appels d'offres publics français et européens, marchés publics d'application mobile qui arrivent à échéance dans l'année, organisations GitHub qui publient du code Kotlin Multiplatform.", "Votre propre liste, importée en CSV depuis la vue Prospects."],
     after: ["Chaque entreprise reçoit son SIREN, son effectif, son app et son site quand ils existent, et un premier score."],
     ex: [{ eyebrow: "Vélomoov", text: "Trouvée dans le classement Voyage : éditeur français, note des avis récents en baisse." }] },
   { title: "Collecter les faits", actors: ["auto"],
@@ -1392,7 +1394,7 @@ const STEPS = [
     paras: ["Rien ne part sans vous. Dans la vue À faire, vous approuvez, vous corrigez ou vous rejetez. Chaque fait garde le lien vers sa source. Quand vous corrigez, le garde-fou revérifie votre version, et vos corrections récentes servent d'exemples de ton pour les messages suivants."] },
   { title: "Envoyer et relancer", actors: ["auto", "youLi"],
     paras: ["L'email part du mardi au jeudi, entre 8 h 30 et 11 h 30, à raison de 25 envois par jour et par boîte par défaut. La désinscription se fait en un clic. Les étapes LinkedIn restent manuelles : Bloom prépare la note, vous l'envoyez et vous cochez « Fait »."],
-    ex: [{ eyebrow: "Séquence « App en difficulté »", rows: [["Jour 0", "Email avec le constat et l'offre d'audit"], ["Jour 2", "Demande de connexion LinkedIn, sans pitch (vous)"], ["Jour 6", "Relance courte : ce qu'un audit comparable a révélé"]] }] },
+    ex: [{ eyebrow: "Séquence « App en difficulté »", rows: [["Jour 0", "Email avec le constat et l'offre d'audit"], ["+2 jours ouvrés", "Demande de connexion LinkedIn, sans pitch (vous)"], ["+4 jours ouvrés", "Relance courte : ce qu'un audit comparable a révélé"]] }] },
   { title: "Lire les réponses", actors: ["ai", "auto"],
     paras: ["Toute réponse d'une personne arrête la séquence. Un agent classe la réponse et la résume, puis le code applique la règle qui va avec."],
     ex: [

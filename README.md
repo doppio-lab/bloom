@@ -5,9 +5,9 @@ L'outil de prospection commerciale de Doppio Lab. Au café, la floraison (bloom)
 Kotlin, Koog 1.3, Ktor 3, PostgreSQL. LLM au choix : local avec Ollama (gratuit), Anthropic, ou toute API compatible OpenAI.
 
 Principe : **on ne contacte que sur preuve**. Chaque message part d'un signal observable (avis App Store qui
-parlent de crash, offre d'emploi iOS ouverte depuis 74 jours, équipe qui recrute sur KMP), chaque affirmation
-est reliée à un fait sourcé, et un garde-fou déterministe bloque tout chiffre inventé, tout jargon et toute
-référence client hors sujet. Les LLM cherchent et rédigent ; le code score, vérifie et décide.
+parlent de crash, offre d'emploi iOS ouverte depuis 74 jours, équipe qui recrute sur KMP), le premier email
+s'appuie sur un fait sourcé, chaque chiffre du corps est relié à un fait cité, et un garde-fou déterministe
+bloque tout chiffre inventé, tout jargon et toute référence client hors sujet. Les LLM cherchent et rédigent ; le code score, vérifie et décide.
 
 ## Ce que fait l'outil
 
