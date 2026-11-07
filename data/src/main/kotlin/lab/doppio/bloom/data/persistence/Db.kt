@@ -9,7 +9,11 @@ import org.flywaydb.core.Flyway
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
 
-data class DbConfig(val url: String, val user: String, val password: String, val maxPool: Int = 8)
+data class DbConfig(val url: String, val user: String, val password: String, val maxPool: Int = DEFAULT_MAX_POOL) {
+    companion object {
+        const val DEFAULT_MAX_POOL = 8
+    }
+}
 
 object Db {
     private var config: DbConfig? = null

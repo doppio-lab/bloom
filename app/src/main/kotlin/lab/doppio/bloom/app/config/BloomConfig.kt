@@ -2,9 +2,15 @@ package lab.doppio.bloom.app.config
 
 import lab.doppio.bloom.agents.LlmConfig
 import lab.doppio.bloom.agents.LlmProvider
+import lab.doppio.bloom.agents.RunTracker
+import lab.doppio.bloom.app.outreach.LoopIntervals
 import lab.doppio.bloom.app.outreach.MailConfig
 import lab.doppio.bloom.core.model.Mailbox
 import lab.doppio.bloom.core.model.SendingPolicy
+import lab.doppio.bloom.core.discovery.Decp
+import lab.doppio.bloom.core.usecase.ResearchBatch
+import lab.doppio.bloom.data.discovery.DiscoveryConfig
+import lab.doppio.bloom.data.sources.http.REQUEST_TIMEOUT_MILLIS
 import lab.doppio.bloom.data.persistence.DbConfig
 import lab.doppio.bloom.data.sources.discovery.BoampSource
 import lab.doppio.bloom.data.sources.discovery.BodaccSource
@@ -14,6 +20,7 @@ import lab.doppio.bloom.data.sources.discovery.GitHubSource
 import lab.doppio.bloom.data.sources.discovery.PressSource
 import lab.doppio.bloom.data.sources.discovery.TedSource
 import lab.doppio.bloom.data.sources.facts.JobBoardSource
+import kotlin.time.Duration.Companion.minutes
 
 /** HTTP server and the dashboard login. */
 data class ServerConfig(val port: Int, val adminPassword: String)
@@ -27,6 +34,9 @@ data class SendingConfig(val policy: SendingPolicy, val senderName: String)
 /** France Travail API credentials (the secret is required as soon as the id is set). */
 data class FranceTravailCredentials(val clientId: String, val clientSecret: String)
 
+/** How many accounts one research batch handles, and the age after which a dossier is read again. */
+data class ResearchSettings(val batchSize: Int, val staleDays: Long)
+
 /**
  * Discovery knobs. [sources] is the set chosen by DISCOVERY_SOURCES, lowercased. The press feeds are in the
  * default list for now, even though their reuse terms still have to be checked by the owner.
@@ -34,6 +44,14 @@ data class FranceTravailCredentials(val clientId: String, val clientSecret: Stri
 data class DiscoverySettings(
     val sources: Set<String>,
     val appsPerRun: Int,
+    /** Days before an already examined App Store app is looked at again. */
+    val recheckAfterDays: Long,
+    /** Leads handled per added source and per run. */
+    val leadsPerSource: Int,
+    val jobBoardLookupsPerRun: Int,
+    val officerLookupsPerRun: Int,
+    /** Publication window of the France Travail offers, one of [DiscoveryConfig.ALLOWED_JOBS_WITHIN_DAYS]. */
+    val jobsWithinDays: Int,
     /** Current clients and partners never to prospect. */
     val extraExclusions: Set<String>,
     val bodaccMinCapitalEur: Long,
@@ -56,6 +74,10 @@ data class BloomConfig(
     val mail: MailConfig,
     val sending: SendingConfig,
     val discovery: DiscoverySettings,
+    val research: ResearchSettings,
+    val loops: LoopIntervals,
+    /** Timeout of every request to a public source, in seconds. */
+    val httpTimeoutSeconds: Long,
 ) {
     companion object {
         val DEFAULT_DISCOVERY_SOURCES = listOf(
@@ -85,9 +107,9 @@ data class BloomConfig(
                     },
                     model = e.optional("LLM_MODEL"),
                     fastModel = e.optional("LLM_MODEL_FAST"),
-                    contextLength = e.value("LLM_CONTEXT_LENGTH", "16384").toLong(),
+                    contextLength = e.value("LLM_CONTEXT_LENGTH", LlmConfig.DEFAULT_CONTEXT_LENGTH.toString()).toLong(),
                 ),
-                dailyTokenBudget = e.optional("LLM_DAILY_TOKEN_BUDGET")?.toLong() ?: 0,
+                dailyTokenBudget = e.optional("LLM_DAILY_TOKEN_BUDGET")?.toLong() ?: RunTracker.NO_TOKEN_LIMIT,
             )
 
             val mail = MailConfig(
@@ -111,11 +133,20 @@ data class BloomConfig(
 
             val discovery = DiscoverySettings(
                 sources = e.value("DISCOVERY_SOURCES", DEFAULT_DISCOVERY_SOURCES).split(',').map { it.trim().lowercase() }.toSet(),
-                appsPerRun = e.value("DISCOVERY_APPS_PER_RUN", "400").toInt(),
+                appsPerRun = e.value("DISCOVERY_APPS_PER_RUN", DiscoveryConfig.DEFAULT_APPS_PER_RUN.toString()).toInt(),
+                recheckAfterDays = e.positiveLong("DISCOVERY_RECHECK_DAYS", DiscoveryConfig.DEFAULT_RECHECK_DAYS),
+                leadsPerSource = e.positiveInt("DISCOVERY_LEADS_PER_SOURCE", DiscoveryConfig.DEFAULT_LEADS_PER_SOURCE),
+                jobBoardLookupsPerRun = e.positiveInt("DISCOVERY_JOB_BOARD_LOOKUPS", DiscoveryConfig.DEFAULT_JOB_BOARD_LOOKUPS),
+                officerLookupsPerRun = e.positiveInt("DISCOVERY_OFFICER_LOOKUPS", DiscoveryConfig.DEFAULT_OFFICER_LOOKUPS),
+                jobsWithinDays = e.positiveInt("DISCOVERY_JOBS_WITHIN_DAYS", DiscoveryConfig.DEFAULT_JOBS_WITHIN_DAYS).also {
+                    check(it in DiscoveryConfig.ALLOWED_JOBS_WITHIN_DAYS) {
+                        "DISCOVERY_JOBS_WITHIN_DAYS doit valoir ${DiscoveryConfig.ALLOWED_JOBS_WITHIN_DAYS.sorted().joinToString(", ")} (France Travail n'accepte que ces fenêtres) : $it"
+                    }
+                },
                 extraExclusions = e.value("DISCOVERY_EXCLUDE", "").split(',').map { it.trim() }.filter { it.isNotEmpty() }.toSet(),
-                bodaccMinCapitalEur = e.value("BODACC_MIN_CAPITAL", "100000").toLong(),
-                decpRenewalMonths = e.value("DECP_RENEWAL_MONTHS", "12").toLong(),
-                codeurMinBudgetEur = e.value("CODEUR_MIN_BUDGET", "1000").toInt(),
+                bodaccMinCapitalEur = e.value("BODACC_MIN_CAPITAL", BodaccSource.DEFAULT_MIN_CAPITAL_EUR.toString()).toLong(),
+                decpRenewalMonths = e.value("DECP_RENEWAL_MONTHS", Decp.RENEWAL_MAX_MONTHS.toString()).toLong(),
+                codeurMinBudgetEur = e.value("CODEUR_MIN_BUDGET", CodeurSource.DEFAULT_MIN_BUDGET_EUR.toString()).toInt(),
                 githubToken = e.optional("GITHUB_TOKEN"),
                 franceTravail = e.optional("FT_CLIENT_ID")?.let { FranceTravailCredentials(it, e.value("FT_CLIENT_SECRET")) },
                 dropcontactApiKey = e.optional("DROPCONTACT_API_KEY"),
@@ -127,14 +158,26 @@ data class BloomConfig(
                     e.value("DATABASE_URL", "jdbc:postgresql://localhost:5433/bloom"),
                     e.value("DB_USER", "bloom"),
                     e.value("DB_PASSWORD", "bloom"),
+                    maxPool = e.positiveInt("DB_MAX_POOL", DbConfig.DEFAULT_MAX_POOL),
                 ),
                 llm = llm,
                 mail = mail,
                 sending = SendingConfig(
-                    policy = SendingPolicy(maxPerMailboxPerDay = e.value("MAX_PER_MAILBOX_PER_DAY", "25").toInt()),
+                    policy = SendingPolicy(maxPerMailboxPerDay = e.value("MAX_PER_MAILBOX_PER_DAY", SendingPolicy.DEFAULT_MAX_PER_MAILBOX_PER_DAY.toString()).toInt()),
                     senderName = e.value("SENDER_NAME", "l'équipe Doppio"),
                 ),
                 discovery = discovery,
+                research = ResearchSettings(
+                    batchSize = e.positiveInt("RESEARCH_BATCH_SIZE", ResearchBatch.DEFAULT_BATCH_SIZE),
+                    staleDays = e.positiveLong("RESEARCH_STALE_DAYS", ResearchBatch.DEFAULT_STALE_DAYS),
+                ),
+                loops = LoopIntervals(
+                    plan = e.positiveInt("LOOP_PLAN_MINUTES", LoopIntervals.DEFAULT_PLAN.inWholeMinutes.toInt()).minutes,
+                    send = e.positiveInt("LOOP_SEND_MINUTES", LoopIntervals.DEFAULT_SEND.inWholeMinutes.toInt()).minutes,
+                    replies = e.positiveInt("LOOP_REPLIES_MINUTES", LoopIntervals.DEFAULT_REPLIES.inWholeMinutes.toInt()).minutes,
+                    periodic = e.positiveInt("LOOP_PERIODIC_MINUTES", LoopIntervals.DEFAULT_PERIODIC.inWholeMinutes.toInt()).minutes,
+                ),
+                httpTimeoutSeconds = e.positiveLong("HTTP_TIMEOUT_SECONDS", REQUEST_TIMEOUT_MILLIS / 1_000),
             )
         }
 
@@ -151,6 +194,13 @@ internal class EnvReader(private val env: Map<String, String>) {
     /** The value, else [default], else an error naming the variable. */
     fun value(name: String, default: String? = null): String =
         env[name] ?: default ?: error("Variable d'environnement manquante : $name")
+
+    /** A strictly positive integer: a malformed number throws NumberFormatException, zero or less is a configuration error. */
+    fun positiveInt(name: String, default: Int): Int =
+        value(name, default.toString()).toInt().also { check(it > 0) { "$name doit être un entier strictement positif : $it" } }
+
+    fun positiveLong(name: String, default: Long): Long =
+        value(name, default.toString()).toLong().also { check(it > 0) { "$name doit être un entier strictement positif : $it" } }
 
     /** An empty value in .env (KEY=) counts as an absent key. */
     fun optional(name: String): String? = env[name]?.takeIf { it.isNotBlank() }

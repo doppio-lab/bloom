@@ -44,8 +44,12 @@ data class LlmConfig(
     val baseUrl: String? = null,
     val model: String? = null,
     val fastModel: String? = null,
-    val contextLength: Long = 16_384,
-)
+    val contextLength: Long = DEFAULT_CONTEXT_LENGTH,
+) {
+    companion object {
+        const val DEFAULT_CONTEXT_LENGTH = 16_384L
+    }
+}
 
 /**
  * Executor and per-task model selection. The writer and the researcher need judgement,
@@ -152,10 +156,15 @@ object AgentName {
 class RunTracker(
     private val agentRunRepo: AgentRunRepository,
     /** Tokens allowed per day, all agents together. 0: no limit. */
-    private val dailyTokenBudget: Long = 0,
+    private val dailyTokenBudget: Long = NO_TOKEN_LIMIT,
     private val zone: java.time.ZoneId = BloomTime.PARIS,
     private val clock: java.time.Clock = java.time.Clock.systemDefaultZone(),
 ) {
+    companion object {
+        /** A daily budget of 0 means no limit. */
+        const val NO_TOKEN_LIMIT = 0L
+    }
+
     /** Refuses a new run once the day's budget is spent: the caller retries later, nothing is lost. */
     private suspend fun checkBudget(agent: String) {
         if (dailyTokenBudget <= 0) return

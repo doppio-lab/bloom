@@ -237,10 +237,14 @@ data class SendingPolicy(
     val startMinute: Int = 30,
     val endHour: Int = 11,
     val endMinute: Int = 30,
-    val maxPerMailboxPerDay: Int = 25,
+    val maxPerMailboxPerDay: Int = DEFAULT_MAX_PER_MAILBOX_PER_DAY,
     val minSecondsBetweenSends: Int = 180,
     val holidays: Set<String> = emptySet(),
-)
+) {
+    companion object {
+        const val DEFAULT_MAX_PER_MAILBOX_PER_DAY = 25
+    }
+}
 
 fun Instant.iso(): String = toString()
 fun LocalDate.iso(): String = toString()

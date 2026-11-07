@@ -12,7 +12,7 @@ import lab.doppio.bloom.core.scoring.ScoreTiers
 import org.slf4j.LoggerFactory
 
 /**
- * Les comptes au-dessus de 45 sans dossier (ni dossier "aucune offre ne convient") passent en premier, puis les dossiers de plus de 14 jours.
+ * Les comptes au-dessus de 45 sans dossier (ni dossier "aucune offre ne convient") passent en premier, puis les dossiers plus vieux que le délai de péremption (14 jours par défaut).
  * L'agent coûte des tokens : on ne l'utilise que là où le score déterministe dit que ça vaut le coup.
  */
 class ResearchBatch(
@@ -20,12 +20,18 @@ class ResearchBatch(
     private val factRepo: FactRepository,
     private val research: Researcher,
     private val clock: Clock,
-    private val budget: Int = 25,
+    private val budget: Int = DEFAULT_BATCH_SIZE,
+    private val staleAfterDays: Long = DEFAULT_STALE_DAYS,
 ) {
+    companion object {
+        const val DEFAULT_BATCH_SIZE = 25
+        const val DEFAULT_STALE_DAYS = 14L
+    }
+
     private val log = LoggerFactory.getLogger(javaClass)
 
     suspend operator fun invoke() {
-        val stale = clock.instant().minus(14, ChronoUnit.DAYS)
+        val stale = clock.instant().minus(staleAfterDays, ChronoUnit.DAYS)
         val dossiers = accountRepo.accountsByScore(Limits.ALL_ACCOUNTS).filter { it.score >= ScoreTiers.NURTURE }.associateWith { factRepo.dossier(it.account.id) }
         // A dossier that found no offer to sell is not researched again until a human asks. The verdict is a filter here,
         // never a score term: the score stays computed by code alone

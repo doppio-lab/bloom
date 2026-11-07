@@ -12,7 +12,23 @@ import lab.doppio.bloom.core.usecase.ProcessReplies
 import lab.doppio.bloom.core.usecase.RunPeriodicJobs
 import lab.doppio.bloom.core.usecase.SendNextApproved
 import org.slf4j.LoggerFactory
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
+
+/** How often each loop runs. */
+data class LoopIntervals(
+    val plan: Duration = DEFAULT_PLAN,
+    val send: Duration = DEFAULT_SEND,
+    val replies: Duration = DEFAULT_REPLIES,
+    val periodic: Duration = DEFAULT_PERIODIC,
+) {
+    companion object {
+        val DEFAULT_PLAN: Duration = 10.minutes
+        val DEFAULT_SEND: Duration = 2.minutes
+        val DEFAULT_REPLIES: Duration = 5.minutes
+        val DEFAULT_PERIODIC: Duration = 30.minutes
+    }
+}
 
 /**
  * Boucles de fond. Chaque boucle est idempotente : un redémarrage ne double ni un envoi ni un brouillon.
@@ -30,6 +46,7 @@ class Scheduler(
     private val sendNextApproved: SendNextApproved,
     private val processReplies: ProcessReplies,
     private val runPeriodicJobs: RunPeriodicJobs,
+    private val intervals: LoopIntervals = LoopIntervals(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -56,14 +73,14 @@ class Scheduler(
             // Avant toute boucle : un brouillon resté SENDING date d'avant le redémarrage
             val interrupted = draftRepo.reconcileInterruptedSends()
             if (interrupted > 0) log.warn("$interrupted email(s) interrompu(s) pendant l'envoi, passés en FAILED : vérifier la boîte d'envoi")
-            loop("planification", 10.minutes) { planDrafts() }
-            loop("envoi", 2.minutes) { sendNextApproved() }
-            loop("relève", 5.minutes) { processReplies() }
-            loop("nuit", 30.minutes) { runPeriodicJobs(spawn = { job -> jobs?.launch { job() } ?: job() }) }
+            loop("planification", intervals.plan) { planDrafts() }
+            loop("envoi", intervals.send) { sendNextApproved() }
+            loop("relève", intervals.replies) { processReplies() }
+            loop("nuit", intervals.periodic) { runPeriodicJobs(spawn = { job -> jobs?.launch { job() } ?: job() }) }
         }
     }
 
-    private fun CoroutineScope.loop(name: String, every: kotlin.time.Duration, block: suspend () -> Unit) = launch {
+    private fun CoroutineScope.loop(name: String, every: Duration, block: suspend () -> Unit) = launch {
         while (isActive) {
             try {
                 block()
@@ -78,7 +95,7 @@ class Scheduler(
 
     /** Plans right away, in the background: an HTTP request never waits for the writer. */
     fun planSoon() {
-        if (!leader) return // another instance runs the loops and will plan within 10 minutes
+        if (!leader) return // another instance runs the loops and will plan on its next pass
         jobs?.launch {
             try { planDrafts() } catch (e: CancellationException) { throw e } catch (e: Exception) { log.error("Planification en échec", e) }
         }

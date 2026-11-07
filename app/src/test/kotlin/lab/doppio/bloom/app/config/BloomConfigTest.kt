@@ -7,6 +7,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.minutes
 
 class BloomConfigTest {
     private val secret = "0123456789abcdef"
@@ -43,6 +44,72 @@ class BloomConfigTest {
         assertNull(c.discovery.githubToken)
         assertNull(c.discovery.franceTravail)
         assertNull(c.discovery.dropcontactApiKey)
+    }
+
+    @Test
+    fun `the operating knobs default to the values the code used before they were configurable`() {
+        val c = BloomConfig.from(env())
+        assertEquals(25, c.research.batchSize)
+        assertEquals(14L, c.research.staleDays)
+        assertEquals(60, c.discovery.leadsPerSource)
+        assertEquals(30, c.discovery.jobBoardLookupsPerRun)
+        assertEquals(150, c.discovery.officerLookupsPerRun)
+        assertEquals(30L, c.discovery.recheckAfterDays)
+        assertEquals(7, c.discovery.jobsWithinDays)
+        assertEquals(10.minutes, c.loops.plan)
+        assertEquals(2.minutes, c.loops.send)
+        assertEquals(5.minutes, c.loops.replies)
+        assertEquals(30.minutes, c.loops.periodic)
+        assertEquals(8, c.database.maxPool)
+        assertEquals(20L, c.httpTimeoutSeconds)
+    }
+
+    @Test
+    fun `the operating knobs can be overridden`() {
+        val c = BloomConfig.from(
+            env(
+                "RESEARCH_BATCH_SIZE" to "5", "RESEARCH_STALE_DAYS" to "21", "DISCOVERY_LEADS_PER_SOURCE" to "10",
+                "DISCOVERY_JOB_BOARD_LOOKUPS" to "3", "DISCOVERY_OFFICER_LOOKUPS" to "15", "DISCOVERY_RECHECK_DAYS" to "60",
+                "DISCOVERY_JOBS_WITHIN_DAYS" to "14", "LOOP_PLAN_MINUTES" to "1", "LOOP_SEND_MINUTES" to "3",
+                "LOOP_REPLIES_MINUTES" to "4", "LOOP_PERIODIC_MINUTES" to "60", "DB_MAX_POOL" to "20", "HTTP_TIMEOUT_SECONDS" to "45",
+            ),
+        )
+        assertEquals(5, c.research.batchSize)
+        assertEquals(21L, c.research.staleDays)
+        assertEquals(10, c.discovery.leadsPerSource)
+        assertEquals(3, c.discovery.jobBoardLookupsPerRun)
+        assertEquals(15, c.discovery.officerLookupsPerRun)
+        assertEquals(60L, c.discovery.recheckAfterDays)
+        assertEquals(14, c.discovery.jobsWithinDays)
+        assertEquals(listOf(1.minutes, 3.minutes, 4.minutes, 60.minutes), listOf(c.loops.plan, c.loops.send, c.loops.replies, c.loops.periodic))
+        assertEquals(20, c.database.maxPool)
+        assertEquals(45L, c.httpTimeoutSeconds)
+    }
+
+    private val knobs = listOf(
+        "RESEARCH_BATCH_SIZE", "RESEARCH_STALE_DAYS", "DISCOVERY_LEADS_PER_SOURCE", "DISCOVERY_JOB_BOARD_LOOKUPS", "DISCOVERY_OFFICER_LOOKUPS",
+        "DISCOVERY_RECHECK_DAYS", "DISCOVERY_JOBS_WITHIN_DAYS", "LOOP_PLAN_MINUTES", "LOOP_SEND_MINUTES", "LOOP_REPLIES_MINUTES",
+        "LOOP_PERIODIC_MINUTES", "DB_MAX_POOL", "HTTP_TIMEOUT_SECONDS",
+    )
+
+    @Test
+    fun `a malformed or non positive knob stops the parse`() {
+        knobs.forEach { name ->
+            assertFailsWith<NumberFormatException>(name) { BloomConfig.from(env(name to "many")) }
+            assertFailsWith<NumberFormatException>(name) { BloomConfig.from(env(name to "")) }
+            val zero = assertFailsWith<IllegalStateException>(name) { BloomConfig.from(env(name to "0")) }
+            assertTrue(zero.message!!.contains(name), "the error names $name")
+            assertFailsWith<IllegalStateException>(name) { BloomConfig.from(env(name to "-3")) }
+        }
+    }
+
+    @Test
+    fun `france travail only accepts some publication windows`() {
+        listOf(1, 3, 7, 14, 31).forEach { assertEquals(it, BloomConfig.from(env("DISCOVERY_JOBS_WITHIN_DAYS" to "$it")).discovery.jobsWithinDays) }
+        listOf("2", "5", "30", "365").forEach {
+            val e = assertFailsWith<IllegalStateException> { BloomConfig.from(env("DISCOVERY_JOBS_WITHIN_DAYS" to it)) }
+            assertTrue(e.message!!.contains("1, 3, 7, 14, 31"))
+        }
     }
 
     @Test

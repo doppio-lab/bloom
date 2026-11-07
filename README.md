@@ -249,6 +249,8 @@ Garanties :
 | `LOG_LEVEL` | `INFO` | niveau des logs de Bloom (`DEBUG` pour le détail) |
 | `DATABASE_URL` | `jdbc:postgresql://localhost:5433/bloom` | URL JDBC, fixée par Compose en option A |
 | `DB_USER`, `DB_PASSWORD` | `bloom`, `bloom` | identifiants PostgreSQL |
+| `DB_MAX_POOL` | `8` | connexions simultanées au plus vers PostgreSQL |
+| `HTTP_TIMEOUT_SECONDS` | `20` | délai maximal, en secondes, d'une requête vers une source publique |
 | `PUBLIC_BASE_URL` | `http://localhost:8080` | base des liens de désinscription |
 | `FT_CLIENT_ID`, `FT_CLIENT_SECRET` | vides | API Offres d'emploi France Travail ; sans elles, la source « offres d'emploi » est coupée et le dashboard le signale |
 | `DISCOVERY_SOURCES` | `bodacc,boamp,ted,decp,codeur,press,github,jobboards` | sources ajoutées à la découverte |
@@ -258,12 +260,22 @@ Garanties :
 | `GITHUB_TOKEN` | vide | jeton sans permission : 30 recherches GitHub par minute au lieu de 10 |
 | `DROPCONTACT_API_KEY` | vide | recherche d'email par Dropcontact ; sans elle, saisie manuelle |
 | `DISCOVERY_APPS_PER_RUN` | `400` | apps du classement analysées par découverte (environ 5 secondes chacune) |
+| `DISCOVERY_RECHECK_DAYS` | `30` | jours avant de réexaminer une app déjà analysée |
+| `DISCOVERY_LEADS_PER_SOURCE` | `60` | pistes traitées par source ajoutée et par découverte (chacune coûte des appels au registre) |
+| `DISCOVERY_JOB_BOARD_LOOKUPS` | `30` | sites d'entreprises explorés par découverte pour trouver une page carrières |
+| `DISCOVERY_OFFICER_LOOKUPS` | `150` | comptes dont les dirigeants sont lus au registre par découverte |
+| `DISCOVERY_JOBS_WITHIN_DAYS` | `7` | fenêtre de publication des offres France Travail ; seules les valeurs `1`, `3`, `7`, `14` et `31` sont acceptées |
+| `RESEARCH_BATCH_SIZE` | `25` | comptes traités par lot de recherche approfondie |
+| `RESEARCH_STALE_DAYS` | `14` | âge, en jours, après lequel un dossier est relu |
+| `LOOP_PLAN_MINUTES`, `LOOP_SEND_MINUTES`, `LOOP_REPLIES_MINUTES`, `LOOP_PERIODIC_MINUTES` | `10`, `2`, `5`, `30` | délai en minutes entre deux passages des boucles de planification, d'envoi, de relève et des tâches périodiques |
 | `DISCOVERY_EXCLUDE` | vide | entreprises à ne jamais prospecter, séparées par des virgules ; s'ajoute à la liste noire du dashboard |
 | `SMTP_HOST`, `SMTP_PORT`, `IMAP_HOST` | Gmail | serveurs d'envoi et de relève |
 | `MAILBOXES` | vide | boîtes d'envoi, `adresse:mot-de-passe-d-application:Nom affiché`, séparées par des virgules |
 | `MAX_PER_MAILBOX_PER_DAY` | `25` | plafond d'envoi par boîte et par jour |
 | `SENDER_NAME` | `l'équipe Doppio` | signature utilisée par le rédacteur |
 | `LEGAL_FOOTER_FR`, `LEGAL_FOOTER_EN` | texte Doppio Lab | pied de message légal |
+
+Les réglages numériques de fonctionnement (lots, délais, boucles, pool, délai HTTP) doivent être des entiers strictement positifs : une valeur invalide bloque le démarrage avant toute connexion à la base.
 
 ### Commandes utiles
 

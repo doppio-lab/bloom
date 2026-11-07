@@ -129,6 +129,7 @@ fun configModule(config: BloomConfig, clock: Clock = Clock.systemDefaultZone()):
     single { clock }
     single<MailConfig> { config.mail }
     single<SendingPolicy> { config.sending.policy }
+    single { config.loops }
 }
 
 /** Exposed repositories and the instance lock, each bound to its core port. */
@@ -154,7 +155,7 @@ val persistenceModule: Module = module {
  */
 fun sourcesModule(config: BloomConfig): Module = module {
     val discovery = config.discovery
-    single<HttpClient> { defaultHttpClient() } onClose { it?.close() }
+    single<HttpClient> { defaultHttpClient(config.httpTimeoutSeconds * 1_000) } onClose { it?.close() }
     single { AppStoreSource(get(), clock = get()) } bind AppStoreFacts::class
     // PlayStoreSource (data/sources/facts) is deliberately not bound: Google Play's terms on automated reading
     // have not been checked. ResearchAgent runs without it.
@@ -203,7 +204,12 @@ fun sourcesModule(config: BloomConfig): Module = module {
             appStore = get(), registry = get(),
             jobs = getOrNull<FranceTravailSource>(),
             config = DiscoveryConfig(
+                jobsPublishedWithinDays = discovery.jobsWithinDays,
                 appsPerRun = discovery.appsPerRun,
+                recheckAfterDays = discovery.recheckAfterDays,
+                leadsPerSource = discovery.leadsPerSource,
+                jobBoardLookupsPerRun = discovery.jobBoardLookupsPerRun,
+                officerLookupsPerRun = discovery.officerLookupsPerRun,
                 // Current clients and partners never to prospect
                 extraExclusions = discovery.extraExclusions,
             ),
@@ -244,7 +250,10 @@ val useCasesModule: Module = module {
     singleOf(::PlanDrafts)
     single { SendNextApproved(get(), get(), get(), get(), get(), get(), get<MailConfig>().mailboxes, get(), get()) }
     singleOf(::ProcessReplies)
-    single { ResearchBatch(get(), get(), get(), get()) }
+    single {
+        val research = get<BloomConfig>().research
+        ResearchBatch(get(), get(), get(), get(), budget = research.batchSize, staleAfterDays = research.staleDays)
+    }
     singleOf(::RunDiscovery)
     singleOf(::RunPeriodicJobs)
     // A new enrollment wakes the planner. Resolved on use: the scheduler is declared in its own module.
@@ -269,7 +278,7 @@ val useCasesModule: Module = module {
 val schedulerModule: Module = module {
     single(LOOPS) { CoroutineScope(SupervisorJob() + Dispatchers.Default) } onClose { it?.cancel() }
     single(BACKGROUND) { CoroutineScope(SupervisorJob() + Dispatchers.Default) } onClose { it?.cancel() }
-    singleOf(::Scheduler)
+    single { Scheduler(get(), get(), get(), get(), get(), get(), intervals = get()) }
 }
 
 /** HTTP routes. Each group declares what it needs in its constructor, so a missing binding fails at startup. */
