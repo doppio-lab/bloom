@@ -76,8 +76,7 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
 
     fun footer(contactId: Long, language: String): String {
         val url = "${config.publicBaseUrl}/u/${tokens.tokenFor(contactId)}"
-        return if (language == "en") "\n\n--\n${config.legalFooterEn}\nNot interested? One click and you will not hear from us again: $url"
-        else "\n\n--\n${config.legalFooterFr}\nPas intéressé ? Un clic et vous ne recevrez plus rien de notre part : $url"
+        return if (language == "en") MailTexts.footerEn(config.legalFooterEn, url) else MailTexts.footerFr(config.legalFooterFr, url)
     }
 
     override fun newMessageId(mailbox: Mailbox): String = "<${UUID.randomUUID()}@${mailbox.address.substringAfter('@')}>"

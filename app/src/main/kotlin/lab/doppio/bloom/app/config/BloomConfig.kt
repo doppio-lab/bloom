@@ -5,6 +5,7 @@ import lab.doppio.bloom.agents.LlmProvider
 import lab.doppio.bloom.agents.RunTracker
 import lab.doppio.bloom.app.outreach.LoopIntervals
 import lab.doppio.bloom.app.outreach.MailConfig
+import lab.doppio.bloom.app.outreach.MailTexts
 import lab.doppio.bloom.core.model.Mailbox
 import lab.doppio.bloom.core.model.SendingPolicy
 import lab.doppio.bloom.core.discovery.Decp
@@ -121,12 +122,11 @@ data class BloomConfig(
                 unsubscribeSecret = unsubscribeSecret,
                 legalFooterFr = e.value(
                     "LEGAL_FOOTER_FR",
-                    "Doppio Lab (Advisely), Paris. Vos coordonnées professionnelles proviennent de sources publiques " +
-                        "(site de votre entreprise, annuaire des entreprises) et ne servent qu'à ce contact.",
+                    MailTexts.DEFAULT_LEGAL_FOOTER_FR,
                 ),
                 legalFooterEn = e.value(
                     "LEGAL_FOOTER_EN",
-                    "Doppio Lab (Advisely), Paris, France. Your business contact details come from public sources and are used only for this contact.",
+                    MailTexts.DEFAULT_LEGAL_FOOTER_EN,
                 ),
                 dryRun = dryRun,
             )
@@ -164,7 +164,7 @@ data class BloomConfig(
                 mail = mail,
                 sending = SendingConfig(
                     policy = SendingPolicy(maxPerMailboxPerDay = e.value("MAX_PER_MAILBOX_PER_DAY", SendingPolicy.DEFAULT_MAX_PER_MAILBOX_PER_DAY.toString()).toInt()),
-                    senderName = e.value("SENDER_NAME", "l'équipe Doppio"),
+                    senderName = e.value("SENDER_NAME", MailTexts.DEFAULT_SENDER_NAME),
                 ),
                 discovery = discovery,
                 research = ResearchSettings(

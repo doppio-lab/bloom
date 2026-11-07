@@ -24,7 +24,7 @@ val CrossSiteGuard = createRouteScopedPlugin("CrossSiteGuard") {
         when (call.request.headers["Sec-Fetch-Site"]) {
             null, "same-origin", "none" -> Unit
             else -> call.respondText(
-                Json.encodeToString(ErrorBody("requête refusée : elle ne vient pas du dashboard")),
+                Json.encodeToString(ErrorBody(ApiMessages.CROSS_SITE_REFUSED)),
                 ContentType.Application.Json,
                 HttpStatusCode.Forbidden,
             )

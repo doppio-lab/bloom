@@ -41,8 +41,6 @@ import lab.doppio.bloom.core.usecase.UnsubscribeContact
 /** Window of the overview counters when the request gives none. */
 private const val DEFAULT_OVERVIEW_DAYS = 30
 
-private const val NOT_PENDING = "ce brouillon n'est plus à valider"
-
 private val researchLog = org.slf4j.LoggerFactory.getLogger("Research")
 
 /** The dashboard API: accounts, contacts, the review queue, replies and deals. Built by Koin (see webModule). */
@@ -87,7 +85,7 @@ class ApiRoutes(
             req.contacts.forEach { contactRepo.addContact(it.copy(accountId = id)) }
             // The research takes minutes: it runs in the background, the dossier appears when it is done
             if (req.researchNow) launchResearch(id)
-            call.respond(HttpStatusCode.Created, mapOf("id" to id.toString(), "research" to if (req.researchNow) "lancée" else "non demandée"))
+            call.respond(HttpStatusCode.Created, mapOf("id" to id.toString(), "research" to if (req.researchNow) ApiMessages.STARTED else ApiMessages.NOT_REQUESTED))
         }
 
         get("/accounts/{id}") {
@@ -100,7 +98,7 @@ class ApiRoutes(
             val id = call.parameters["id"]!!.toLong()
             accountRepo.account(id) ?: return@post call.respond(HttpStatusCode.NotFound)
             launchResearch(id)
-            call.respond(HttpStatusCode.Accepted, mapOf("status" to "lancée"))
+            call.respond(HttpStatusCode.Accepted, mapOf("status" to ApiMessages.STARTED))
         }
 
         post("/contacts") {
@@ -112,9 +110,9 @@ class ApiRoutes(
             val contact = contactRepo.contact(call.parameters["id"]!!.toLong()) ?: return@post call.respond(HttpStatusCode.NotFound)
             when (val result = enrollContact(contact, call.receive<EnrollRequest>().offer, manual = true)) {
                 is EnrollContact.Result.Enrolled -> call.respond(HttpStatusCode.Created, mapOf("enrollmentId" to result.enrollmentId))
-                EnrollContact.Result.OptedOut -> throw IllegalArgumentException("Ce contact s'est opposé à la prospection")
-                EnrollContact.Result.AlreadyEnrolled -> throw IllegalArgumentException("Ce contact est déjà inscrit dans une séquence")
-                EnrollContact.Result.NoFit -> throw IllegalArgumentException("Le dossier conclut qu'aucune offre ne convient : choisir l'offre explicitement")
+                EnrollContact.Result.OptedOut -> throw IllegalArgumentException(ApiMessages.CONTACT_OPTED_OUT)
+                EnrollContact.Result.AlreadyEnrolled -> throw IllegalArgumentException(ApiMessages.CONTACT_ALREADY_ENROLLED)
+                EnrollContact.Result.NoFit -> throw IllegalArgumentException(ApiMessages.NO_FIT)
                 EnrollContact.Result.NoSequence -> error("aucune séquence pour cette offre")
             }
         }
@@ -155,7 +153,7 @@ class ApiRoutes(
             when (val result = decideDraft.approve(call.parameters["id"]!!.toLong(), req.subject, req.body)) {
                 DecideDraft.Result.Done -> call.respond(HttpStatusCode.OK, mapOf("status" to DraftStatus.APPROVED.name))
                 DecideDraft.Result.NotFound -> call.respond(HttpStatusCode.NotFound)
-                DecideDraft.Result.NotPending -> call.respond(HttpStatusCode.Conflict, mapOf("error" to NOT_PENDING))
+                DecideDraft.Result.NotPending -> call.respond(HttpStatusCode.Conflict, mapOf("error" to ApiMessages.DRAFT_NOT_PENDING))
                 is DecideDraft.Result.Violations -> call.respond(HttpStatusCode.UnprocessableEntity, result.messages)
             }
         }
@@ -164,7 +162,7 @@ class ApiRoutes(
             when (decideDraft.reject(call.parameters["id"]!!.toLong())) {
                 DecideDraft.Result.Done -> call.respond(HttpStatusCode.OK, mapOf("status" to DraftStatus.REJECTED.name))
                 DecideDraft.Result.NotFound -> call.respond(HttpStatusCode.NotFound)
-                else -> call.respond(HttpStatusCode.Conflict, mapOf("error" to NOT_PENDING))
+                else -> call.respond(HttpStatusCode.Conflict, mapOf("error" to ApiMessages.DRAFT_NOT_PENDING))
             }
         }
 
@@ -172,7 +170,7 @@ class ApiRoutes(
             when (completeTask(call.parameters["id"]!!.toLong())) {
                 CompleteTask.Result.DONE -> call.respond(HttpStatusCode.OK, mapOf("status" to DraftStatus.TASK_DONE.name))
                 CompleteTask.Result.NOT_FOUND -> call.respond(HttpStatusCode.NotFound)
-                CompleteTask.Result.NOT_A_PENDING_TASK -> call.respond(HttpStatusCode.Conflict, mapOf("error" to "cette tâche n'est plus à faire"))
+                CompleteTask.Result.NOT_A_PENDING_TASK -> call.respond(HttpStatusCode.Conflict, mapOf("error" to ApiMessages.TASK_NOT_PENDING))
             }
         }
 
@@ -208,9 +206,7 @@ class UnsubscribeRoutes(private val tokens: UnsubscribeTokens, private val unsub
         get("/u/{token}") {
             val ok = unsubscribe(call.parameters["token"]!!)
             call.respondText(
-                if (ok) "<!doctype html><meta charset=utf-8><title>Désinscription</title><body style='font-family:system-ui;max-width:32rem;margin:4rem auto'>" +
-                    "<h1>C'est fait.</h1><p>Vous ne recevrez plus de message de Doppio Lab. Désolé pour le dérangement.</p></body>"
-                else "Lien invalide.",
+                if (ok) ApiMessages.unsubscribeConfirmation() else ApiMessages.UNSUBSCRIBE_INVALID_LINK,
                 ContentType.Text.Html,
                 if (ok) HttpStatusCode.OK else HttpStatusCode.BadRequest,
             )

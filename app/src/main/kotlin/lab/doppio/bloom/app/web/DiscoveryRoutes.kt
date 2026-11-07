@@ -33,9 +33,9 @@ private val log = LoggerFactory.getLogger("DiscoveryRoutes")
 private val lenientJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
 private fun bookCsv(book: List<BookEntry>): String {
-    val lines = listOf("entreprise;nom;role;email;linkedin;statut;source") + book.flatMap { e ->
-        e.contacts.map { c -> listOf(e.name, c.contact.fullName, c.contact.role, c.contact.email.orEmpty(), c.contact.linkedinUrl.orEmpty(), "contact", c.contact.dataSource) } +
-            e.officers.map { o -> listOf(e.name, o.fullName, o.role, "", "", "suggestion", o.sourceUrl) }
+    val lines = listOf(ApiMessages.CSV_HEADER) + book.flatMap { e ->
+        e.contacts.map { c -> listOf(e.name, c.contact.fullName, c.contact.role, c.contact.email.orEmpty(), c.contact.linkedinUrl.orEmpty(), ApiMessages.CSV_STATUS_CONTACT, c.contact.dataSource) } +
+            e.officers.map { o -> listOf(e.name, o.fullName, o.role, "", "", ApiMessages.CSV_STATUS_SUGGESTION, o.sourceUrl) }
     }.map { cells -> cells.joinToString(";") { "\"" + it.replace("\"", "\"\"") + "\"" } }
     return "﻿" + lines.joinToString("\r\n")
 }
@@ -60,12 +60,12 @@ class DiscoveryRoutes(
 
         /** Lancer la découverte sans attendre la nuit. Elle tourne en tâche de fond (plusieurs minutes). */
         post("/discovery/run") {
-            if (runDiscovery.running) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to "déjà en cours"))
+            if (runDiscovery.running) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to ApiMessages.ALREADY_RUNNING))
             background.launch {
                 runCatching { runDiscovery(); researchBatch() }
                     .onFailure { log.error("Découverte manuelle en échec", it) }
             }
-            call.respond(HttpStatusCode.Accepted, mapOf("status" to "lancée"))
+            call.respond(HttpStatusCode.Accepted, mapOf("status" to ApiMessages.STARTED))
         }
 
         /** What the last discovery run found, per source, and what failed or is switched off. */
@@ -85,39 +85,39 @@ class DiscoveryRoutes(
             val added = addContact(account, AddContact.Request(req.fullName, req.role, req.email, req.linkedinUrl, req.enroll, req.fromRegistry))
             val contact = added.contact
             if (contact.email != null) {
-                return@post call.respond(HttpStatusCode.Created, NewContactResult(contact.id, added.enrolled, if (added.enrolled) "Séquence lancée" else "Contact ajouté"))
+                return@post call.respond(HttpStatusCode.Created, NewContactResult(contact.id, added.enrolled, if (added.enrolled) ApiMessages.SEQUENCE_STARTED else ApiMessages.CONTACT_ADDED))
             }
             val finder = findContactEmail
-                ?: return@post call.respond(HttpStatusCode.Created, NewContactResult(contact.id, false, "Contact ajouté. Ajoutez son email pour lancer la séquence."))
+                ?: return@post call.respond(HttpStatusCode.Created, NewContactResult(contact.id, false, ApiMessages.CONTACT_ADDED_NEEDS_EMAIL))
             // Recherche d'email en tâche de fond : Dropcontact répond en une à trois minutes
             background.launch {
                 runCatching { finder(contact, account, req.enroll) }.onFailure { log.warn("Dropcontact en échec pour le contact ${contact.id}", it) }
             }
-            call.respond(HttpStatusCode.Accepted, NewContactResult(contact.id, false, "Contact ajouté, recherche de l'email en cours"))
+            call.respond(HttpStatusCode.Accepted, NewContactResult(contact.id, false, ApiMessages.CONTACT_ADDED_SEARCHING_EMAIL))
         }
 
         /** Requests published on marketplaces, to answer on the platform. Never turned into email sequences. */
         get("/demands") { call.respond(discoveryState.openDemands()) }
 
         post("/demands/dismiss") {
-            if (!discoveryState.dismissDemand(call.receive<DismissDemand>().key)) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to "Demande introuvable"))
-            call.respond(HttpStatusCode.OK, mapOf("status" to "écartée"))
+            if (!discoveryState.dismissDemand(call.receive<DismissDemand>().key)) return@post call.respond(HttpStatusCode.NotFound, mapOf("error" to ApiMessages.DEMAND_NOT_FOUND))
+            call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.DEMAND_DISMISSED))
         }
 
         /** Blacklist an account: it leaves every list, its sequences stop, and discovery never brings it back. */
         post("/accounts/{id}/exclude") {
             val id = call.parameters["id"]!!.toLong()
-            val reason = runCatching { call.receive<ExcludeRequest>().reason }.getOrDefault("").ifBlank { "écarté à la main" }
+            val reason = runCatching { call.receive<ExcludeRequest>().reason }.getOrDefault("").ifBlank { ApiMessages.EXCLUDED_BY_HAND }
             accountRepo.excludeAccount(id, reason)
             eventRepo.logEvent(EventType.ACCOUNT_EXCLUDED, id)
-            call.respond(HttpStatusCode.OK, mapOf("status" to "écarté"))
+            call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.ACCOUNT_EXCLUDED))
         }
 
         post("/accounts/{id}/restore") {
             val id = call.parameters["id"]!!.toLong()
             accountRepo.restoreAccount(id)
             eventRepo.logEvent(EventType.ACCOUNT_RESTORED, id)
-            call.respond(HttpStatusCode.OK, mapOf("status" to "réintégré"))
+            call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.ACCOUNT_RESTORED))
         }
 
         get("/blacklist") { call.respond(accountRepo.blacklist()) }
@@ -125,15 +125,15 @@ class DiscoveryRoutes(
         /** Block a company by name, before or after discovery found it. */
         post("/blacklist") {
             val req = call.receive<BlockRequest>()
-            require(CompanyNames.normalize(req.name).isNotEmpty()) { "Nom obligatoire" }
+            require(CompanyNames.normalize(req.name).isNotEmpty()) { ApiMessages.NAME_REQUIRED }
             val accountId = accountRepo.blockName(req.name, req.reason?.trim()?.takeIf { it.isNotEmpty() })
             if (accountId != null) eventRepo.logEvent(EventType.ACCOUNT_EXCLUDED, accountId)
-            call.respond(HttpStatusCode.Created, mapOf("status" to "ajouté"))
+            call.respond(HttpStatusCode.Created, mapOf("status" to ApiMessages.NAME_BLOCKED))
         }
 
         post("/blacklist/{id}/remove") {
             accountRepo.unblockName(call.parameters["id"]!!.toLong())
-            call.respond(HttpStatusCode.OK, mapOf("status" to "retiré"))
+            call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.NAME_UNBLOCKED))
         }
 
         /**
@@ -143,7 +143,7 @@ class DiscoveryRoutes(
         get("/book") { call.respond(contactBook()) }
 
         get("/book.csv") {
-            call.response.headers.append("Content-Disposition", "attachment; filename=\"carnet-bloom.csv\"")
+            call.response.headers.append("Content-Disposition", "attachment; filename=\"${ApiMessages.CSV_FILE_NAME}\"")
             call.respondText(bookCsv(contactBook()), ContentType.Text.CSV)
         }
 

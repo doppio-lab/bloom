@@ -35,6 +35,7 @@ import lab.doppio.bloom.app.config.DotEnv
 import lab.doppio.bloom.app.di.LOOPS
 import lab.doppio.bloom.app.di.bloomModules
 import lab.doppio.bloom.app.outreach.Scheduler
+import lab.doppio.bloom.app.web.ApiMessages
 import lab.doppio.bloom.app.web.ApiRoutes
 import lab.doppio.bloom.app.web.CrossSiteGuard
 import lab.doppio.bloom.app.web.DiscoveryRoutes
@@ -106,7 +107,7 @@ fun Application.module() {
         exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }
         exception<Throwable> { call, e ->
             this@module.environment.log.error("Erreur", e)
-            call.respond(HttpStatusCode.InternalServerError, mapOf("error" to "erreur interne"))
+            call.respond(HttpStatusCode.InternalServerError, mapOf("error" to ApiMessages.INTERNAL_ERROR))
         }
     }
     val adminPassword = get<BloomConfig>().server.adminPassword.toByteArray()
