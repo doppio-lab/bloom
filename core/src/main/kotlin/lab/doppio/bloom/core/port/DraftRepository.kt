@@ -39,7 +39,7 @@ interface DraftRepository {
      * SMTP refused the message. It goes back to the queue after a growing delay (15, 30 min...) so the
      * other emails keep going out, and becomes FAILED after [maxAttempts]. Returns the new status.
      */
-    suspend fun recordSendFailure(id: Long, error: String, now: Instant? = null, maxAttempts: Int = 3): DraftStatus
+    suspend fun recordSendFailure(id: Long, error: String, now: Instant? = null, maxAttempts: Int = MAX_SEND_ATTEMPTS): DraftStatus
 
     /**
      * At startup: drafts still SENDING were interrupted mid-send. Whether they left is unknown, so they are
@@ -52,4 +52,12 @@ interface DraftRepository {
     suspend fun lastSentAt(mailbox: String): Instant?
 
     suspend fun enrollmentByMessageId(messageId: String): Long?
+
+    companion object {
+        /** SMTP attempts before a draft becomes FAILED. */
+        const val MAX_SEND_ATTEMPTS = 3
+
+        /** Retry delay grows by this step per failed attempt (15, 30 min...). */
+        const val RETRY_STEP_MINUTES = 15L
+    }
 }

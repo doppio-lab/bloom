@@ -9,6 +9,7 @@ import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.ImportPayload
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.port.AccountRepository
@@ -36,7 +37,7 @@ class ImportAccounts(
         val rows = Csv.parse(csv)
         var created = 0; var updated = 0; var contacts = 0
         val errors = mutableListOf<String>()
-        val knownSlugs = accountRepo.accountsByScore(5000).map { CompanyNames.normalize(it.account.name) }.toMutableSet()
+        val knownSlugs = accountRepo.accountsByScore(Limits.IMPORT_KNOWN_ACCOUNTS).map { CompanyNames.normalize(it.account.name) }.toMutableSet()
         rows.forEachIndexed { i, r ->
             val line = i + 2
             val name = r["name"].orEmpty()

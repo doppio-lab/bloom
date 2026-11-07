@@ -71,7 +71,7 @@ class PlanDrafts(
                         throw ex
                     } catch (ex: Exception) {
                         val failures = (writerBackoff[key]?.first ?: 0) + 1
-                        val wait = minOf(10L shl (failures - 1).coerceAtMost(8), 24 * 60L)
+                        val wait = minOf(WRITER_BACKOFF_BASE_MINUTES shl (failures - 1).coerceAtMost(WRITER_BACKOFF_MAX_DOUBLINGS), WRITER_BACKOFF_MAX_MINUTES)
                         writerBackoff[key] = failures to now.plus(wait, ChronoUnit.MINUTES)
                         log.warn("Brouillon impossible pour l'inscription ${e.id} ($failures échec(s), nouvel essai dans $wait min)", ex)
                     }
@@ -84,5 +84,14 @@ class PlanDrafts(
 
     private companion object {
         const val MAX_REJECTIONS_PER_STEP = 3
+
+        /** First wait after a writer failure; it doubles on every further failure. */
+        const val WRITER_BACKOFF_BASE_MINUTES = 10L
+
+        /** The wait never exceeds one day. */
+        const val WRITER_BACKOFF_MAX_MINUTES = 24 * 60L
+
+        /** Stops doubling here: 10 minutes shifted 8 times already exceeds the cap, and the shift cannot overflow. */
+        const val WRITER_BACKOFF_MAX_DOUBLINGS = 8
     }
 }

@@ -55,8 +55,6 @@ object MessageGuard {
 
     private val ambiguousNames = setOf("routine", "proton")
 
-    /** Nombres toujours autorisés : durées des offres, petits entiers de langage courant. */
-    private val alwaysAllowedNumbers = setOf("1", "2", "3", "15", "20", "30")
     private val digitRun = Regex("""\d+""")
 
     /**
@@ -93,17 +91,19 @@ object MessageGuard {
         val words = plain.split(Regex("\\s+")).count { it.isNotBlank() }
         when (input.channel) {
             Channel.EMAIL -> {
-                val max = if (input.stepIndex == 0) 120 else 80
+                val max = if (input.stepIndex == 0) GuardLimits.FIRST_EMAIL_WORDS else GuardLimits.FOLLOW_UP_WORDS
                 if (words > max) v += Violation("longueur", Severity.BLOCK, "$words mots, maximum $max pour cette étape")
                 val subjectWords = input.subject?.split(" ")?.count { it.isNotBlank() } ?: 0
                 if (input.subject.isNullOrBlank()) v += Violation("objet", Severity.BLOCK, "objet manquant")
-                if (subjectWords > 7) v += Violation("objet", Severity.WARN, "objet de $subjectWords mots, viser 2 à 6")
+                if (subjectWords > GuardLimits.SUBJECT_WARN_ABOVE) {
+                    v += Violation("objet", Severity.WARN, "objet de $subjectWords mots, viser ${GuardLimits.SUBJECT_MIN_WORDS} à ${GuardLimits.SUBJECT_MAX_WORDS}")
+                }
                 if (input.subject?.trim()?.lowercase()?.startsWith("re:") == true) {
                     v += Violation("objet", Severity.BLOCK, "faux « Re: » interdit")
                 }
             }
-            Channel.LINKEDIN -> if (plain.length > 300) {
-                v += Violation("longueur", Severity.BLOCK, "${plain.length} caractères, maximum 300 pour une note LinkedIn")
+            Channel.LINKEDIN -> if (plain.length > GuardLimits.LINKEDIN_CHARS) {
+                v += Violation("longueur", Severity.BLOCK, "${plain.length} caractères, maximum ${GuardLimits.LINKEDIN_CHARS} pour une note LinkedIn")
             }
             Channel.PHONE -> {}
         }
@@ -133,7 +133,7 @@ object MessageGuard {
         val written = numberRegex.findAll(plain).map { it.value.normalizeNumber() } +
             numberWordRegex.findAll(plain.lowercase()).map { numberWords.getValue(it.value) }
         written.distinct()
-            .filter { it !in alwaysAllowedNumbers && it !in knownNumbers }
+            .filter { it !in GuardLimits.ALWAYS_ALLOWED_NUMBERS && it !in knownNumbers }
             .forEach { v += Violation("chiffre-non-sourcé", Severity.BLOCK, "« $it » n'apparaît dans aucun fait cité") }
 
         // 5. Références clients : seulement celles qui ont une raison d'être citées
@@ -167,7 +167,7 @@ object MessageGuard {
         if (input.channel == Channel.EMAIL && plain.count { it == '?' } == 0) {
             v += Violation("appel-à-l'action", Severity.WARN, "aucune question : terminer par une demande simple")
         }
-        if (plain.count { it == '?' } > 2) {
+        if (plain.count { it == '?' } > GuardLimits.MAX_QUESTIONS) {
             v += Violation("appel-à-l'action", Severity.WARN, "trop de questions, en garder une")
         }
         return v

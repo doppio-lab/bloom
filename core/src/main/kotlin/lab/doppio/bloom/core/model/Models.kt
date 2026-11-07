@@ -231,7 +231,7 @@ data class Deal(
 /** Fenêtre d'envoi et plafonds, configurables. Valeurs par défaut prudentes pour la délivrabilité. */
 @Serializable
 data class SendingPolicy(
-    val timezone: String = "Europe/Paris",
+    val timezone: String = BloomTime.PARIS_ID,
     val days: Set<Int> = setOf(2, 3, 4), // mardi, mercredi, jeudi (ISO : lundi = 1)
     val startHour: Int = 8,
     val startMinute: Int = 30,

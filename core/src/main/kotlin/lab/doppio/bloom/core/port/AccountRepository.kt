@@ -3,6 +3,7 @@ package lab.doppio.bloom.core.port
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.scoring.ScoreBreakdown
+import lab.doppio.bloom.core.scoring.ScoreTiers
 
 /** Accounts, their stored score, and the blacklist (excluded accounts and blocked names). */
 interface AccountRepository {
@@ -20,7 +21,7 @@ interface AccountRepository {
     suspend fun accountsByScore(limit: Int = 200): List<AccountRow>
 
     /** Comptes intéressants (score >= 45) à qui il manque la personne à contacter. */
-    suspend fun accountsToComplete(minScore: Int = 45, limit: Int = 30): List<AccountRow>
+    suspend fun accountsToComplete(minScore: Int = ScoreTiers.NURTURE, limit: Int = 30): List<AccountRow>
 
     suspend fun saveScore(s: ScoreBreakdown)
 

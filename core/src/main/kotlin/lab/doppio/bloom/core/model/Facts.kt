@@ -8,11 +8,11 @@ import java.time.Instant
 object FactIds {
     fun of(sourceUrl: String, statement: String): String =
         MessageDigest.getInstance("SHA-1").digest("$sourceUrl|$statement".toByteArray())
-            .joinToString("") { "%02x".format(it) }.take(8)
+            .joinToString("") { "%02x".format(it) }.take(Limits.FACT_ID_CHARS)
 }
 
 fun fact(accountId: AccountId, kind: FactKind, statement: String, sourceUrl: String, excerpt: String? = null, at: Instant = Instant.now()) =
-    Fact(FactIds.of(sourceUrl, statement), accountId, kind, statement, sourceUrl, at.toString(), excerpt?.take(500))
+    Fact(FactIds.of(sourceUrl, statement), accountId, kind, statement, sourceUrl, at.toString(), excerpt?.take(Limits.FACT_EXCERPT_CHARS))
 
 data class AppMeta(val appId: Long, val name: String, val sellerName: String?, val sellerUrl: String?, val genreId: Int?)
 

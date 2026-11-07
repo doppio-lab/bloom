@@ -84,6 +84,15 @@ object Scoring {
         Sector.PRODUCTIVITY_SAAS, Sector.MUSIC_MEDIA, Sector.MOBILITY_TRANSPORT, Sector.PRIVACY,
     )
 
+    /** Intent part of the score: the signals add up to at most this. */
+    const val INTENT_CAP = 50.0
+
+    /** A signal worth less than this many points after decay is ignored. */
+    const val MIN_SIGNAL_POINTS = 0.5
+
+    /** Points of a warm path (former client, alumni of a client, recommendation). */
+    const val WARM_PATH_POINTS = 10
+
     /** Fit points taken off when a sourced fact shows the company builds on Flutter or React Native, which Doppio does not do. */
     const val CROSS_PLATFORM_PENALTY = 20
 
@@ -100,28 +109,34 @@ object Scoring {
 
     fun fit(account: Account, reasons: MutableList<String>, facts: List<Fact> = emptyList()): Int {
         var fit = 0
+        fun add(points: Int, reason: String) {
+            fit += points; reasons += "+$points $reason"
+        }
         if (account.iosAppId != null || account.androidPackage != null) {
-            fit += 12; reasons += "+12 app mobile en production"
+            add(FitRules.MOBILE_APP, "app mobile en production")
         }
         if (account.iosAppId != null && account.androidPackage != null) {
-            fit += 4; reasons += "+4 présent sur les deux stores (terrain KMP)"
+            add(FitRules.BOTH_STORES, "présent sur les deux stores (terrain KMP)")
         }
         when (account.headcount) {
             null -> {}
-            in 0..14 -> { fit += 2; reasons += "+2 moins de 15 personnes (budget incertain)" }
-            in 15..49 -> { fit += 8; reasons += "+8 15 à 49 personnes" }
-            in 50..499 -> { fit += 12; reasons += "+12 50 à 499 personnes (cœur de cible)" }
-            else -> { fit += 9; reasons += "+9 500+ personnes (cycle long, achats)" }
+            in 0..FitRules.MICRO_MAX_HEADCOUNT ->
+                add(FitRules.MICRO_POINTS, "moins de ${FitRules.MICRO_MAX_HEADCOUNT + 1} personnes (budget incertain)")
+            in FitRules.MICRO_MAX_HEADCOUNT + 1..FitRules.SMALL_MAX_HEADCOUNT ->
+                add(FitRules.SMALL_POINTS, "${FitRules.MICRO_MAX_HEADCOUNT + 1} à ${FitRules.SMALL_MAX_HEADCOUNT} personnes")
+            in FitRules.SMALL_MAX_HEADCOUNT + 1..FitRules.MID_MAX_HEADCOUNT ->
+                add(FitRules.MID_POINTS, "${FitRules.SMALL_MAX_HEADCOUNT + 1} à ${FitRules.MID_MAX_HEADCOUNT} personnes (cœur de cible)")
+            else -> add(FitRules.LARGE_POINTS, "${FitRules.MID_MAX_HEADCOUNT + 1}+ personnes (cycle long, achats)")
         }
         if (hasDirectReference(account, facts)) {
-            fit += 8; reasons += "+8 secteur où Doppio a une référence directe"
+            add(FitRules.CORE_SECTOR, "secteur où Doppio a une référence directe")
         }
         when (account.market) {
-            Market.FR -> { fit += 4; reasons += "+4 marché France" }
-            Market.EU, Market.UK -> { fit += 2; reasons += "+2 marché Europe" }
+            Market.FR -> add(FitRules.MARKET_FR, "marché France")
+            Market.EU, Market.UK -> add(FitRules.MARKET_EUROPE, "marché Europe")
             else -> {}
         }
-        fit = fit.coerceAtMost(40)
+        fit = fit.coerceAtMost(FitRules.CAP)
         // Evidence comes from a sourced fact only, never from a guess about the stack
         facts.firstOrNull(HiringRules::isCrossPlatformEvidence)?.let { evidence ->
             val taken = minOf(CROSS_PLATFORM_PENALTY, fit)
@@ -153,16 +168,16 @@ object Scoring {
                 val rule = rules.getValue(type)
                 list.maxOf { rule.weight * it.strength.coerceIn(0.0, 1.0) * decay(Instant.parse(it.observedAt), now, rule.halfLifeDays) }
             }
-            .filterValues { it >= 0.5 }
+            .filterValues { it >= MIN_SIGNAL_POINTS }
 
         val intentRaw = bestByType.values.sum()
-        val intent = intentRaw.coerceAtMost(50.0).roundToInt()
+        val intent = intentRaw.coerceAtMost(INTENT_CAP).roundToInt()
         bestByType.entries.sortedByDescending { it.value }.forEach { (type, v) ->
             reasons += "+${v.roundToInt()} signal ${type.name.lowercase()}"
         }
 
-        val warm = if (account.warmPath != null) 10 else 0
-        if (warm > 0) reasons += "+10 lien chaud : ${account.warmPath}"
+        val warm = if (account.warmPath != null) WARM_PATH_POINTS else 0
+        if (warm > 0) reasons += "+$WARM_PATH_POINTS lien chaud : ${account.warmPath}"
 
         val recommended = bestByType.maxByOrNull { it.value }?.key?.let { offerBySignal[it] }
 
@@ -179,10 +194,10 @@ object Scoring {
         )
     }
 
-    /** Seuils d'action. Sous 45, on surveille ; au-dessus de 65, on écrit cette semaine. */
+    /** Seuils d'action ([ScoreTiers]). Sous le seuil de suivi, on surveille ; au-dessus du seuil prioritaire, on écrit cette semaine. */
     fun tier(total: Int): Tier = when {
-        total >= 65 -> Tier.ACT_NOW
-        total >= 45 -> Tier.NURTURE
+        total >= ScoreTiers.PRIORITY -> Tier.ACT_NOW
+        total >= ScoreTiers.NURTURE -> Tier.NURTURE
         else -> Tier.WATCH
     }
 

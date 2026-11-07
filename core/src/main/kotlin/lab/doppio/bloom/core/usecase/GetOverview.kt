@@ -9,8 +9,9 @@ import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EventType
-import lab.doppio.bloom.core.model.SignalType
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.model.SendingPolicy
+import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.AccountRow
 import lab.doppio.bloom.core.port.AgentRunRepository
@@ -82,11 +83,11 @@ class GetOverview(
                 tasks = draftRepo.draftsByStatus(DraftStatus.APPROVED).count { it.channel != Channel.EMAIL },
                 openReplies = replyRepo.countOpenReplies().toInt(),
                 toComplete = accountRepo.accountsToComplete().size,
-                discoveredThisWeek = eventRepo.countEvents(EventType.ACCOUNT_DISCOVERED, clock.instant().minus(7, ChronoUnit.DAYS)),
+                discoveredThisWeek = eventRepo.countEvents(EventType.ACCOUNT_DISCOVERED, clock.instant().minus(Limits.WEEK_DAYS, ChronoUnit.DAYS)),
             ),
             pipeline = DealStage.entries.map { s -> deals.filter { it.stage == s }.let { StageRow(s, it.size, it.sumOf { d -> d.amountEur }) } },
-            accounts = accountRepo.accountsByScore(50),
-            agents = agentRunRepo.agentStats(clock.instant().minus(7, ChronoUnit.DAYS)).map { AgentRow(it.agent, it.runs, it.failures, it.inputTokens, it.outputTokens, it.avgMs) },
+            accounts = accountRepo.accountsByScore(Limits.OVERVIEW_ACCOUNTS),
+            agents = agentRunRepo.agentStats(clock.instant().minus(Limits.WEEK_DAYS, ChronoUnit.DAYS)).map { AgentRow(it.agent, it.runs, it.failures, it.inputTokens, it.outputTokens, it.avgMs) },
             dryRun = dryRun,
             bySignal = conversionBySignal(),
             activity = activity(),
@@ -110,7 +111,7 @@ class GetOverview(
 
     /** Réponses positives par signal dominant des comptes contactés, sur 90 jours. */
     private suspend fun conversionBySignal(): List<SignalRow> {
-        val events = eventRepo.eventsSince(clock.instant().minus(90, ChronoUnit.DAYS))
+        val events = eventRepo.eventsSince(clock.instant().minus(Limits.REPLY_RATE_DAYS, ChronoUnit.DAYS))
         val sent = events.filter { it.first == EventType.EMAIL_SENT }.mapNotNull { it.second }.toSet()
         val positive = events.filter { it.first == EventType.REPLY_POSITIVE }.mapNotNull { it.second }.toSet()
         return sent.groupBy { factRepo.dominantSignal(it) }

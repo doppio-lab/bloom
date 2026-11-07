@@ -8,6 +8,7 @@ import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.currentReviewIssues
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.AccountRow
@@ -16,6 +17,7 @@ import lab.doppio.bloom.core.port.FactRepository
 import lab.doppio.bloom.core.port.OfficerRepository
 import lab.doppio.bloom.core.port.OfficerRow
 import lab.doppio.bloom.core.port.SequenceRepository
+import lab.doppio.bloom.core.scoring.ScoreTiers
 import lab.doppio.bloom.core.scoring.Scoring
 
 @Serializable data class PeopleSearch(val role: String, val url: String)
@@ -45,8 +47,8 @@ class ContactBook(
         val officers = officerRepo.officersByAccount()
         val enrolled = sequenceRepo.activeEnrollments().map { it.contactId }.toSet()
         val entries = mutableListOf<BookEntry>()
-        for (row in accountRepo.accountsByScore(500)) {
-            if (entries.size == 150) break
+        for (row in accountRepo.accountsByScore(Limits.ALL_ACCOUNTS)) {
+            if (entries.size == Limits.CONTACT_BOOK_ENTRIES) break
             val id = row.account.id
             val dossier = factRepo.dossier(id)
             // An account the researcher found no offer for is left out, unless someone already put a contact on it
@@ -90,7 +92,7 @@ class ListToComplete(
                     .let { rank ->
                         // Review themes have their own block (issues): they would only repeat the complaints fact here
                         val current = all.latestPerTopic().filter { it.kind != FactKind.APP_REVIEW_ISSUE && it.kind != FactKind.APP_REVIEW_QUOTE }.map { it.id }.toSet()
-                        all.filter { it.id in current }.sortedBy { rank[it.id] ?: Int.MAX_VALUE }.take(3)
+                        all.filter { it.id in current }.sortedBy { rank[it.id] ?: Int.MAX_VALUE }.take(Limits.FACTS_PER_ACCOUNT_TO_COMPLETE)
                     },
                 issues = all.currentReviewIssues(),
             )

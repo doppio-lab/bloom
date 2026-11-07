@@ -28,6 +28,9 @@ sealed interface NextAction {
 
 object SequenceEngine {
 
+    /** How many days ahead the sending slot search looks before giving up (a policy with no allowed day never matches). */
+    const val SLOT_SEARCH_DAYS = 30
+
     fun next(enrollment: Enrollment, sequence: Sequence, policy: SendingPolicy, now: Instant): NextAction {
         if (enrollment.status != EnrollmentStatus.ACTIVE) return NextAction.Finish(enrollment.status)
         val step = sequence.steps.getOrNull(enrollment.nextStep)
@@ -74,7 +77,7 @@ object SequenceEngine {
     fun nextSendingSlot(from: Instant, policy: SendingPolicy): Instant {
         val zone = ZoneId.of(policy.timezone)
         var t: ZonedDateTime = from.atZone(zone)
-        repeat(30) {
+        repeat(SLOT_SEARCH_DAYS) {
             val date = t.toLocalDate()
             val start = date.atTime(policy.startHour, policy.startMinute).atZone(zone)
             val end = date.atTime(policy.endHour, policy.endMinute).atZone(zone)
@@ -84,7 +87,7 @@ object SequenceEngine {
             }
             t = date.plusDays(1).atStartOfDay(zone)
         }
-        error("Aucun créneau d'envoi dans les 30 prochains jours : vérifier la SendingPolicy")
+        error("Aucun créneau d'envoi dans les $SLOT_SEARCH_DAYS prochains jours : vérifier la SendingPolicy")
     }
 
     fun inWindow(now: Instant, policy: SendingPolicy): Boolean = nextSendingSlot(now, policy) == now

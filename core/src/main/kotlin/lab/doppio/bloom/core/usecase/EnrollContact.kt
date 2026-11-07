@@ -3,6 +3,7 @@ package lab.doppio.bloom.core.usecase
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.EnrollmentStatus
 import lab.doppio.bloom.core.model.EventType
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.EventRepository
