@@ -1,0 +1,17 @@
+{
+ "total_count": 120,
+ "items": [
+  {
+   "login": "InsertKoinIO",
+   "type": "Organization"
+  },
+  {
+   "login": "ecole-hexagone",
+   "type": "Organization"
+  },
+  {
+   "login": "bots-garden",
+   "type": "Organization"
+  }
+ ]
+}

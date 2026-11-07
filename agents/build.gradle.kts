@@ -5,7 +5,6 @@ plugins {
 
 dependencies {
     api(project(":core"))
-    api(project(":data"))
     api(libs.koog.agents)
     testImplementation(kotlin("test"))
     testImplementation(libs.coroutines.test)

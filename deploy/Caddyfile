@@ -1,0 +1,23 @@
+# Public face of Bloom: only what an email recipient needs. The dashboard and the API stay on the tailnet.
+# No access log on purpose: unsubscribe tokens identify a contact (the app masks them in its own logs).
+{$PUBLIC_HOST} {
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+
+	# One-click unsubscribe (link in the footer, RFC 8058 POST from mail clients)
+	handle /u/* {
+		reverse_proxy app:8080
+	}
+
+	# External uptime probe
+	handle /health {
+		reverse_proxy app:8080
+	}
+
+	handle {
+		respond 404
+	}
+}

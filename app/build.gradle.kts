@@ -9,6 +9,8 @@ application {
 }
 
 dependencies {
+    implementation(project(":core"))
+    implementation(project(":data"))
     implementation(project(":agents"))
     implementation(libs.ktor.server.core)
     implementation(libs.ktor.server.netty)
@@ -16,10 +18,16 @@ dependencies {
     implementation(libs.ktor.server.auth)
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.status.pages)
+    implementation(libs.ktor.server.rate.limit)
     implementation(libs.ktor.serialization.json)
+    implementation(libs.koin.ktor)
+    implementation(libs.koin.slf4j)
     implementation(libs.angus.mail)
     implementation(libs.jsoup)
     implementation(libs.logback)
     testImplementation(kotlin("test"))
     testImplementation(libs.ktor.server.test.host)
+    testImplementation(libs.koin.test)
+    testImplementation(libs.koin.test.junit5)
+    testImplementation(testFixtures(project(":core")))
 }

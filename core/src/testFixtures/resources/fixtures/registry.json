@@ -1,0 +1,50 @@
+{
+ "results": [
+  {
+   "siren": "824012173",
+   "nom_complet": "SWILE (SWILE)",
+   "tranche_effectif_salarie": "41",
+   "activite_principale": "66.19B",
+   "date_creation": "2016-11-24",
+   "dirigeants": [
+    {
+     "nom": "SOUBEYRAND",
+     "prenoms": "LOIC PAUL HUBERT",
+     "qualite": "Président de SAS",
+     "nationalite": null,
+     "type_dirigeant": "personne physique"
+    },
+    {
+     "siren": "438476913",
+     "denomination": "ERNST & YOUNG ET AUTRES",
+     "qualite": "Commissaire aux comptes titulaire",
+     "type_dirigeant": "personne morale"
+    },
+    {
+     "siren": "622022424",
+     "denomination": "INSTITUT FIDUCIAIRE D'EXPERTISE COMPTABLE - IFEC",
+     "qualite": "Commissaire aux comptes titulaire",
+     "type_dirigeant": "personne morale"
+    },
+    {
+     "nom": "DURAND (MARTIN)",
+     "prenoms": "ANNE-MARIE CLAIRE",
+     "qualite": "Administrateur",
+     "type_dirigeant": "personne physique"
+    },
+    {
+     "nom": "DURAND (MARTIN)",
+     "prenoms": "ANNE-MARIE CLAIRE",
+     "qualite": "Directeur général délégué",
+     "type_dirigeant": "personne physique"
+    },
+    {
+     "nom": "PETIT",
+     "prenoms": "JEAN",
+     "qualite": "Président du conseil de surveillance",
+     "type_dirigeant": "personne physique"
+    }
+   ]
+  }
+ ]
+}

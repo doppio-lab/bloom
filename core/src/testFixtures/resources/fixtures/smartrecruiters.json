@@ -1,0 +1,157 @@
+{
+ "offset": 0,
+ "limit": 3,
+ "totalFound": 339,
+ "content": [
+  {
+   "id": "744000154736845",
+   "name": "Développeur.euse de Communauté Senior - For Honor",
+   "uuid": "bbb2c959-96d1-4d9c-aa37-6f7680e416cf",
+   "jobAdId": "f236ba1e-fd20-423f-9105-e6b7a438ad4a",
+   "defaultJobAd": false,
+   "refNumber": "REF32113L",
+   "company": {
+    "identifier": "Ubisoft2",
+    "name": "Ubisoft"
+   },
+   "releasedDate": "2026-10-09T16:36:26.536Z",
+   "location": {
+    "city": "Montreal",
+    "region": "QC",
+    "country": "ca",
+    "remote": false,
+    "hybrid": false,
+    "latitude": "45.5018869",
+    "longitude": "-73.56739189999999",
+    "fullLocation": "Montreal, QC, Canada"
+   },
+   "industry": {
+    "id": "entertainment",
+    "label": "Entertainment"
+   },
+   "department": {
+    "id": "13847731",
+    "label": "Ubisoft"
+   },
+   "function": {
+    "id": "marketing",
+    "label": "Marketing"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "visibility": "PUBLIC",
+   "ref": "https://api.smartrecruiters.com/v1/companies/Ubisoft2/postings/744000154736845",
+   "language": {
+    "code": "fr-CA",
+    "label": "French (Canada)",
+    "labelNative": "français (Canada)"
+   }
+  },
+  {
+   "id": "744000154735996",
+   "name": "Sr Community Developer - For Honor",
+   "uuid": "1390201f-36c0-4d50-8ee2-d9a63c54e8d8",
+   "jobAdId": "b1a4aafd-6ca3-4a28-8ca2-c23a272d73c9",
+   "defaultJobAd": true,
+   "refNumber": "REF32113L",
+   "company": {
+    "identifier": "Ubisoft2",
+    "name": "Ubisoft"
+   },
+   "releasedDate": "2026-10-09T16:35:51.721Z",
+   "location": {
+    "city": "Montreal",
+    "region": "QC",
+    "country": "ca",
+    "remote": false,
+    "hybrid": false,
+    "latitude": "45.5018869",
+    "longitude": "-73.56739189999999",
+    "fullLocation": "Montreal, QC, Canada"
+   },
+   "industry": {
+    "id": "entertainment",
+    "label": "Entertainment"
+   },
+   "department": {
+    "id": "13847731",
+    "label": "Ubisoft"
+   },
+   "function": {
+    "id": "marketing",
+    "label": "Marketing"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "visibility": "PUBLIC",
+   "ref": "https://api.smartrecruiters.com/v1/companies/Ubisoft2/postings/744000154735996",
+   "language": {
+    "code": "en",
+    "label": "English",
+    "labelNative": "English (US)"
+   }
+  },
+  {
+   "id": "744000154717650",
+   "name": "Développeur.euse de Communauté Senior - Far Cry",
+   "uuid": "80428841-78d5-4c6d-bd47-f5f2bce46a09",
+   "jobAdId": "9abefb65-1dfc-4b48-adf1-209029efc6de",
+   "defaultJobAd": false,
+   "refNumber": "REF32101P",
+   "company": {
+    "identifier": "Ubisoft2",
+    "name": "Ubisoft"
+   },
+   "releasedDate": "2026-10-09T15:34:54.556Z",
+   "location": {
+    "city": "Montreal",
+    "region": "QC",
+    "country": "ca",
+    "remote": false,
+    "hybrid": false,
+    "latitude": "45.5018869",
+    "longitude": "-73.56739189999999",
+    "fullLocation": "Montreal, QC, Canada"
+   },
+   "industry": {
+    "id": "entertainment",
+    "label": "Entertainment"
+   },
+   "department": {
+    "id": "13847731",
+    "label": "Ubisoft"
+   },
+   "function": {
+    "id": "marketing",
+    "label": "Marketing"
+   },
+   "typeOfEmployment": {
+    "id": "permanent",
+    "label": "Full-time"
+   },
+   "experienceLevel": {
+    "id": "mid_senior_level",
+    "label": "Mid-Senior Level"
+   },
+   "visibility": "PUBLIC",
+   "ref": "https://api.smartrecruiters.com/v1/companies/Ubisoft2/postings/744000154717650",
+   "language": {
+    "code": "fr-CA",
+    "label": "French (Canada)",
+    "labelNative": "français (Canada)"
+   }
+  }
+ ]
+}

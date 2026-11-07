@@ -1,5 +1,9 @@
 package lab.doppio.bloom.agents
 
+import lab.doppio.bloom.core.port.AccountRepository
+import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.port.FactRepository
+import java.time.Clock
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
@@ -17,15 +21,14 @@ import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.scoring.ScoreBreakdown
 import lab.doppio.bloom.core.scoring.Scoring
-import lab.doppio.bloom.data.db.Dossier
-import lab.doppio.bloom.data.db.Repository
-import lab.doppio.bloom.data.sources.AppStoreSource
-import lab.doppio.bloom.data.sources.CompanyRegistrySource
-import lab.doppio.bloom.data.sources.FranceTravailSource
-import lab.doppio.bloom.data.sources.WebPageSource
-import lab.doppio.bloom.data.sources.fact
+import lab.doppio.bloom.core.model.Dossier
+import lab.doppio.bloom.core.model.fact
+import lab.doppio.bloom.core.port.AppStoreFacts
+import lab.doppio.bloom.core.port.CompanyRegistryFacts
+import lab.doppio.bloom.core.port.JobOfferFacts
+import lab.doppio.bloom.core.port.Researcher
+import lab.doppio.bloom.core.port.WebPages
 import org.slf4j.LoggerFactory
-import java.time.Instant
 
 /**
  * Agent de recherche, en trois temps :
@@ -36,23 +39,26 @@ import java.time.Instant
  */
 class ResearchAgent(
     private val llm: Llm,
-    private val repo: Repository,
+    private val accountRepo: AccountRepository,
+    private val eventRepo: EventRepository,
+    private val factRepo: FactRepository,
     private val tracker: RunTracker,
-    private val appStore: AppStoreSource,
-    private val registry: CompanyRegistrySource,
-    private val jobs: FranceTravailSource?,
-    private val web: WebPageSource,
-) {
+    private val appStore: AppStoreFacts,
+    private val registry: CompanyRegistryFacts,
+    private val jobs: JobOfferFacts?,
+    private val web: WebPages,
+    private val clock: Clock = Clock.systemDefaultZone(),
+) : Researcher {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    suspend fun research(accountId: Long): ScoreBreakdown {
-        val account = repo.account(accountId) ?: error("Compte $accountId introuvable")
+    override suspend fun research(accountId: Long): ScoreBreakdown {
+        val account = accountRepo.account(accountId) ?: error("Compte $accountId introuvable")
 
         // 1. Sources déterministes. Chaque source échoue isolément.
         val facts = mutableListOf<Fact>()
         val signals = mutableListOf<Signal>()
         account.iosAppId?.let { id ->
-            runCatching { appStore.analyze(account.id, id) }
+            runCatching { appStore.analyze(account.id, id, clock.instant()) }
                 .onSuccess { facts += it.facts; signals += it.signals }
                 .onFailure { log.warn("App Store indisponible pour ${account.name}", it) }
         }
@@ -60,43 +66,45 @@ class ResearchAgent(
             runCatching { registry.facts(account.id, siren) }.onSuccess { facts += it }.onFailure { log.warn("Annuaire indisponible", it) }
         }
         jobs?.let { j ->
-            runCatching { j.mobileJobs(account.id, account.name) }
+            runCatching { j.mobileJobs(account.id, account.name, clock.instant()) }
                 .onSuccess { facts += it.facts; signals += it.signals }
                 .onFailure { log.warn("France Travail indisponible", it) }
         }
-        repo.saveFacts(facts)
-        repo.saveSignals(signals)
+        factRepo.saveFacts(facts)
+        factRepo.saveSignals(signals)
 
         // 2. Exploration du site, outillée et vérifiée (seulement si le site est connu)
         val domain = account.domain
         if (domain != null) {
-            val siteTools = SiteResearchTools(account.id, domain, web)
+            val siteTools = SiteResearchTools(account.id, domain, web, clock)
             runCatching {
+                val tokens = TokenCounter()
                 val agent = AIAgent(
                     promptExecutor = llm.executor,
                     llmModel = llm.research,
                     systemPrompt = Prompts.researcher,
                     toolRegistry = ToolRegistry { tools(siteTools) },
                     maxIterations = 20,
+                    installFeatures = tokens.feature,
                 )
-                tracker.track("research-explore", account.id, llm.research) {
+                tracker.trackAgent("research-explore", account.id, llm.research, tokens) {
                     agent.run(
                         "Entreprise : ${account.name}, site https://$domain. " +
                             "Commence par la page d'accueil, puis cherche une page carrières et un blog tech.",
-                    ) to null
+                    )
                 }
             }.onFailure { log.warn("Exploration du site échouée pour ${account.name}", it) }
-            repo.saveFacts(siteTools.recorded)
-            repo.saveSignals(siteTools.signals)
+            factRepo.saveFacts(siteTools.recorded)
+            factRepo.saveSignals(siteTools.signals)
         }
 
         // 3. Synthèse
-        val allFacts = repo.factsOf(account.id)
+        val allFacts = factRepo.factsOf(account.id)
         if (allFacts.isNotEmpty()) synthesize(account, allFacts)
 
-        val score = Scoring.score(account, repo.signalsOf(account.id), Instant.now())
-        repo.saveScore(score)
-        repo.logEvent("ACCOUNT_RESEARCHED", accountId = account.id, payload = """{"score":${score.total}}""")
+        val score = Scoring.score(account, factRepo.signalsOf(account.id), clock.instant())
+        accountRepo.saveScore(score)
+        eventRepo.logEvent("ACCOUNT_RESEARCHED", accountId = account.id, payload = """{"score":${score.total}}""")
         return score
     }
 
@@ -138,36 +146,43 @@ class ResearchAgent(
             ).getOrThrow()
             r.data to r
         }
-        // Les hypothèses qui citent des faits inexistants sont écartées : pas d'hypothèse sans preuve.
-        val hypotheses = output.hypotheses
-            .filter { h -> h.factIds.isNotEmpty() && h.factIds.all { it in known } }
-            .map { h -> "${h.statement} " + h.factIds.joinToString(" ") { "[F:$it]" } }
+        val hypotheses = provenHypotheses(output.hypotheses, known.keys)
         val offer = Offer.entries.firstOrNull { it.name == output.offer.uppercase() }
-        repo.saveDossier(
+        factRepo.saveDossier(
             Dossier(
                 accountId = account.id,
                 summary = output.summary + (if (output.disqualifiers.isNotEmpty()) "\nÀ ne pas contacter si : " + output.disqualifiers.joinToString("; ") else ""),
                 hypotheses = hypotheses,
                 angle = output.angle,
                 offer = offer ?: Offer.DISCOVERY,
+                noFit = offer == null,
             ),
         )
-        if (offer == null) repo.logEvent("DOSSIER_NO_FIT", accountId = account.id)
+        if (offer == null) eventRepo.logEvent("DOSSIER_NO_FIT", accountId = account.id)
     }
 }
+
+/**
+ * Les hypothèses qui citent des faits inexistants sont écartées : pas d'hypothèse sans preuve.
+ * Les identifiants retenus deviennent des marqueurs [F:id].
+ */
+internal fun provenHypotheses(hypotheses: List<ResearchAgent.Hypothesis>, knownFactIds: Set<String>): List<String> =
+    hypotheses
+        .filter { h -> h.factIds.isNotEmpty() && h.factIds.all { it in knownFactIds } }
+        .map { h -> "${h.statement} " + h.factIds.joinToString(" ") { "[F:$it]" } }
 
 /**
  * Outils exposés à l'agent d'exploration. L'agent lit des pages et propose des citations ;
  * le code vérifie qu'elles existent mot pour mot avant d'en faire des faits.
  */
 @LLMDescription("Outils pour lire le site public d'une entreprise et enregistrer des citations vérifiées")
-class SiteResearchTools(private val accountId: Long, private val domain: String, private val web: WebPageSource) : ToolSet {
+class SiteResearchTools(private val accountId: Long, private val domain: String, private val web: WebPages, private val clock: Clock = Clock.systemDefaultZone()) : ToolSet {
     private val pages = mutableMapOf<String, String>()
     val recorded = mutableListOf<Fact>()
     val signals = mutableListOf<Signal>()
     private val maxPages = 6
 
-    private val sameSite = Regex("^https?://([a-z0-9-]+\\.)*${Regex.escape(domain)}(/.*)?$", RegexOption.IGNORE_CASE)
+    internal val sameSite = Regex("^https?://([a-z0-9-]+\\.)*${Regex.escape(domain)}(/.*)?$", RegexOption.IGNORE_CASE)
 
     @Tool
     @LLMDescription("Lit une page du site de l'entreprise et renvoie son texte visible (tronqué) et ses liens internes")
@@ -200,12 +215,12 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
         if (!page.replace(Regex("\\s+"), " ").contains(normalized, ignoreCase = true)) {
             return "Refusé : citation introuvable mot pour mot sur la page. Copie le texte exact."
         }
-        val f = fact(accountId, FactKind.WEB_PAGE, "$meaning (« $normalized »)", url, excerpt = normalized)
+        val f = fact(accountId, FactKind.WEB_PAGE, "$meaning (« $normalized »)", url, excerpt = normalized, at = clock.instant())
         recorded += f
         when (category.uppercase()) {
-            "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, 0.6, Instant.now().toString(), listOf(f.id))
-            "MOBILE_PROJECT" -> signals += Signal(accountId, SignalType.PRODUCT_LAUNCH, 0.6, Instant.now().toString(), listOf(f.id))
-            "APP_ISSUE" -> signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, 0.4, Instant.now().toString(), listOf(f.id))
+            "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, 0.6, clock.instant().toString(), listOf(f.id))
+            "MOBILE_PROJECT" -> signals += Signal(accountId, SignalType.PRODUCT_LAUNCH, 0.6, clock.instant().toString(), listOf(f.id))
+            "APP_ISSUE" -> signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, 0.4, clock.instant().toString(), listOf(f.id))
         }
         return "Enregistré sous l'identifiant ${f.id}."
     }

@@ -5,10 +5,9 @@ plugins {
 
 dependencies {
     api(project(":core"))
-    api(libs.exposed.core)
-    api(libs.exposed.jdbc)
-    api(libs.exposed.java.time)
-    implementation(libs.exposed.json)
+    implementation(libs.exposed.core)
+    implementation(libs.exposed.jdbc)
+    implementation(libs.exposed.java.time)
     implementation(libs.postgres)
     implementation(libs.hikari)
     implementation(libs.flyway.core)
@@ -20,5 +19,9 @@ dependencies {
     implementation(libs.jsoup)
     api(libs.coroutines.core)
     testImplementation(kotlin("test"))
-    testImplementation(libs.h2)
+    testImplementation(libs.testcontainers.postgresql)
+    testImplementation(libs.coroutines.test)
+    testImplementation(libs.ktor.client.mock)
+    testImplementation(testFixtures(project(":core")))
+    testRuntimeOnly(libs.logback)
 }

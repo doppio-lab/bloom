@@ -43,6 +43,16 @@ object CompanyNames {
         return shorter.length >= 4 && longer.startsWith(shorter)
     }
 
+    /**
+     * Queries to try on the company registry, most exact first. The registry finds nothing for
+     * "Finary SAS" or "Bankin' SAS", and a publisher such as "E.Leclerc - Infomil" names two companies.
+     */
+    fun registryQueries(name: String): List<String> {
+        val parts = name.split(Regex("\\s+[-–|/]\\s+")).map { it.trim() }.filter { it.length >= 3 }
+        return (listOf(name, tokens(name).joinToString(" ")) + parts.reversed() + parts.reversed().map { tokens(it).joinToString(" ") })
+            .map { it.trim() }.filter { it.length >= 3 }.distinct()
+    }
+
     fun domainOf(url: String?): String? {
         if (url.isNullOrBlank()) return null
         val host = url.trim().removePrefix("https://").removePrefix("http://").substringBefore('/').substringBefore('?').lowercase()

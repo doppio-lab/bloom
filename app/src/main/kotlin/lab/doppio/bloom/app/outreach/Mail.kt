@@ -7,19 +7,21 @@ import jakarta.mail.Multipart
 import jakarta.mail.Part
 import jakarta.mail.Session
 import jakarta.mail.Transport
+import jakarta.mail.UIDFolder
 import jakarta.mail.internet.InternetAddress
 import jakarta.mail.internet.MimeMessage
 import jakarta.mail.search.FlagTerm
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import lab.doppio.bloom.core.model.InboundMail
+import lab.doppio.bloom.core.model.Mailbox
+import lab.doppio.bloom.core.port.Inbox
+import lab.doppio.bloom.core.port.MailSender
 import org.slf4j.LoggerFactory
-import java.time.Instant
 import java.util.Properties
 import java.util.UUID
 import javax.crypto.Mac
 import javax.crypto.spec.SecretKeySpec
-
-data class Mailbox(val address: String, val password: String, val displayName: String)
 
 data class MailConfig(
     val smtpHost: String,
@@ -51,7 +53,7 @@ class UnsubscribeTokens(private val secret: String) {
     }
 }
 
-class EmailGateway(private val config: MailConfig, private val tokens: UnsubscribeTokens) {
+class EmailGateway(private val config: MailConfig, private val tokens: UnsubscribeTokens) : MailSender {
     private val log = LoggerFactory.getLogger(javaClass)
 
     private fun session(mailbox: Mailbox): Session = Session.getInstance(
@@ -73,11 +75,13 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
         else "\n\n--\n${config.legalFooterFr}\nPas intéressé ? Un clic et vous ne recevrez plus rien de notre part : $url"
     }
 
+    override fun newMessageId(mailbox: Mailbox): String = "<${UUID.randomUUID()}@${mailbox.address.substringAfter('@')}>"
+
     /**
      * Envoie un email texte brut (meilleure délivrabilité que du HTML en prospection, et pas de pixel de suivi).
      * Renvoie le Message-ID, qui sert à rattacher les réponses à l'inscription.
      */
-    suspend fun send(
+    override suspend fun send(
         mailbox: Mailbox,
         to: String,
         subject: String,
@@ -85,9 +89,8 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
         contactId: Long,
         language: String,
         inReplyTo: String?,
+        messageId: String,
     ): String = withContext(Dispatchers.IO) {
-        val domain = mailbox.address.substringAfter('@')
-        val messageId = "<${UUID.randomUUID()}@$domain>"
         val unsubscribeUrl = "${config.publicBaseUrl}/u/${tokens.tokenFor(contactId)}"
         val fullBody = body + footer(contactId, language)
 
@@ -114,47 +117,64 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
     }
 }
 
-data class InboundMail(
-    val mailbox: String,
-    val from: String,
-    val subject: String?,
-    val body: String,
-    val inReplyTo: List<String>,
-    val receivedAt: Instant,
-    val isBounce: Boolean,
-)
-
-/** Relève IMAP des boîtes d'envoi. Les messages lus sont marqués vus, rien n'est supprimé. */
-class ImapPoller(private val config: MailConfig) {
+/**
+ * Relève IMAP des boîtes d'envoi. Rien n'est supprimé. Un message n'est marqué vu qu'après traitement
+ * ([markSeen]) : s'il échoue, il sera relu à la passe suivante.
+ */
+class ImapPoller(private val config: MailConfig, private val clock: java.time.Clock = java.time.Clock.systemDefaultZone()) : Inbox {
     private val log = LoggerFactory.getLogger(javaClass)
+    private val messageIdPattern = Regex("<[^<>\\s@]+@[^<>\\s]+>")
 
-    suspend fun poll(): List<InboundMail> = withContext(Dispatchers.IO) {
+    override suspend fun poll(): List<InboundMail> = withContext(Dispatchers.IO) {
         if (config.dryRun) return@withContext emptyList()
         config.mailboxes.flatMap { mb ->
             runCatching { pollOne(mb) }.getOrElse { log.warn("IMAP en échec pour ${mb.address}", it); emptyList() }
         }
     }
 
-    private fun pollOne(mb: Mailbox): List<InboundMail> {
+    override suspend fun markSeen(mailboxAddress: String, uids: List<Long>) = withContext(Dispatchers.IO) {
+        if (uids.isEmpty()) return@withContext
+        val mb = config.mailboxes.firstOrNull { it.address == mailboxAddress } ?: return@withContext
+        withInbox(mb, Folder.READ_WRITE) { inbox ->
+            (inbox as UIDFolder).getMessagesByUID(uids.toLongArray()).filterNotNull().forEach { it.setFlag(Flags.Flag.SEEN, true) }
+        }
+    }
+
+    private fun <T> withInbox(mb: Mailbox, mode: Int, block: (Folder) -> T): T {
         val session = Session.getInstance(Properties().apply { put("mail.store.protocol", "imaps") })
         val store = session.getStore("imaps")
         store.connect(config.imapHost, mb.address, mb.password)
         try {
             val inbox = store.getFolder("INBOX")
-            inbox.open(Folder.READ_WRITE)
-            val unseen = inbox.search(FlagTerm(Flags(Flags.Flag.SEEN), false))
-            return unseen.map { m ->
-                val from = (m.from?.firstOrNull() as? InternetAddress)?.address ?: m.from?.firstOrNull()?.toString().orEmpty()
-                val refs = (m.getHeader("In-Reply-To").orEmpty() + m.getHeader("References").orEmpty())
-                    .flatMap { it.split(Regex("\\s+")) }.filter { it.startsWith("<") }
-                val bounce = from.contains("mailer-daemon", true) || from.contains("postmaster", true) ||
-                    (m.contentType?.contains("report-type=delivery-status", true) == true)
-                m.setFlag(Flags.Flag.SEEN, true)
-                InboundMail(mb.address, from, m.subject, textOf(m), refs, m.receivedDate?.toInstant() ?: Instant.now(), bounce)
-            }.also { inbox.close(false) }
+            inbox.open(mode)
+            return block(inbox).also { inbox.close(false) }
         } finally {
             store.close()
         }
+    }
+
+    private fun pollOne(mb: Mailbox): List<InboundMail> = withInbox(mb, Folder.READ_ONLY) { inbox ->
+        val uidFolder = inbox as UIDFolder
+        inbox.search(FlagTerm(Flags(Flags.Flag.SEEN), false)).map { m ->
+            val from = (m.from?.firstOrNull() as? InternetAddress)?.address ?: m.from?.firstOrNull()?.toString().orEmpty()
+            val refs = (m.getHeader("In-Reply-To")?.toList().orEmpty() + m.getHeader("References")?.toList().orEmpty())
+                .flatMap { it.split(Regex("\\s+")) }.filter { it.startsWith("<") }
+            val bounce = from.contains("mailer-daemon", true) || from.contains("postmaster", true) ||
+                (m.contentType?.contains("report-type=delivery-status", true) == true)
+            // A bounce rarely has In-Reply-To: the Message-ID of the original sits in the returned headers
+            val bounceRefs = if (bounce) messageIdPattern.findAll(raw(m)).map { it.value }.toList() else emptyList()
+            val uid = uidFolder.getUID(m)
+            val key = m.getHeader("Message-ID")?.firstOrNull()?.trim() ?: "${mb.address}/${uidFolder.uidValidity}/$uid"
+            InboundMail(mb.address, from, m.subject, textOf(m), (refs + bounceRefs).distinct(),
+                m.receivedDate?.toInstant() ?: clock.instant(), bounce, uid, key)
+        }
+    }
+
+    /** The whole message as text, capped: enough for the headers of a returned message. */
+    private fun raw(m: Message): String {
+        val out = java.io.ByteArrayOutputStream()
+        runCatching { m.writeTo(out) }
+        return out.toString(Charsets.UTF_8).take(200_000)
     }
 
     private fun textOf(p: Part): String = when {

@@ -1,0 +1,35 @@
+{
+ "total_count": 7,
+ "results": [
+  {
+   "idweb": "26-97978",
+   "objet": "Marché de Fournitures Courantes et Services pour l'installation, location et maintenance de quatre panneaux LED et développement d'une application mobile",
+   "dateparution": "2026-10-09",
+   "datelimitereponse": "2026-11-09T17:30:00+00:00",
+   "nomacheteur": "MAIRIE DE COUTRAS",
+   "nature": "APPEL_OFFRE",
+   "url_avis": "https://www.boamp.fr/pages/avis/?q=idweb:26-97978",
+   "famille_libelle": "Marchés entre 90 k€ et seuils européens"
+  },
+  {
+   "idweb": "26-93940",
+   "objet": "Réalisation, mise en service et garantie d'une application mobile touristique pour la vallée de l'Ubaye Serre Ponçon et d'un tableau de bord analytique connecté pour le pilotage du flux touristique.",
+   "dateparution": "2026-09-29",
+   "datelimitereponse": null,
+   "nomacheteur": "Communauté de Communes de la Vallée de l'Ubaye Serre Ponçon (04)",
+   "nature": "RECTIFICATIF",
+   "url_avis": "https://www.boamp.fr/pages/avis/?q=idweb:26-93940",
+   "famille_libelle": "Marchés entre 90 k€ et seuils européens"
+  },
+  {
+   "idweb": "26-92856",
+   "objet": "Réalisation, mise en service et garantie d'une application mobile touristique pour la vallée de l'Ubaye Serre Ponçon et d'un tableau de bord analytique connecté pour le pilotage du flux touristique.",
+   "dateparution": "2026-09-25",
+   "datelimitereponse": "2026-10-26T12:00:00+00:00",
+   "nomacheteur": "Communauté de Communes de la Vallée de l'Ubaye Serre Ponçon (04)",
+   "nature": "APPEL_OFFRE",
+   "url_avis": "https://www.boamp.fr/pages/avis/?q=idweb:26-92856",
+   "famille_libelle": "Marchés entre 90 k€ et seuils européens"
+  }
+ ]
+}

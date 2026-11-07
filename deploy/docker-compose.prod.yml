@@ -1,0 +1,73 @@
+# Production stack: one VPS, Tailscale for the dashboard, Caddy for the public unsubscribe links.
+# Run from /opt/bloom: BLOOM_TAG=<sha> ./deploy.sh
+name: bloom
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: 10m
+    max-file: "5"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bloom
+      POSTGRES_USER: ${DB_USER:-bloom}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD is required}
+    # No published port: only the app reaches the database
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-bloom}"]
+      interval: 5s
+      retries: 10
+    logging: *logging
+
+  app:
+    image: ghcr.io/doppio-lab/bloom:${BLOOM_TAG:?BLOOM_TAG is required}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: jdbc:postgresql://db:5432/bloom
+      # Read by the Gradle start script: leave room for Postgres and Caddy on a small VPS
+      JAVA_OPTS: -XX:MaxRAMPercentage=60
+    # Loopback only: tailscale serve publishes the dashboard on the tailnet, Caddy the public paths
+    ports:
+      - "127.0.0.1:8080:8080"
+    # The JVM gets time to stop the loops and release the database lock
+    stop_grace_period: 30s
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      # The JRE image ships no curl: bash opens the socket itself (/bin/sh is dash, without /dev/tcp)
+      test: ["CMD", "bash", "-c", "exec 3<>/dev/tcp/127.0.0.1/8080 && printf 'GET /health HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '^ok' <&3"]
+      interval: 30s
+      timeout: 5s
+      start_period: 60s
+      retries: 3
+    logging: *logging
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    environment:
+      PUBLIC_HOST: ${PUBLIC_HOST:?PUBLIC_HOST is required}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - app
+    logging: *logging
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:

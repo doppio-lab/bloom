@@ -1,243 +1,641 @@
+<!doctype html>
+<html lang="fr">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Doppio Bloom</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap">
+<script>
+// Applies the theme before first paint: the stored choice, otherwise the system setting.
+try { const t = localStorage.getItem("bloom-theme"); document.documentElement.classList.toggle("dark", t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches); } catch (_) {}
+</script>
 <style>
-/* Layout : cockpit à onglets. Résumé chiffré en tête, puis files de travail (valider, faire, répondre). */
+/* Thermos design system: neutral OKLCH palette, light on :root and dark on .dark. Values come from the
+   thermos/tokens files of the Claude Design project. Colour only comes through charts and semantic states. */
 :root {
-  --bg: #f3f4f6;
-  --surface: #ffffff;
-  --sunken: #e9ebef;
-  --ink: #16181d;
-  --muted: #5d6370;
-  --line: #d9dce3;
-  --accent: #6b3a22;          /* espresso */
-  --accent-soft: #f1e6df;
-  --good: #1f7a4d; --good-soft: #e1f2e9;
-  --warn: #9a6200; --warn-soft: #fbefd6;
-  --bad: #b3261e;  --bad-soft: #fbe3e1;
-  --info: #2f55b8; --info-soft: #e3e9fa;
-  --f-display: "Bricolage Grotesque", "Instrument Sans", system-ui, sans-serif;
-  --f-body: "Instrument Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
-  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
-  --r: 10px;
+  --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0); --popover: oklch(1 0 0); --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0); --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0); --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325); --success: oklch(0.627 0.17 149.2);
+  --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116); --chart-2: oklch(0.6 0.118 184.704); --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429); --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0); --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-accent: oklch(0.97 0 0); --sidebar-accent-foreground: oklch(0.205 0 0);
+  --stat-card-gradient: linear-gradient(to top, color-mix(in oklch, var(--primary) 5%, var(--card)), var(--card));
+  --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  --radius: 0.625rem; --radius-sm: calc(var(--radius) - 4px); --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius); --radius-xl: calc(var(--radius) + 4px);
+  --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --ring-focus: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent);
+  --sidebar-width: 18rem; --header-height: 3rem;
+  --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fafafa' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #121317; --surface: #1b1d22; --sunken: #23262c; --ink: #eceef2; --muted: #9aa0ac; --line: #30333a;
-  --accent: #e0a07c; --accent-soft: #3a2a21;
-  --good: #5fcf96; --good-soft: #17301f; --warn: #f0b54a; --warn-soft: #33290f;
-  --bad: #ff8a80; --bad-soft: #3a1a18; --info: #8fb0ff; --info-soft: #1d2640;
-  color-scheme: dark;
-} }
-:root[data-theme="dark"] {
-  --bg: #121317; --surface: #1b1d22; --sunken: #23262c; --ink: #eceef2; --muted: #9aa0ac; --line: #30333a;
-  --accent: #e0a07c; --accent-soft: #3a2a21;
-  --good: #5fcf96; --good-soft: #17301f; --warn: #f0b54a; --warn-soft: #33290f;
-  --bad: #ff8a80; --bad-soft: #3a1a18; --info: #8fb0ff; --info-soft: #1d2640;
+.dark {
+  --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0); --popover: oklch(0.205 0 0); --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0); --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0); --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216); --success: oklch(0.696 0.17 162.48);
+  --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%); --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376); --chart-2: oklch(0.696 0.17 162.48); --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9); --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0); --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0); --sidebar-accent-foreground: oklch(0.985 0 0);
+  --stat-card-gradient: var(--card);
+  --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23171717' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
   color-scheme: dark;
 }
-* { box-sizing: border-box; }
-body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--f-body); }
-.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 20px 48px; display: grid; gap: 20px; }
-header.top { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px 16px; }
-.brand { font: 700 1.5rem/1.1 var(--f-display); letter-spacing: -0.01em; }
-.brand span { color: var(--accent); }
-.meta { color: var(--muted); font-size: .85rem; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.pill { display: inline-flex; align-items: center; gap: 6px; border-radius: 999px; padding: 2px 10px; font: 600 .72rem/1.6 var(--f-body); letter-spacing: .04em; text-transform: uppercase; }
-.pill.dry { background: var(--warn-soft); color: var(--warn); }
-.pill.live { background: var(--good-soft); color: var(--good); }
-.pill.demo { background: var(--info-soft); color: var(--info); }
+*, *::before, *::after { box-sizing: border-box; border-color: var(--border); }
+html, body { margin: 0; }
+body { background: var(--sidebar); color: var(--foreground); font: 400 14px/20px var(--font-sans); -webkit-font-smoothing: antialiased; font-variant-numeric: tabular-nums; }
+a { color: var(--foreground); text-underline-offset: 4px; }
+a:hover { color: var(--muted-foreground); }
+:focus-visible { outline: none; box-shadow: var(--ring-focus); }
+[hidden] { display: none !important; }
+details > summary { list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+svg.i { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.muted { color: var(--muted-foreground); }
+.mono { font-family: var(--font-mono); font-weight: 500; }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { transition-duration: .01ms !important; } }
 
-nav.tabs { display: flex; gap: 4px; overflow-x: auto; border-bottom: 1px solid var(--line); }
-nav.tabs button { all: unset; cursor: pointer; padding: 10px 14px; font-weight: 600; color: var(--muted); border-bottom: 2px solid transparent; white-space: nowrap; }
-nav.tabs button[aria-selected="true"] { color: var(--ink); border-color: var(--accent); }
-nav.tabs button:focus-visible, .btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-nav.tabs .count { font: 600 .72rem var(--f-mono); background: var(--sunken); border-radius: 999px; padding: 1px 7px; margin-left: 6px; }
+/* Shell: inset layout. Full-page sidebar colour, 18rem sidebar, main panel 8 px off the edges. */
+.app { display: flex; min-height: 100vh; }
+.side { flex: none; width: var(--sidebar-width); position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--sidebar); color: var(--sidebar-foreground); }
+.side-scroll { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; scrollbar-width: none; }
+.nav { display: flex; flex-direction: column; gap: 4px; }
+.nav a, .brand { display: flex; align-items: center; gap: 8px; height: 32px; padding: 8px; border-radius: var(--radius-md); font-size: 14px; text-decoration: none; color: var(--sidebar-foreground); }
+.nav a:hover, .brand:hover, .nav a[aria-current="page"] { background: var(--sidebar-accent); color: var(--sidebar-accent-foreground); }
+.nav a[aria-current="page"] { font-weight: 500; }
+.nav a span:first-of-type { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nav .count { font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
+.brand b { font-size: 16px; font-weight: 600; }
+.brand span { font-size: 12px; color: var(--muted-foreground); }
+.quick { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
+.quick .btn.primary { flex: 1; min-width: 0; justify-content: flex-start; padding: 0 8px; }
+.nav-label { height: 32px; display: flex; align-items: center; padding: 0 8px; font-size: 12px; font-weight: 500; color: color-mix(in oklch, var(--sidebar-foreground) 70%, transparent); }
+.config { margin-top: auto; display: flex; flex-direction: column; }
+.side-user { display: flex; align-items: center; gap: 8px; height: 48px; padding: 8px; border-radius: var(--radius-md); }
+.side-user .avatar { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--muted); color: var(--foreground); font-size: 12px; font-weight: 500; }
+.side-user > span:last-child { flex: 1; min-width: 0; display: grid; line-height: 16px; }
+.side-user b { font-weight: 500; }
+.side-user small { font-size: 12px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.main { flex: 1; min-width: 0; min-height: calc(100vh - 16px); margin: 8px 8px 8px 0; display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--background); box-shadow: var(--shadow-sm); }
+.no-side .side { display: none; }
+.no-side .main { margin: 8px; }
+.scrim { display: none; }
+header.top { position: sticky; top: 0; z-index: 5; height: var(--header-height); flex: none; display: flex; align-items: center; gap: 8px; padding: 0 16px; border-bottom: 1px solid var(--border); background: var(--background); border-radius: var(--radius-xl) var(--radius-xl) 0 0; }
+header.top .sep { width: 1px; height: 16px; background: var(--border); margin-right: 8px; }
+header.top h1 { margin: 0; font-size: 16px; font-weight: 500; line-height: 24px; white-space: nowrap; }
+.top-actions { margin-left: auto; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.search-box { position: relative; display: flex; align-items: center; }
+.search-box svg { position: absolute; left: 10px; stroke: var(--muted-foreground); pointer-events: none; }
+.search-box input[type=text] { width: 220px; height: 32px; padding-left: 32px; }
+.content { display: flex; flex-direction: column; gap: 24px; padding: 24px; min-width: 0; }
+.view { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.narrow { max-width: 960px; }
 
-.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px; background: var(--line); border: 1px solid var(--line); border-radius: var(--r); overflow: hidden; }
-.kpi { background: var(--surface); padding: 14px 16px; display: grid; gap: 2px; }
-.kpi .label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
-.kpi .value { font: 600 1.6rem/1.2 var(--f-mono); font-variant-numeric: tabular-nums; }
-.kpi .sub { font-size: .8rem; color: var(--muted); }
-.kpi.bad .value { color: var(--bad); } .kpi.ok .value { color: var(--ink); }
+/* Below 900 px the sidebar is hidden by default and opens over the page; the header search goes below 640 px. */
+@media (max-width: 900px) {
+  .side { position: fixed; left: 0; top: 0; z-index: 30; box-shadow: var(--shadow-lg); }
+  .main { margin: 8px; }
+  .app:not(.no-side) .scrim { display: block; position: fixed; inset: 0; z-index: 25; background: rgb(0 0 0 / 0.4); }
+  .content { padding: 16px; }
+}
+@media (max-width: 640px) { .search-box { display: none; } }
 
-h2 { font: 700 1.1rem/1.3 var(--f-display); margin: 0; text-wrap: balance; }
-.section-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-.section-head p { margin: 0; color: var(--muted); font-size: .85rem; }
-.cols { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 20px; align-items: start; }
-@media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); } }
-.stack { display: grid; gap: 12px; min-width: 0; }
-
-.card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); padding: 16px; display: grid; gap: 10px; min-width: 0; }
-.card.blocked { border-left: 3px solid var(--bad); }
-.who { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; font-size: .85rem; color: var(--muted); }
-.who strong { color: var(--ink); font-weight: 600; }
-.chan { font: 600 .7rem var(--f-mono); letter-spacing: .05em; padding: 2px 8px; border-radius: 6px; background: var(--sunken); color: var(--muted); }
-.subject { font-weight: 600; }
-.body { white-space: pre-wrap; line-height: 1.55; overflow-wrap: anywhere; }
-.cite { font: 600 .68rem var(--f-mono); color: var(--accent); background: var(--accent-soft); border-radius: 4px; padding: 0 4px; cursor: pointer; vertical-align: 1px; border: 0; }
-.facts { display: grid; gap: 6px; font-size: .82rem; border-top: 1px dashed var(--line); padding-top: 8px; }
-.fact { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 8px; }
-.fact code { font: 600 .7rem var(--f-mono); color: var(--accent); }
-.fact a { color: var(--muted); }
-.fact.flash { background: var(--accent-soft); border-radius: 6px; }
-.guard { display: grid; gap: 4px; font-size: .8rem; }
-.guard .v { padding: 4px 8px; border-radius: 6px; }
-.guard .v.BLOCK { background: var(--bad-soft); color: var(--bad); }
-.guard .v.WARN { background: var(--warn-soft); color: var(--warn); }
-.why { font-size: .82rem; color: var(--muted); font-style: italic; }
-.actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.btn { font: 600 .85rem var(--f-body); border-radius: 8px; padding: 7px 14px; border: 1px solid var(--line); background: var(--surface); color: var(--ink); cursor: pointer; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
-.btn.ghost { border-color: transparent; color: var(--muted); }
-.btn:disabled { opacity: .45; cursor: not-allowed; }
-textarea, input[type=text] { width: 100%; font: inherit; color: var(--ink); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
-textarea { min-height: 160px; resize: vertical; }
-.empty { color: var(--muted); font-size: .9rem; padding: 14px; border: 1px dashed var(--line); border-radius: var(--r); }
-
-.intent { font: 600 .7rem var(--f-mono); padding: 2px 8px; border-radius: 6px; }
-.intent.pos { background: var(--good-soft); color: var(--good); }
-.intent.neu { background: var(--info-soft); color: var(--info); }
-.intent.neg { background: var(--bad-soft); color: var(--bad); }
-
-.table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); }
-table { border-collapse: collapse; width: 100%; min-width: 720px; font-size: .88rem; }
-th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
-th { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; background: var(--sunken); }
-tr:last-child td { border-bottom: 0; }
-.score { display: grid; grid-template-columns: 2.2em 1fr; align-items: center; gap: 8px; min-width: 120px; font: 600 .9rem var(--f-mono); font-variant-numeric: tabular-nums; }
-.bar { height: 6px; background: var(--sunken); border-radius: 3px; overflow: hidden; display: flex; }
-.bar i { display: block; height: 100%; }
-.bar .fit { background: var(--muted); } .bar .int { background: var(--accent); } .bar .warm { background: var(--good); }
-.tier { font: 600 .68rem var(--f-mono); padding: 1px 6px; border-radius: 4px; }
-.tier.ACT_NOW { background: var(--accent); color: var(--surface); }
-.tier.NURTURE { background: var(--accent-soft); color: var(--accent); }
-.tier.WATCH { background: var(--sunken); color: var(--muted); }
-.reasons { color: var(--muted); font-size: .8rem; }
-.legend { display: flex; gap: 14px; font-size: .78rem; color: var(--muted); flex-wrap: wrap; }
-.legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
-
-.funnel { display: grid; gap: 8px; }
-.stage { display: grid; grid-template-columns: 9em minmax(0, 1fr) 7em; gap: 10px; align-items: center; font-size: .88rem; }
-.stage .track { background: var(--sunken); border-radius: 4px; height: 26px; overflow: hidden; }
-.stage .fill { height: 100%; background: var(--accent); opacity: .85; display: flex; align-items: center; padding-left: 8px; color: var(--surface); font: 600 .78rem var(--f-mono); min-width: 2em; }
-.stage .amt { text-align: right; font: 600 .85rem var(--f-mono); font-variant-numeric: tabular-nums; }
-@media (max-width: 520px) { .stage { grid-template-columns: 6.5em minmax(0, 1fr) 5.5em; } }
-
-.health { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-.gauge { display: grid; gap: 6px; }
-.gauge .row { display: flex; justify-content: space-between; font-size: .88rem; }
-.gauge .row b { font: 600 .95rem var(--f-mono); }
-.gauge .track { position: relative; height: 8px; background: var(--sunken); border-radius: 4px; }
-.gauge .track i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; }
-.gauge .track .limit { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--ink); opacity: .5; }
-.gauge small { color: var(--muted); font-size: .76rem; }
-.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+/* Base components */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 12px; border-radius: var(--radius-md); border: 1px solid var(--border); background: var(--background); color: var(--foreground); box-shadow: var(--shadow-xs); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; text-decoration: none; transition: background 150ms; }
+.btn:hover:not(:disabled) { background: var(--accent); color: var(--foreground); }
+.btn.primary { border-color: transparent; background: var(--primary); color: var(--primary-foreground); }
+.btn.primary:hover:not(:disabled) { background: color-mix(in oklch, var(--primary) 90%, transparent); color: var(--primary-foreground); }
+.btn.ghost { border-color: transparent; background: transparent; box-shadow: none; }
+.btn.danger { color: var(--destructive); }
+.btn.danger:hover:not(:disabled) { color: var(--destructive); }
+.btn.destructive { border-color: transparent; background: var(--destructive); color: #fff; }
+.btn.destructive:hover:not(:disabled) { background: color-mix(in oklch, var(--destructive) 90%, transparent); color: #fff; }
+.btn.lg { height: 36px; padding: 8px 16px; }
+.btn.icon { width: 32px; padding: 0; }
+.btn.icon.sm { width: 28px; height: 28px; margin-left: -4px; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+/* On a phone a long label (LinkedIn searches) wraps inside its button instead of widening the page */
+@media (max-width: 480px) { .actions .btn { max-width: 100%; height: auto; min-height: 32px; padding-block: 5px; white-space: normal; text-align: left; } }
 .file-btn { position: relative; overflow: hidden; }
 .file-btn input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-.src-chip { font: 600 .68rem var(--f-mono); padding: 2px 7px; border-radius: 6px; background: var(--info-soft); color: var(--info); }
-.roles { display: flex; gap: 6px; flex-wrap: wrap; }
-.roles a { font-size: .8rem; text-decoration: none; }
-.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 8px; }
-.form-grid label { display: grid; gap: 3px; font-size: .75rem; color: var(--muted); font-weight: 600; }
-.mini-score { display: grid; grid-template-columns: 2.2em minmax(0, 1fr); gap: 8px; align-items: center; font: 600 .9rem var(--f-mono); max-width: 260px; }
-.toast { position: fixed; left: 50%; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--ink); color: var(--bg); padding: 8px 14px; border-radius: 8px; font-size: .85rem; }
-.note { font-size: .8rem; color: var(--muted); }
-@media (prefers-reduced-motion: no-preference) { .fact.flash { transition: background .6s; } }
+.link { all: unset; cursor: pointer; text-decoration: underline; text-underline-offset: 4px; color: var(--foreground); }
+.link:focus-visible { box-shadow: var(--ring-focus); }
+
+.badge { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; border-radius: var(--radius-md); border: 1px solid var(--border); padding: 2px 8px; font-size: 12px; line-height: 16px; font-weight: 500; color: var(--foreground); }
+.badge.soft { gap: 6px; color: var(--muted-foreground); }
+.badge.default { border-color: transparent; background: var(--primary); color: var(--primary-foreground); }
+.badge.secondary { border-color: transparent; background: var(--secondary); color: var(--secondary-foreground); }
+.sq, .dot { flex: none; width: 8px; height: 8px; border-radius: 2px; background: var(--muted-foreground); }
+.dot { border-radius: 9999px; }
+[data-family="store"] { --fam: var(--chart-1); } [data-family="hiring"] { --fam: var(--chart-2); } [data-family="legal"] { --fam: var(--chart-3); }
+[data-family="watch"] { --fam: var(--chart-4); } [data-family="demand"] { --fam: var(--chart-5); }
+.sq[data-family] { background: var(--fam); }
+
+.card { display: flex; flex-direction: column; gap: 16px; padding: 24px; border-radius: var(--radius-xl); border: 1px solid var(--border); background: var(--card); box-shadow: var(--shadow-xs); min-width: 0; }
+.card.padded-y { gap: 24px; padding: 24px 0; }
+.card.padded-y > * { padding: 0 24px; }
+.card.stat { background: var(--stat-card-gradient); }
+.card-head { display: grid; gap: 6px; }
+.card-title { font-weight: 600; font-size: 16px; line-height: 1; }
+h2.headline { margin: 0; font-size: 24px; line-height: 32px; font-weight: 600; letter-spacing: -0.025em; text-wrap: balance; }
+h2.headline:focus { outline: none; }
+.hero { display: grid; gap: 4px; }
+.hero p { margin: 0; max-width: 720px; color: var(--muted-foreground); text-wrap: pretty; }
+.section-head { display: grid; gap: 2px; }
+.section-head h3 { margin: 0; font-size: 16px; line-height: 24px; font-weight: 600; }
+.section-head span { color: var(--muted-foreground); }
+.row { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.stack { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.name { font-size: 16px; line-height: 24px; font-weight: 600; }
+.meta { font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+.note { margin: 0; color: var(--muted-foreground); text-wrap: pretty; }
+.panel { display: grid; gap: 8px; padding: 12px 16px; border-radius: var(--radius-lg); background: var(--muted); min-width: 0; }
+.panel .kind { font-size: 12px; line-height: 16px; font-weight: 500; color: var(--muted-foreground); }
+.panel a, .fact a, .person a { text-decoration: underline; }
+.empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 24px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius-xl); color: var(--muted-foreground); }
+.empty .ico { width: 40px; height: 40px; display: grid; place-items: center; border-radius: var(--radius-lg); background: var(--muted); color: var(--foreground); }
+.empty .ico svg { width: 20px; height: 20px; }
+.empty b { display: block; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--foreground); }
+.skeleton { display: grid; gap: 16px; }
+.skeleton div { border-radius: var(--radius-xl); background: var(--muted); }
+
+/* Fields */
+.field, input[type=text], textarea, select.field { width: 100%; height: 36px; padding: 4px 12px; border: 1px solid var(--input); border-radius: var(--radius-md); background: transparent; box-shadow: var(--shadow-xs); font: 400 14px/20px var(--font-sans); color: var(--foreground); outline: none; }
+input[type=text]:focus, textarea:focus, select.field:focus { border-color: var(--ring); box-shadow: var(--ring-focus); }
+input.sm { height: 32px; }
+textarea { height: auto; min-height: 160px; padding: 8px 12px; resize: vertical; line-height: 22px; }
+select.field { height: 32px; min-width: 170px; padding: 0 32px 0 12px; background-image: var(--chevron); background-repeat: no-repeat; background-position: right 10px center; appearance: none; -webkit-appearance: none; cursor: pointer; }
+.dark select.field option { background: var(--popover); }
+label.lbl { display: grid; gap: 8px; font-size: 14px; font-weight: 500; line-height: 1; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; }
+.toolbar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.toolbar input { flex: 1 1 280px; max-width: 384px; }
+.check { appearance: none; -webkit-appearance: none; margin: 0; width: 16px; height: 16px; display: block; border: 1px solid var(--input); border-radius: 4px; background: transparent; box-shadow: var(--shadow-xs); cursor: pointer; }
+.check:checked { border-color: var(--primary); background: var(--primary) var(--check) center / 12px no-repeat; }
+
+/* Pill tabs with counts, joined toggle group */
+.tabs { align-self: flex-start; display: inline-flex; align-items: center; height: 36px; padding: 3px; border-radius: var(--radius-lg); background: var(--muted); color: var(--muted-foreground); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.tabs button { height: 100%; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--muted-foreground); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; }
+.tabs button[aria-selected="true"] { background: var(--background); color: var(--foreground); box-shadow: var(--shadow-sm); }
+.tabs .n { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 9999px; background: var(--muted-foreground); color: var(--background); font-size: 12px; opacity: .3; }
+.tabs button[aria-selected="true"] .n { opacity: 1; }
+.toggles { display: inline-flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; border-radius: var(--radius-md); box-shadow: var(--shadow-xs); }
+.toggles button { height: 32px; padding: 0 12px; border: 1px solid var(--input); background: var(--background); color: var(--foreground); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; }
+.toggles button + button { margin-left: -1px; }
+.toggles button:first-child { border-radius: var(--radius-md) 0 0 var(--radius-md); }
+.toggles button:last-child { border-radius: 0 var(--radius-md) var(--radius-md) 0; }
+.toggles button[aria-pressed="true"] { background: var(--accent); }
+
+/* Key figures */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.kpi-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 6px; column-gap: 16px; }
+.kpi-top > div { grid-column: 1; }
+.kpi-top .badge { grid-column: 2; grid-row: 1 / span 2; justify-self: end; align-self: start; }
+.kpi-top .badge svg { width: 12px; height: 12px; }
+.kpi-value { font-size: 30px; line-height: 36px; font-weight: 600; }
+.kpi-foot { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.kpi-foot b { display: flex; gap: 8px; align-items: center; font-weight: 500; }
+
+/* Chart: two overlapping areas, emails sent and replies */
+.plot { position: relative; height: 250px; }
+.plot svg.chart { position: absolute; inset: 0; width: 100%; height: 250px; overflow: visible; }
+.plot .grid { fill: none; stroke: var(--border); stroke-width: 1; }
+.plot .line-s { fill: none; stroke: var(--primary); stroke-width: 1; }
+.plot .line-r { fill: none; stroke: var(--chart-2); stroke-width: 1; }
+.stop-s { stop-color: var(--primary); } .stop-r { stop-color: var(--chart-2); }
+.hover-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--border); pointer-events: none; }
+.hover-dot { position: absolute; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 9999px; border: 2px solid var(--background); pointer-events: none; }
+.tooltip { position: absolute; top: 8px; z-index: 2; min-width: 168px; display: grid; gap: 6px; padding: 8px 10px; background: var(--popover); color: var(--popover-foreground); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); font-size: 12px; line-height: 16px; pointer-events: none; }
+.tooltip b { font-weight: 500; }
+.tooltip > span { display: flex; align-items: center; gap: 8px; }
+.tooltip > span span:nth-child(2) { flex: 1; color: var(--muted-foreground); }
+.plot-hit { position: absolute; inset: 0; cursor: crosshair; border-radius: var(--radius-md); }
+.ticks { position: relative; height: 16px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+.ticks span { position: absolute; white-space: nowrap; }
+.legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted-foreground); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key { flex: none; width: 10px; height: 10px; border-radius: 2px; }
+.k-s { background: var(--primary); } .k-r { background: var(--chart-2); }
+.k-fit { background: var(--chart-3); } .k-int { background: var(--chart-2); } .k-warm { background: var(--chart-1); }
+
+/* Score: figure, then the bar split in fit, intent and warm path */
+.score { display: flex; align-items: center; gap: 8px; }
+.score b { width: 2ch; font-family: var(--font-mono); font-weight: 500; }
+.bar { display: flex; width: 88px; height: 6px; border-radius: 9999px; overflow: hidden; background: var(--muted); }
+.bar i { display: block; height: 100%; }
+.bar .fit { background: var(--chart-3); } .bar .int { background: var(--chart-2); } .bar .warm { background: var(--chart-1); }
+
+/* Tables: bordered, muted header */
+.table-box { overflow: hidden; border: 1px solid var(--border); border-radius: var(--radius-lg); }
+.table-box > div { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; }
+thead { background: var(--muted); }
+th { height: 40px; padding: 0 8px; text-align: left; font-weight: 500; white-space: nowrap; }
+td { padding: 8px; vertical-align: middle; }
+th:first-child, td:first-child { padding-left: 12px; }
+th:last-child, td:last-child { padding-right: 12px; }
+tbody tr { border-top: 1px solid var(--border); }
+tbody tr:hover, tbody tr.on { background: color-mix(in oklch, var(--muted) 50%, transparent); }
+tbody tr.on { background: var(--muted); }
+tbody tr.pick { cursor: pointer; }
+.num { text-align: right; }
+.nowrap { white-space: nowrap; }
+.why { min-width: 260px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); text-wrap: pretty; }
+.accounts { min-width: 1100px; }
+.acct { display: grid; white-space: nowrap; }
+.acct b { font-weight: 500; }
+.sort { display: inline-flex; align-items: center; gap: 6px; height: 28px; margin-left: -8px; padding: 0 8px; border: 0; border-radius: var(--radius-md); background: transparent; color: var(--foreground); font: 500 14px/20px var(--font-sans); cursor: pointer; }
+.sort:hover { background: var(--accent); }
+.sort svg { width: 14px; height: 14px; opacity: .4; }
+th[aria-sort="ascending"] .sort svg, th[aria-sort="descending"] .sort svg { opacity: 1; }
+.table-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--muted-foreground); }
+
+/* Work queue */
+.focus { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
+.queue { flex: 1 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
+.group { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.aside { flex: 0 1 300px; }
+@media (max-width: 900px) { .aside { flex-basis: 100%; } }
+.stat-line { display: grid; gap: 2px; }
+.stat-line b { font-size: 24px; line-height: 32px; font-weight: 600; }
+.stat-line span { color: var(--muted-foreground); }
+.hr { height: 1px; background: var(--border); }
+kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--muted); font: 500 11px/16px var(--font-mono); color: var(--foreground); }
+.subject { font-size: 16px; line-height: 24px; font-weight: 600; }
+.body { max-width: 680px; white-space: pre-wrap; line-height: 22px; overflow-wrap: anywhere; }
+.cite { position: relative; display: inline-block; margin: 0 2px; padding: 0 4px; border: 0; border-radius: var(--radius-sm); background: var(--muted); color: var(--muted-foreground); font: 500 11px/18px var(--font-mono); vertical-align: 1px; cursor: pointer; }
+.cite::after { content: ""; position: absolute; inset: -5px -4px; }
+.sources summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 500; }
+.sources[open] summary svg { transform: rotate(180deg); }
+.sources .panel, .sources > .facts { margin-top: 12px; }
+.facts { display: grid; gap: 8px; }
+.fact { display: flex; gap: 8px; align-items: baseline; font-size: 13px; line-height: 18px; }
+.fact code { flex: none; padding: 0 4px; border-radius: var(--radius-sm); background: var(--background); border: 1px solid var(--border); font: 500 11px/16px var(--font-mono); }
+.sources > .facts .fact code { background: var(--muted); border-color: transparent; }
+.fact.flash { background: var(--accent); border-radius: var(--radius-sm); }
+.alert { display: flex; gap: 12px; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--card); color: var(--destructive); }
+.alert svg { margin-top: 2px; }
+.alert > div { display: grid; gap: 2px; }
+.alert b { font-weight: 500; }
+.alert > div span { color: color-mix(in oklch, var(--destructive) 90%, transparent); }
+.alert.warn { color: var(--foreground); }
+.alert.warn > div span { color: var(--muted-foreground); }
+.confirm { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); color: var(--destructive); }
+.confirm span { flex: 1 1 320px; }
+.followup { display: flex; align-items: center; gap: 6px; color: var(--muted-foreground); }
+.followup svg { width: 14px; height: 14px; }
+
+/* Prospects */
+.runchips { display: flex; gap: 8px; flex-wrap: wrap; }
+.runchips .badge.zero { opacity: .6; }
+.runchips .badge .mono { color: var(--foreground); font-weight: 400; }
+.facets { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.facet-line { height: 32px; display: inline-flex; align-items: center; color: var(--muted-foreground); }
+.demand { flex-direction: row; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+.demand > div:first-child { flex: 1 1 360px; display: grid; gap: 4px; }
+
+/* Carnet */
+.people { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.people > div:first-child { padding: 8px 12px; background: var(--muted); font-weight: 500; }
+.person { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding: 8px 12px; border-top: 1px solid var(--border); }
+.person b { font-weight: 500; }
+.person small { display: block; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+
+/* Résultats */
+.duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr)); gap: 16px; }
+.bars { display: grid; gap: 12px; }
+.stage { display: grid; grid-template-columns: 110px minmax(0, 1fr) 24px 80px; align-items: center; gap: 12px; }
+.bars.signals .stage { grid-template-columns: 150px minmax(0, 1fr) 24px 64px; }
+.track { height: 8px; border-radius: 9999px; overflow: hidden; background: color-mix(in oklch, var(--primary) 20%, transparent); }
+.track i { display: block; height: 100%; border-radius: 9999px; background: var(--primary); }
+.stage .amt { text-align: right; color: var(--muted-foreground); }
+.stage .badge { justify-self: end; }
+@media (max-width: 480px) { .stage, .bars.signals .stage { grid-template-columns: minmax(0, 1fr) 24px 72px; } .stage .track { grid-column: 1 / -1; grid-row: 2; } }
+.gauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
+.gauge { gap: 12px; }
+.gauge .row { align-items: baseline; gap: 8px; }
+.gauge b { font-size: 20px; line-height: 28px; font-weight: 600; }
+.g-track { position: relative; height: 8px; border-radius: 9999px; background: color-mix(in oklch, var(--primary) 20%, transparent); }
+.g-track i { display: block; height: 100%; border-radius: 9999px; }
+.g-track .limit { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--foreground); }
+.gauge small { font-size: 12px; line-height: 16px; color: var(--muted-foreground); text-wrap: pretty; }
+.agents { min-width: 720px; }
+.agents td:first-child { font-family: var(--font-mono); font-size: 13px; }
+
+/* Méthode */
+.legend-line { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; color: var(--muted-foreground); }
+.steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 16px; }
+.step { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 12px; padding: 24px; border-radius: var(--radius-xl); border: 1px solid var(--border); background: var(--card); box-shadow: var(--shadow-xs); }
+.step-num { width: 32px; height: 32px; display: grid; place-items: center; border-radius: var(--radius-md); background: var(--muted); color: var(--foreground); font: 500 13px/1 var(--font-mono); }
+.step.you .step-num { background: var(--primary); color: var(--primary-foreground); }
+.step-body { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.step-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; min-height: 32px; }
+.step-head h3 { margin: 0 4px 0 0; font-size: 16px; line-height: 24px; font-weight: 600; }
+.when { font-size: 12px; color: var(--muted-foreground); }
+.step-body p, .step-body ul { margin: 0; max-width: 720px; line-height: 22px; text-wrap: pretty; }
+.step-body ul { padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.ex { line-height: 21px; }
+.rows { display: grid; gap: 8px; }
+.rows div { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px; font-size: 13px; line-height: 18px; }
+.rows b { font-weight: 500; }
+.ex-guard { display: grid; gap: 2px; padding: 8px 12px; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--card); color: var(--destructive); font-size: 13px; line-height: 18px; }
+.ex .cite { background: var(--background); border: 1px solid var(--border); line-height: 16px; cursor: default; }
+.ex .bar { width: 120px; background: var(--background); }
+.closing { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr)); gap: 16px; }
+.lines { display: flex; flex-direction: column; }
+.lines > div { padding: 8px 0; border-top: 1px solid var(--border); }
+.daily { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; }
+.rule { display: flex; gap: 8px; align-items: flex-start; }
+.rule svg { margin-top: 2px; stroke: var(--muted-foreground); }
+@media (max-width: 480px) { .step { grid-template-columns: minmax(0, 1fr); padding: 16px; } .rows div { grid-template-columns: minmax(0, 1fr); gap: 0; } }
+
+/* Toast: bottom right, popover card */
+.toast { position: fixed; right: 24px; bottom: 24px; z-index: 40; width: 356px; max-width: calc(100vw - 48px); display: flex; align-items: center; gap: 12px; padding: 16px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--popover); color: var(--popover-foreground); box-shadow: var(--shadow-lg); }
+.toast span { flex: 1; font-weight: 500; }
+.toast button { flex: none; height: 24px; padding: 0 8px; border-radius: var(--radius-sm); border: 0; background: var(--primary); color: var(--primary-foreground); font: 500 12px/16px var(--font-sans); cursor: pointer; }
+.banner { flex-wrap: wrap; align-items: flex-start; }
+.banner > div { flex: 1 1 280px; }
 </style>
 
-<div class="wrap">
-  <header class="top">
-    <div class="brand">doppio<span>.</span> bloom</div>
-    <div class="meta">
-      <span id="mode" class="pill demo">Données d'exemple</span>
-      <span id="today"></span>
-    </div>
-  </header>
-
-  <section class="kpis" id="kpis" aria-label="Indicateurs sur 30 jours"></section>
-
-  <nav class="tabs" role="tablist">
-    <button role="tab" id="tab-today" aria-selected="true" data-tab="today">Aujourd'hui<span class="count" id="c-today">0</span></button>
-    <button role="tab" id="tab-new" aria-selected="false" data-tab="new">Nouveaux prospects<span class="count" id="c-new">0</span></button>
-    <button role="tab" id="tab-accounts" aria-selected="false" data-tab="accounts">Comptes<span class="count" id="c-accounts">0</span></button>
-    <button role="tab" id="tab-pipeline" aria-selected="false" data-tab="pipeline">Pipeline</button>
-    <button role="tab" id="tab-health" aria-selected="false" data-tab="health">Santé</button>
-  </nav>
-
-  <main id="view-today" class="cols">
-    <div class="stack">
-      <div class="section-head"><h2>À valider</h2><p>Chaque affirmation renvoie à sa source. Rien ne part sans vous.</p></div>
-      <div id="drafts" class="stack"></div>
-    </div>
-    <div class="stack">
-      <div class="section-head"><h2>Réponses</h2><p>Séquences arrêtées automatiquement</p></div>
-      <div id="replies" class="stack"></div>
-      <div class="section-head"><h2>LinkedIn, à la main</h2><p>Aucune automatisation sur votre compte</p></div>
-      <div id="tasks" class="stack"></div>
-    </div>
-  </main>
-
-  <main id="view-new" class="stack" hidden>
-    <div class="section-head">
-      <div><h2>Nouveaux prospects</h2><p>Trouvés cette nuit dans les offres d'emploi mobiles et les classements App Store. Il manque la personne à contacter.</p></div>
-      <div class="toolbar">
-        <button class="btn" data-act="run-discovery" data-id="0">Chercher maintenant</button>
-        <label class="btn file-btn">Importer ma liste (CSV)<input type="file" id="csv" accept=".csv,text/csv"></label>
+<div class="app" id="app">
+  <aside class="side" id="side" aria-label="Menu">
+    <a class="brand" href="#pilotage" data-view-link="pilotage"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg><b>Bloom</b><span>Doppio Lab</span></a>
+    <div class="side-scroll">
+      <div class="nav">
+        <div class="quick">
+          <button class="btn primary" data-act="run-discovery" data-id="0"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM8 12h8M12 8v8"/></svg>Lancer une recherche</button>
+          <a class="btn icon" href="#today" aria-label="Boîte d'envoi"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h16a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM22 7l-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></a>
+        </div>
+        <a href="#pilotage" data-view="pilotage"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z"/></svg><span>Pilotage</span></a>
+        <a href="#today" data-view="today"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg><span>À faire</span><span class="count" id="c-today"></span></a>
+        <a href="#prospects" data-view="prospects"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM12 6a6 6 0 1 0 0 12a6 6 0 1 0 0-12zM12 10a2 2 0 1 0 0 4a2 2 0 1 0 0-4z"/></svg><span>Prospects</span><span class="count" id="c-prospects"></span></a>
+        <a href="#book" data-view="book"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/></svg><span>Carnet</span><span class="count" id="c-book"></span></a>
+        <a href="#results" data-view="results"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16M7 16h8M7 11h12M7 6h3"/></svg><span>Résultats</span></a>
+      </div>
+      <div class="config">
+        <div class="nav-label">Configuration</div>
+        <div class="nav">
+          <a href="#method" data-view="method"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3M12 17h.01"/></svg><span>Méthode</span></a>
+          <a href="#blacklist" data-view="blacklist"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM4.9 4.9l14.2 14.2"/></svg><span>Liste noire</span><span class="count" id="c-blacklist"></span></a>
+          <a href="#prospects" data-import><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg><span>Importer une liste</span></a>
+        </div>
       </div>
     </div>
-    <div id="newlist" class="stack"></div>
-    <p class="note">Pour chaque entreprise : ouvre la recherche LinkedIn proposée, choisis la bonne personne, colle son nom et son rôle. L'email est cherché automatiquement si Dropcontact est branché, sinon saisis-le. La séquence démarre dès que l'email est connu.</p>
-  </main>
+    <div class="side-user"><span class="avatar" aria-hidden="true">DL</span><span><b>Doppio Lab</b><small id="side-next"></small></span></div>
+  </aside>
+  <div class="scrim" id="scrim"></div>
 
-  <main id="view-accounts" class="stack" hidden>
-    <div class="section-head"><h2>Comptes classés</h2>
-      <div class="legend"><span><i style="background:var(--muted)"></i>adéquation (40)</span><span><i style="background:var(--accent)"></i>intention (50)</span><span><i style="background:var(--good)"></i>lien chaud (10)</span></div>
-    </div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Compte</th><th>Score</th><th>Offre suggérée</th><th>Pourquoi</th><th>Mis à jour</th></tr></thead>
-      <tbody id="accounts"></tbody>
-    </table></div>
-    <p class="note">Score déterministe : adéquation ICP + signaux amortis dans le temps + lien chaud. Au-dessus de 65, on écrit cette semaine.</p>
-  </main>
+  <div class="main">
+    <header class="top">
+      <button class="btn ghost icon sm" id="toggle-side" aria-label="Afficher ou masquer le menu" aria-controls="side"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 3h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2zM9 3v18"/></svg></button>
+      <div class="sep"></div>
+      <h1 id="view-title">Pilotage</h1>
+      <div class="top-actions">
+        <span class="badge" id="mode" hidden></span>
+        <label class="search-box"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 3a8 8 0 1 0 0 16a8 8 0 1 0 0-16zM21 21l-4.3-4.3"/></svg><input type="text" class="sm" id="top-search" placeholder="Rechercher un compte" aria-label="Rechercher un compte ou un contact" autocomplete="off"></label>
+        <button class="btn ghost icon" id="toggle-theme" aria-label="Changer de thème"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path id="theme-icon" d=""/></svg></button>
+      </div>
+    </header>
 
-  <main id="view-pipeline" class="cols" hidden>
-    <div class="card">
-      <div class="section-head"><h2>Pipeline par étape</h2><p id="pipe-total"></p></div>
-      <div class="funnel" id="funnel"></div>
-    </div>
-    <div class="card">
-      <h2>Ce qui convertit</h2>
-      <div id="bysignal" class="funnel"></div>
-      <p class="note">Réponses positives par signal d'origine. C'est la donnée qui recalibre les poids du scoring.</p>
-    </div>
-  </main>
+    <main class="content">
+      <div class="alert banner" id="banner" role="alert" hidden>
+        <svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM12 8v4M12 16h.01"/></svg>
+        <div><b id="banner-title"></b><span id="banner-text"></span></div>
+        <button class="btn" id="banner-action"></button>
+      </div>
 
-  <main id="view-health" class="stack" hidden>
-    <div class="section-head"><h2>Délivrabilité</h2><p>Seuils Gmail et Yahoo pour les plaintes ; seuils internes pour le reste</p></div>
-    <div class="health" id="gauges"></div>
-    <div class="section-head"><h2>Agents, 7 derniers jours</h2><p>Coût et fiabilité</p></div>
-    <div class="table-wrap"><table>
-      <thead><tr><th>Agent</th><th>Exécutions</th><th>Échecs</th><th>Tokens entrée</th><th>Tokens sortie</th><th>Durée moyenne</th></tr></thead>
-      <tbody id="agents"></tbody>
-    </table></div>
-  </main>
+      <div class="hero" id="hero">
+        <h2 class="headline" id="headline" tabindex="-1">Chargement…</h2>
+        <p id="subline" hidden></p>
+      </div>
+
+      <section id="view-pilotage" class="view" aria-label="Pilotage">
+        <div class="kpis" id="kpis"></div>
+        <div class="card stat padded-y">
+          <div class="row" style="align-items:flex-start;gap:16px">
+            <div class="card-head"><div class="card-title">Envois et réponses</div><div class="muted" id="chart-sub"></div></div>
+            <div class="toggles" id="ranges" role="group" aria-label="Période">
+              <button type="button" data-range="90" aria-pressed="true">3 derniers mois</button><button type="button" data-range="30" aria-pressed="false">30 derniers jours</button><button type="button" data-range="7" aria-pressed="false">7 derniers jours</button>
+            </div>
+          </div>
+          <div class="stack" style="gap:8px">
+            <div class="plot">
+              <svg class="chart" viewBox="0 0 1000 250" preserveAspectRatio="none" role="img" aria-labelledby="chart-sub">
+                <defs>
+                  <linearGradient id="fill-s" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" class="stop-s" stop-opacity=".8"/><stop offset="95%" class="stop-s" stop-opacity=".1"/></linearGradient>
+                  <linearGradient id="fill-r" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" class="stop-r" stop-opacity=".8"/><stop offset="95%" class="stop-r" stop-opacity=".1"/></linearGradient>
+                </defs>
+                <path class="grid" d="M0 10H1000M0 90H1000M0 170H1000M0 250H1000" vector-effect="non-scaling-stroke"/>
+                <path id="area-s" fill="url(#fill-s)"/><path id="line-s" class="line-s" vector-effect="non-scaling-stroke"/>
+                <path id="area-r" fill="url(#fill-r)"/><path id="line-r" class="line-r" vector-effect="non-scaling-stroke"/>
+              </svg>
+              <div class="hover-line" id="hover-line" hidden></div>
+              <div class="hover-dot k-s" id="dot-s" hidden></div>
+              <div class="hover-dot k-r" id="dot-r" hidden></div>
+              <div class="tooltip" id="tooltip" hidden></div>
+              <div class="plot-hit" id="chart-hit" tabindex="0" aria-label="Parcourir le graphique avec les flèches"></div>
+            </div>
+            <div class="ticks" id="ticks"></div>
+            <div class="legend" style="justify-content:center;padding-top:8px"><span><i class="key k-s"></i>Emails envoyés</span><span><i class="key k-r"></i>Réponses</span></div>
+          </div>
+        </div>
+
+        <div class="stack" style="gap:16px">
+          <div class="row">
+            <div class="tabs" id="tiers" role="tablist" aria-label="Palier"></div>
+            <button class="btn" id="accounts-export"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Exporter (CSV)</button>
+          </div>
+          <div class="table-box"><div><table class="accounts">
+            <thead><tr>
+              <th style="width:40px"><input type="checkbox" class="check" id="check-all" aria-label="Tout sélectionner"></th>
+              <th aria-sort="none" data-col="name"><button class="sort" data-sort="name">Compte<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 16-4 4-4-4M17 20V4M3 8l4-4 4 4M7 4v16"/></svg></button></th>
+              <th>Source</th>
+              <th aria-sort="descending" data-col="score"><button class="sort" data-sort="score">Score<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 16-4 4-4-4M17 20V4M3 8l4-4 4 4M7 4v16"/></svg></button></th>
+              <th>Palier</th><th>Offre suggérée</th><th>Pourquoi</th>
+              <th aria-sort="none" data-col="date"><button class="sort" data-sort="date">Mis à jour<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 16-4 4-4-4M17 20V4M3 8l4-4 4 4M7 4v16"/></svg></button></th>
+            </tr></thead>
+            <tbody id="accounts"></tbody>
+          </table></div></div>
+          <div class="table-foot"><span id="sel-label"></span>
+            <div class="legend"><span><i class="key k-fit"></i>Adéquation, 40 pts</span><span><i class="key k-int"></i>Intention, 50 pts</span><span><i class="key k-warm"></i>Lien chaud, 10 pts</span></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-today" class="view" aria-label="À faire" hidden>
+        <div class="skeleton" id="today-loading"><div style="height:36px;width:320px;max-width:100%;border-radius:var(--radius-lg)"></div><div style="height:220px"></div><div style="height:160px"></div></div>
+        <div class="tabs" id="filters" role="tablist" aria-label="Filtrer la file" hidden>
+          <button role="tab" type="button" aria-selected="true" data-filter="all">Tout<span class="n"></span></button>
+          <button role="tab" type="button" aria-selected="false" data-filter="drafts">Emails<span class="n"></span></button>
+          <button role="tab" type="button" aria-selected="false" data-filter="replies">Réponses<span class="n"></span></button>
+          <button role="tab" type="button" aria-selected="false" data-filter="tasks">LinkedIn<span class="n"></span></button>
+        </div>
+        <div class="empty" id="all-done" hidden>
+          <span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
+          <div><b id="done-title"></b>Il manque la personne à qui écrire.</div>
+          <a class="btn" href="#prospects">Compléter les prospects</a>
+        </div>
+        <div class="focus" id="focus" hidden>
+          <div class="queue">
+            <section class="group" data-kind="drafts">
+              <div class="section-head"><h3>Emails à valider</h3><span>Rien ne part sans vous.</span></div>
+              <div id="drafts" class="stack"></div>
+            </section>
+            <section class="group" data-kind="replies">
+              <div class="section-head"><h3>Réponses</h3><span>La séquence s'arrête dès qu'on vous répond.</span></div>
+              <div id="replies" class="stack"></div>
+            </section>
+            <section class="group" data-kind="tasks">
+              <div class="section-head"><h3>LinkedIn, à la main</h3><span>Aucune automatisation sur votre compte.</span></div>
+              <div id="tasks" class="stack"></div>
+            </section>
+          </div>
+          <aside class="card stat padded-y aside" id="aside" aria-label="30 derniers jours"></aside>
+        </div>
+      </section>
+
+      <section id="view-prospects" class="view" aria-label="Prospects" hidden>
+        <div class="card padded-y">
+          <div class="row" style="align-items:flex-start;gap:16px">
+            <div class="card-head"><div class="card-title" id="run-title">Dernière recherche</div><div class="muted" id="run-sub"></div></div>
+            <div class="actions">
+              <button class="btn" data-act="run-discovery" data-id="0">Chercher maintenant</button>
+              <label class="btn file-btn"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Importer ma liste (CSV)<input type="file" id="csv" accept=".csv,text/csv"></label>
+            </div>
+          </div>
+          <div class="runchips" id="run-chips" hidden></div>
+          <p class="note" id="import-report" hidden></p>
+        </div>
+        <div class="facets" id="facets" hidden>
+          <div class="facets" id="facets-body"></div>
+          <button class="btn ghost" type="button" id="facets-clear" hidden>Effacer les filtres</button>
+          <span class="facet-line" id="facet-note" hidden></span>
+        </div>
+        <div id="newlist" class="stack" style="gap:24px"></div>
+        <div class="empty" id="newlist-none" hidden>Aucun prospect ne correspond aux filtres.</div>
+        <div class="section-head" id="demands-head" hidden><h3>Demandes à répondre</h3><span>Publiées par des entreprises. On répond sur la plateforme, pas par email.</span></div>
+        <div id="demands" class="stack" style="gap:24px"></div>
+        <p class="note">Les comptes déjà classés sont dans le pilotage. <a href="#pilotage" style="text-decoration:underline">Voir les comptes classés</a></p>
+      </section>
+
+      <section id="view-book" class="view" aria-label="Carnet" hidden>
+        <div class="toolbar"><input type="text" class="sm" data-search="book" placeholder="Filtrer par entreprise ou personne" aria-label="Filtrer le carnet" autocomplete="off"><a class="btn" id="book-export" href="/api/book.csv"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>Exporter le carnet (CSV)</a></div>
+        <div id="book-list" class="stack" style="gap:24px"></div>
+        <p class="note" style="max-width:760px">Les dirigeants viennent de l'Annuaire des entreprises (registre public). Ce sont des mandataires sociaux : pour un directeur technique ou un responsable mobile, la recherche LinkedIn reste à faire à la main. Personne n'est contacté tant que vous ne l'avez pas ajouté.</p>
+      </section>
+
+      <section id="view-results" class="view" aria-label="Résultats" hidden>
+        <div class="kpis" id="res-kpis"></div>
+        <div class="duo">
+          <div class="card padded-y"><div class="card-head"><div class="card-title">Pipeline</div><div class="muted" id="pipe-total"></div></div><div class="bars" id="funnel"></div></div>
+          <div class="card padded-y"><div class="card-head"><div class="card-title">Ce qui convertit</div><div class="muted">Emails envoyés et réponses positives, par signal d'origine</div></div><div class="bars signals" id="bysignal"></div></div>
+        </div>
+        <div class="stack">
+          <div class="section-head"><h3>Délivrabilité</h3><span>Le trait marque le seuil à ne pas franchir.</span></div>
+          <div class="gauges" id="gauges"></div>
+        </div>
+        <div class="stack">
+          <div class="section-head"><h3>Agents IA</h3><span>7 derniers jours</span></div>
+          <div class="table-box"><div><table class="agents">
+            <thead><tr><th>Agent</th><th class="num">Exécutions</th><th class="num">Échecs</th><th class="num">Tokens entrée</th><th class="num">Tokens sortie</th><th class="num">Durée moyenne</th></tr></thead>
+            <tbody id="agents"></tbody>
+          </table></div></div>
+        </div>
+      </section>
+
+      <section id="view-method" class="view narrow" aria-label="Méthode" hidden>
+        <div class="legend-line">Qui fait quoi : <span class="badge secondary">Automatique</span><span class="badge">Agent IA</span><span class="badge default">Vous</span></div>
+        <ol class="steps" id="steps"></ol>
+        <div class="closing">
+          <div class="card padded-y">
+            <div class="card-head"><div class="card-title">Votre demi-heure par jour</div><div class="muted">Un repère, pas une mesure.</div></div>
+            <div class="lines">
+              <div class="daily"><span class="mono">5 min</span><span>Trouver la bonne personne pour 3 à 5 nouveaux prospects</span></div>
+              <div class="daily"><span class="mono">10 min</span><span>Valider 5 à 10 emails dans la vue À faire</span></div>
+              <div class="daily"><span class="mono">5 min</span><span>Envoyer 2 ou 3 notes LinkedIn préparées</span></div>
+              <div class="daily"><span class="mono">10 min</span><span>Répondre aux personnes intéressées et caler les rendez-vous</span></div>
+            </div>
+            <div class="muted" style="font-size:12px;line-height:18px">Le reste tourne sans vous : trouver, rechercher, classer, rédiger, envoyer les emails validés, trier les réponses.</div>
+          </div>
+          <div class="card padded-y">
+            <div class="card-head"><div class="card-title">Ce que Bloom ne fait pas</div><div class="muted">Quelle que soit la configuration.</div></div>
+            <div class="lines" id="rules"></div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-blacklist" class="view narrow" aria-label="Liste noire" hidden>
+        <form class="card padded-y" id="block-form">
+          <div class="card-head"><div class="card-title">Ajouter une entreprise</div><div class="muted">Ses séquences en cours s'arrêtent et ses brouillons en attente sont rejetés.</div></div>
+          <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))">
+            <label class="lbl" for="block-name">Entreprise<input type="text" id="block-name" placeholder="Nom de l'entreprise" autocomplete="off"></label>
+            <label class="lbl" for="block-reason">Raison (optionnel)<input type="text" id="block-reason" placeholder="Client actuel, concurrent, hors cible"></label>
+          </div>
+          <div class="actions" style="justify-content:flex-end"><button class="btn primary lg" type="submit" data-act="block-name" data-id="0">Ajouter à la liste noire</button></div>
+        </form>
+        <input type="text" class="sm" id="blacklist-search" data-search="blacklist" placeholder="Filtrer la liste noire" aria-label="Filtrer la liste noire" autocomplete="off" style="max-width:384px" hidden>
+        <div class="table-box" id="blacklist-wrap" hidden><div><table>
+          <thead><tr><th>Entreprise</th><th>Raison</th><th>Depuis le</th><th><span hidden>Action</span></th></tr></thead>
+          <tbody id="blacklist"></tbody>
+        </table></div></div>
+        <p class="note">Réintégrer une entreprise ne relance pas ses séquences.</p>
+      </section>
+    </main>
+  </div>
 </div>
-<div class="toast" id="toast" hidden></div>
+<div class="toast" id="toast" role="status" hidden><span id="toast-text"></span><button id="toast-action" hidden></button></div>
 
 <script>
 const OFFERS = { DISCOVERY: "Audit 2 jours", FORFAIT: "Forfait", REGIE: "Régie", TRAINING_KMP: "Formation KMP", TRAINING_ANTHROPIC: "Formation Anthropic" };
 const STAGES = { QUALIFIED: "Qualifié", MEETING: "Rendez-vous", DISCOVERY_SOLD: "Audit vendu", PROPOSAL: "Proposition", WON: "Gagné", LOST: "Perdu" };
 const INTENTS = {
-  INTERESTED: ["Intéressé", "pos"], MEETING_REQUEST: ["Veut un appel", "pos"], REFERRAL: ["Recommande", "pos"],
-  NOT_NOW: ["Pas maintenant", "neu"], WRONG_PERSON: ["Mauvais contact", "neu"], OUT_OF_OFFICE: ["Absent", "neu"], OTHER: ["Autre", "neu"],
-  NOT_INTERESTED: ["Pas intéressé", "neg"], UNSUBSCRIBE: ["Opposition", "neg"], BOUNCE: ["Rebond", "neg"]
+  INTERESTED: ["Intéressé", "accent"], MEETING_REQUEST: ["Veut un appel", "accent"], REFERRAL: ["Recommande", "accent"],
+  NOT_NOW: ["Pas maintenant", "neutral"], WRONG_PERSON: ["Mauvais contact", "neutral"], OUT_OF_OFFICE: ["Absent", "neutral"], OTHER: ["Autre", "neutral"],
+  NOT_INTERESTED: ["Pas intéressé", "error"], UNSUBSCRIBE: ["Opposition", "error"], BOUNCE: ["Rebond", "error"]
 };
 
-/* Données d'exemple : entreprises fictives, utilisées quand le serveur n'est pas joignable. */
+/** 90 days of example activity ending today. Emails leave Tuesday to Thursday; the last 30 days hold 64 emails and 11 replies. */
+function demoActivity() {
+  const RND = (i) => { const x = Math.sin(i * 12.9898 + 4.1) * 43758.5453; return x - Math.floor(x); };
+  const today = new Date(); today.setHours(12, 0, 0, 0);
+  const days = [];
+  for (let k = 0; k < 90; k++) { const d = new Date(today - (89 - k) * 864e5); days.push({ date: d.toISOString().slice(0, 10), dow: d.getDay(), sent: 0, replies: 0 }); }
+  const isSend = (d) => d.dow >= 2 && d.dow <= 4, isWork = (d) => d.dow >= 1 && d.dow <= 5;
+  days.slice(0, 60).forEach((d, k) => { if (isSend(d)) d.sent = 3 + Math.floor(RND(k) * 4); if (isWork(d) && RND(k + 300) < 0.3) d.replies = 1; });
+  const last = days.slice(60), send = last.filter(isSend);
+  send.forEach((d) => { d.sent = 5; });
+  const order = send.map((d, j) => ({ d, x: RND(j + 500) })).sort((a, b) => a.x - b.x).map((o) => o.d);
+  let diff = 64 - send.length * 5, i = 0;
+  while (diff !== 0 && order.length) { order[i % order.length].sent += diff > 0 ? 1 : -1; diff += diff > 0 ? -1 : 1; i++; }
+  last.filter(isWork).map((d, j) => ({ d, x: RND(j + 900) })).sort((a, b) => a.x - b.x).slice(0, 11).forEach((o) => { o.d.replies = 1; });
+  return days.map(({ date, sent, replies }) => ({ date, sent, replies }));
+}
+function demoNextSend() {
+  const d = new Date(); d.setHours(8, 30, 0, 0);
+  do d.setDate(d.getDate() + 1); while (d.getDay() < 2 || d.getDay() > 4);
+  return d.toISOString();
+}
+
+/* Données d'exemple : entreprises fictives, affichées seulement avec ?demo=1 (jamais à la suite d'une erreur). */
 const DEMO = {
   overview: {
-    periodDays: 30, dryRun: true,
+    periodDays: 30, dryRun: true, mailboxes: 1, nextSendAt: demoNextSend(), activity: demoActivity(),
     kpis: { sent: 64, replies: 11, positive: 5, meetings: 3, unsubscribed: 1, bounced: 1, replyRate: 0.172, positiveRate: 0.078, unsubscribeRate: 0.016, bounceRate: 0.016 },
     queues: { pendingReview: 2, approvedEmails: 3, tasks: 2, openReplies: 3, toComplete: 3, discoveredThisWeek: 14 },
     pipeline: [
@@ -247,15 +645,15 @@ const DEMO = {
     ],
     bySignal: [
       { label: "Plaintes qualité (avis)", sent: 18, positive: 3 }, { label: "Recrutement bloqué", sent: 14, positive: 1 },
-      { label: "Recrutement KMP", sent: 9, positive: 1 }, { label: "Levée de fonds", sent: 12, positive: 0 }, { label: "Lien chaud", sent: 4, positive: 2 }
+      { label: "Levée de fonds", sent: 12, positive: 0 }, { label: "Recrutement KMP", sent: 9, positive: 1 }, { label: "Lien chaud", sent: 4, positive: 2 }
     ],
     accounts: [
-      { account: { name: "Vélomoov", domain: "velomoov.example", sector: "MOBILITY_TRANSPORT" }, score: 78, fit: 40, intent: 38, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+20 plaintes qualité", "+14 note en baisse", "+12 app mobile en production"], refreshedAt: "2026-10-10" },
-      { account: { name: "Banque Ardoise", domain: "ardoise.example", sector: "BANK_INSURANCE" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile", "+8 secteur avec référence"], refreshedAt: "2026-10-10" },
-      { account: { name: "Studio Polka", domain: "polka.example", sector: "MUSIC_MEDIA" }, score: 66, fit: 30, intent: 26, warm: 10, recommendedOffer: "TRAINING_KMP", reasons: ["+18 offre qui cite Kotlin Multiplatform", "+10 lien chaud : ex-collègue Music Work"], refreshedAt: "2026-10-09" },
-      { account: { name: "Trackr Logistique", domain: "trackr.example", sector: "LOGISTICS" }, score: 58, fit: 38, intent: 20, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 levée de fonds", "+5 nouvelle app annoncée"], refreshedAt: "2026-10-08" },
-      { account: { name: "Pharmacie Lumen", domain: "lumen.example", sector: "HEALTH" }, score: 47, fit: 24, intent: 23, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+10 aucune version depuis 211 jours", "+13 note en baisse"], refreshedAt: "2026-10-07" },
-      { account: { name: "Nomad Assurances", domain: "nomad.example", sector: "BANK_INSURANCE" }, score: 39, fit: 33, intent: 6, warm: 0, recommendedOffer: "TRAINING_ANTHROPIC", reasons: ["+6 équipe qui recrute sur les LLM"], refreshedAt: "2026-10-05" }
+      { account: { id: 1, name: "Vélomoov", domain: "velomoov.example", source: "classement App Store", sector: "MOBILITY_TRANSPORT" }, score: 78, fit: 40, intent: 38, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+20 plaintes qualité", "+14 note en baisse", "+12 app mobile en production"], refreshedAt: "2026-10-10" },
+      { account: { id: 11, name: "Banque Ardoise", domain: "ardoise.example", source: "offres d'emploi", sector: "BANK_INSURANCE" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile", "+8 secteur avec référence"], refreshedAt: "2026-10-10" },
+      { account: { id: 3, name: "Studio Polka", domain: "polka.example", source: "GitHub", sector: "MUSIC_MEDIA" }, score: 66, fit: 30, intent: 26, warm: 10, recommendedOffer: "TRAINING_KMP", reasons: ["+18 offre qui cite Kotlin Multiplatform", "+10 lien chaud : ex-collègue Music Work"], refreshedAt: "2026-10-09" },
+      { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "BODACC", sector: "LOGISTICS" }, score: 58, fit: 38, intent: 20, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 levée de fonds", "+5 nouvelle app annoncée"], refreshedAt: "2026-10-08" },
+      { account: { id: 14, name: "Pharmacie Lumen", domain: "lumen.example", source: "classement App Store", sector: "HEALTH" }, score: 47, fit: 24, intent: 23, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+10 aucune version depuis 211 jours", "+13 note en baisse"], refreshedAt: "2026-10-07" },
+      { account: { id: 15, name: "Nomad Assurances", domain: "nomad.example", source: "import CSV", sector: "BANK_INSURANCE" }, score: 39, fit: 33, intent: 6, warm: 0, recommendedOffer: "TRAINING_ANTHROPIC", reasons: ["+6 équipe qui recrute sur les LLM"], refreshedAt: "2026-10-05" }
     ],
     agents: [
       { agent: "research-explore", runs: 41, failures: 2, inputTokens: 612000, outputTokens: 48000, avgMs: 38200 },
@@ -270,291 +668,1226 @@ const DEMO = {
       rationale: "Signal le plus fort et le plus récent ; la persona est Head of Mobile, donc angle technique direct.", guardReport: [], citedFactIds: ["a2f1c9e0", "7b31d2aa"] },
       contactName: "Claire Morel", contactRole: "Head of Mobile", accountName: "Vélomoov",
       facts: [
-        { id: "a2f1c9e0", statement: "Vélomoov : 11 avis sur 30 des 90 derniers jours signalent un problème technique (version la plus citée : 5.2)", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json" },
-        { id: "7b31d2aa", statement: "Vélomoov : moyenne des 30 avis des 90 derniers jours 2,9, contre 4,3 en moyenne globale", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json" }
+        { id: "a2f1c9e0", statement: "Vélomoov : 11 avis sur 30 des 90 derniers jours signalent un problème technique (version la plus citée : 5.2)", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json", retrievedAt: "2026-10-10T00:14:00Z" },
+        { id: "7b31d2aa", statement: "Vélomoov : moyenne des 30 avis des 90 derniers jours 2,9, contre 4,3 en moyenne globale", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json", retrievedAt: "2026-10-10T00:14:00Z" }
       ] },
     { draft: { id: 102, channel: "EMAIL", stepIndex: 0, subject: "votre offre iOS",
       body: "Bonjour Karim,\n\nVotre offre « Développeur iOS senior » est ouverte depuis 74 jours [F:c4d09e11]. Nous accompagnons des banques sur ce type de besoin, dont Crédit Agricole.\n\nUn de nos seniors Swift peut rejoindre l'équipe pendant le recrutement, au mois, sans engagement long. Le sujet est d'actualité ?",
       rationale: "Recrutement bloqué depuis plus de 45 jours, secteur bancaire avec référence directe.",
       guardReport: ["[BLOCK] vocabulaire : expression interdite : « accompagn »"], citedFactIds: ["c4d09e11"] },
       contactName: "Karim Benali", contactRole: "Engineering Manager", accountName: "Banque Ardoise",
-      facts: [{ id: "c4d09e11", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/offres/recherche/detail/000XXXX" }] }
+      facts: [{ id: "c4d09e11", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/offres/recherche/detail/000XXXX", retrievedAt: "2026-10-10T00:14:00Z" }] }
+  ],
+  lastRun: { ranAt: "2026-10-10T00:14:00Z", running: false, bySource: { "offres d'emploi": 1, "BODACC": 1, "marché public": 1, "Codeur": 2, "presse": 1, "classement App Store": 0, "marché européen": 0, "marché attribué": 0, "GitHub": 0 }, notes: ["pages carrières : 4 lues, 1 avec une offre mobile"] },
+  demands: [
+    { key: "codeur:900001", source: "Codeur", title: "Application mobile de réservation pour un réseau de salles de sport", url: "https://www.codeur.com/projects", budget: "1 000 € à 10 000 €", categories: ["Application mobile", "iOS", "Android"], publishedAt: "2026-10-10T08:00:00Z" },
+    { key: "codeur:900002", source: "Codeur", title: "Refonte d'une application Android de suivi de tournées", url: "https://www.codeur.com/projects", budget: "10 000 € et plus", categories: ["Application mobile", "Android", "API"], publishedAt: "2026-10-09T08:00:00Z" }
+  ],
+  blacklist: [
+    { id: 901, accountId: 901, name: "Crédit Horizon", reason: "Client actuel", since: "2026-10-09T09:00:00Z" },
+    { id: 12, name: "Agence Pixelle", reason: "Concurrent", since: "2026-10-02T09:00:00Z" },
+    { id: 902, accountId: 902, name: "Holding Marbrier", reason: "Écarté depuis Prospects", since: "2026-09-28T09:00:00Z" }
+  ],
+  book: [
+    { accountId: 1, name: "Vélomoov", score: 78, source: "classement App Store", offer: "DISCOVERY", why: "celui qui subit le problème technique de l'app",
+      contacts: [{ contact: { fullName: "Claire Morel", role: "Head of Mobile", email: "claire.morel@velomoov.example", dataSource: "saisie manuelle" }, status: "sequence" }],
+      officers: [{ fullName: "Antoine Leroy", role: "Président de SAS", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
+      searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head%20of%20Mobile%20V%C3%A9lomoov" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20V%C3%A9lomoov" }] },
+    { accountId: 11, name: "Banque Ardoise", score: 71, source: "offres d'emploi", offer: "REGIE", why: "celui qui porte le recrutement en retard",
+      contacts: [{ contact: { fullName: "Hugo Perrin", role: "Engineering Manager", email: null, dataSource: "saisie manuelle" }, status: "no-email" }],
+      officers: [{ fullName: "Nadia Benali", role: "Directeur général", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }, { fullName: "Paul Girard", role: "Président du conseil d'administration", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
+      searches: [{ role: "Engineering Manager", url: "https://www.linkedin.com/search/results/people/?keywords=Engineering%20Manager%20Banque%20Ardoise" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20Banque%20Ardoise" }] },
+    { accountId: 3, name: "Studio Polka", score: 66, source: "GitHub", offer: "TRAINING_KMP", why: "celui qui fait monter l'équipe en compétence",
+      contacts: [{ contact: { fullName: "Inès Caron", role: "Lead Android", email: "ines@polka.example", dataSource: "import de la liste Doppio" }, status: "email" }],
+      officers: [], searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head%20of%20Mobile%20Studio%20Polka" }, { role: "Lead Android", url: "https://www.linkedin.com/search/results/people/?keywords=Lead%20Android%20Studio%20Polka" }] },
+    { accountId: 12, name: "Trackr Logistique", score: 53, source: "BODACC", offer: "FORFAIT", why: "celui qui arbitre le budget du nouveau produit",
+      contacts: [], officers: [{ fullName: "Marc Aubert", role: "Président de SAS", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
+      searches: [{ role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20Trackr%20Logistique" }, { role: "CPO", url: "https://www.linkedin.com/search/results/people/?keywords=CPO%20Trackr%20Logistique" }] }
   ],
   toComplete: [
-    { row: { account: { id: 11, name: "Banque Ardoise", domain: "ardoise.example", source: "offres d'emploi" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile"] },
+    { row: { account: { id: 11, name: "Banque Ardoise", domain: "ardoise.example", source: "offres d'emploi" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile"], refreshedAt: "2026-10-10" },
       offer: "REGIE", roles: ["Engineering Manager", "CTO", "Head of Mobile"], why: "celui qui porte le recrutement en retard",
       searches: [{ role: "Engineering Manager", url: "https://www.linkedin.com/search/results/people/?keywords=Engineering+Manager+Banque+Ardoise" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO+Banque+Ardoise" }],
-      facts: [{ id: "c4d09e11", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/" }, { id: "9a1b2c3d", statement: "Banque Ardoise : tranche d'effectif INSEE 22 (100 à 199)", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }] },
-    { row: { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "classement App Store" }, score: 63, fit: 38, intent: 25, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+15 note en baisse", "+10 aucune version depuis 211 jours"] },
-      offer: "DISCOVERY", roles: ["Head of Mobile", "Lead mobile", "CTO"], why: "celui qui subit le problème technique de l'app",
-      searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head+of+Mobile+Trackr" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO+Trackr" }],
-      facts: [{ id: "5e6f7a8b", statement: "Trackr : moyenne des 22 avis des 90 derniers jours 2,6, contre 4,1 en moyenne globale", sourceUrl: "https://apps.apple.com/" }] },
-    { row: { account: { id: 13, name: "Polka Studio", domain: null, source: "offres d'emploi" }, score: 52, fit: 22, intent: 30, warm: 0, recommendedOffer: "TRAINING_KMP" , reasons: ["+18 offre qui cite Kotlin Multiplatform", "+12 recrutement mobile"] },
-      offer: "TRAINING_KMP", roles: ["Head of Mobile", "Engineering Manager", "Lead Android"], why: "celui qui fait monter l'équipe en compétence",
-      searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head+of+Mobile+Polka+Studio" }],
-      facts: [{ id: "1f2e3d4c", statement: "Offre d'emploi « Développeur Android Kotlin Multiplatform » publiée il y a 9 jours", sourceUrl: "https://candidat.francetravail.fr/" }] }
+      facts: [{ id: "c4d09e11", kind: "JOB_POSTING", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/", retrievedAt: "2026-10-10T00:14:00Z" }, { id: "9a1b2c3d", kind: "COMPANY_REGISTRY", statement: "Banque Ardoise : tranche d'effectif INSEE 22 (100 à 199)", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/", retrievedAt: "2026-10-10T00:14:00Z" }] },
+    { row: { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "BODACC" }, score: 53, fit: 38, intent: 15, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 augmentation de capital", "+12 app mobile en production"], refreshedAt: "2026-10-08" },
+      offer: "FORFAIT", roles: ["CTO", "Head of Product"], why: "celui qui arbitre le prochain chantier produit",
+      searches: [{ role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO+Trackr" }, { role: "Head of Product", url: "https://www.linkedin.com/search/results/people/?keywords=Head+of+Product+Trackr" }],
+      facts: [{ id: "b0dacc01", kind: "LEGAL_NOTICE", statement: "Augmentation de capital publiée au BODACC le 08/10/2026, capital porté à 1 250 000 €", sourceUrl: "https://www.bodacc.fr/", retrievedAt: "2026-10-08T00:14:00Z" }, { id: "5e6f7a8b", kind: "APP_REVIEW", statement: "Trackr : moyenne des 22 avis des 90 derniers jours 2,6, contre 4,1 en moyenne globale", sourceUrl: "https://apps.apple.com/", retrievedAt: "2026-10-08T00:14:00Z" }] },
+    { row: { account: { id: 13, name: "Mairie de Brévanne-sur-Loire", domain: null, source: "marché public" }, score: 49, fit: 4, intent: 45, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+45 appel d'offres ouvert"] },
+      offer: "FORFAIT", roles: ["Responsable numérique", "Directeur général des services"], why: "celui qui porte le marché",
+      searches: [{ role: "Responsable numérique", url: "https://www.linkedin.com/search/results/people/?keywords=Responsable+num%C3%A9rique+Br%C3%A9vanne" }],
+      facts: [{ id: "b0a4p001", kind: "PUBLIC_TENDER", statement: "Appel d'offres publié le 09/10/2026, réponse avant le 09/11/2026", sourceUrl: "https://www.boamp.fr/", retrievedAt: "2026-10-10T00:14:00Z" }] }
   ],
   tasks: [
     { draft: { id: 201, channel: "LINKEDIN", body: "Bonjour Inès, j'ai vu que Studio Polka recrute sur Kotlin Multiplatform. On a construit un lecteur en Compose Multiplatform cité par JetBrains. Ravi d'échanger si le sujet vous parle." }, contactName: "Inès Garnier", accountName: "Studio Polka", linkedinUrl: "https://www.linkedin.com/" },
     { draft: { id: 202, channel: "LINKEDIN", body: "Bonjour Paul, suite à mon email sur la cadence de release de Pharmacie Lumen, je me connecte ici sans relance commerciale." }, contactName: "Paul Riviere", accountName: "Pharmacie Lumen", linkedinUrl: "https://www.linkedin.com/" }
   ],
   replies: [
-    { id: 1, from: "claire.morel@velomoov.example", intent: "MEETING_REQUEST", summary: "Propose un appel jeudi ou vendredi matin, confirme des tickets paiement depuis la 5.2.", receivedAt: "2026-10-09T09:12:00Z" },
-    { id: 2, from: "t.lambert@trackr.example", intent: "NOT_NOW", summary: "Budget 2027 bouclé en janvier, recontacter début janvier.", followUpOn: "2027-01-06", receivedAt: "2026-10-08T15:40:00Z" },
-    { id: 3, from: "dsi@nomad.example", intent: "UNSUBSCRIBE", summary: "Demande à ne plus être contacté. Ajouté à la liste d'opposition.", receivedAt: "2026-10-07T08:02:00Z" }
+    { id: 1, from: "claire.morel@velomoov.example", accountName: "Vélomoov", subject: "crash au paiement depuis la 5.2", intent: "MEETING_REQUEST", summary: "Propose un appel jeudi ou vendredi matin, confirme des tickets paiement depuis la 5.2.", receivedAt: "2026-10-09T09:12:00Z" },
+    { id: 2, from: "t.lambert@trackr.example", accountName: "Trackr Logistique", intent: "NOT_NOW", summary: "Budget 2027 bouclé en janvier, recontacter début janvier.", followUpOn: "2027-01-06", receivedAt: "2026-10-08T15:40:00Z" },
+    { id: 3, from: "dsi@nomad.example", accountName: "Nomad Assurances", intent: "UNSUBSCRIBE", summary: "Demande à ne plus être contacté. Ajouté à la liste d'opposition.", receivedAt: "2026-10-07T08:02:00Z" }
   ]
 };
 
-let state = { demo: true, overview: null, drafts: [], tasks: [], replies: [], toComplete: [] };
+// Example data only on demand (?demo=1): an error must never pass fictional drafts off as real ones.
+const DEMO_MODE = new URLSearchParams(location.search).has("demo");
+const NO_FACETS = { source: "all", tier: "all", offer: "all" };
+const UNDO_MS = 5000;
+// The sending window is set in Paris time, whatever the browser's time zone
+const PARIS = "Europe/Paris";
+
+let state = { loaded: false, demo: false, view: "pilotage", filter: "all", facets: { ...NO_FACETS }, tier: "all", range: "90", hover: null, sel: new Set(), sort: { key: "score", dir: "descending" }, q: { accounts: "", book: "", blacklist: "" }, overview: null, drafts: [], tasks: [], replies: [], toComplete: [], demands: [], book: [], blacklist: [], lastRun: null };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const pct = (x, d = 1) => (x * 100).toFixed(d).replace(".", ",") + " %";
 const num = (n) => new Intl.NumberFormat("fr-FR").format(n);
+const dec = (n, d) => new Intl.NumberFormat("fr-FR", { minimumFractionDigits: d, maximumFractionDigits: d }).format(n);
 const eur = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency: "EUR", maximumFractionDigits: 0 }).format(n);
+const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
+const signed = (n, d, unit) => (n >= 0 ? "+" : "−") + dec(Math.abs(n), d) + unit;
+const noCites = (text) => String(text ?? "").replace(/\s*\[F:[^\]]+\]/g, "");
+const day = (iso) => new Date(iso).toLocaleDateString("fr-FR");
+// Every fact shows the date it was read, after its source link
+const retrieved = (f) => f.retrievedAt ? ` · relevé le ${day(f.retrievedAt)}` : "";
+const todayLong = () => new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
+// Searches ignore case and accents: "velomoov" finds "Vélomoov"
+const norm = (s) => String(s ?? "").normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+const matches = (query, ...fields) => !query.trim() || fields.some((f) => norm(f).includes(norm(query.trim())));
+const NO_MATCH = "Aucun résultat.";
 
-function toast(msg) { const t = $("#toast"); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => (t.hidden = true), 2200); }
+/* Lucide icon paths, drawn inline */
+const ICONS = {
+  up: "M22 7l-8.5 8.5-5-5L2 17M16 7h6v6", down: "M22 17l-8.5-8.5-5 5L2 7M16 17h6v-6",
+  moon: "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z",
+  sun: "M12 8a4 4 0 1 0 0 8a4 4 0 1 0 0-8zM12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41",
+  alert: "M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM12 8v4M12 16h.01", chevron: "m6 9 6 6 6-6",
+  clock: "M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM12 6v6l4 2",
+  copy: "M10 8h10a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H10a2 2 0 0 1-2-2V10a2 2 0 0 1 2-2zM4 16a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2",
+  external: "M15 3h6v6M10 14 21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6",
+  ban: "M12 2a10 10 0 1 0 0 20a10 10 0 1 0 0-20zM4.9 4.9l14.2 14.2"
+};
+const icon = (name) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name]}"/></svg>`;
+// Reply intents and contact states: a coloured dot in an outline badge (success, muted, destructive)
+const DOT = { accent: "var(--success)", neutral: "var(--muted-foreground)", error: "var(--destructive)" };
 
-async function api(path, opts) {
-  const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
-  if (!r.ok) { const e = new Error(r.status); e.body = await r.json().catch(() => null); throw e; }
+/** Only http and https addresses become links: javascript:, data: and the like come back null. */
+function safeUrl(u) {
+  if (!u) return null;
+  try { const x = new URL(u, location.href); return x.protocol === "http:" || x.protocol === "https:" ? x.href : null; } catch (_) { return null; }
+}
+/** A link opened in a new tab. Without a safe address, a button disappears and an inline link stays plain text. */
+function extLink(url, label, cls) {
+  const u = safeUrl(url);
+  if (!u) return cls ? "" : label;
+  return `<a${cls ? ` class="${cls}"` : ""} href="${esc(u)}" target="_blank" rel="noopener">${label}</a>`;
+}
+const searchButtons = (searches) => searches.map((q) => extLink(q.url, `${icon("external")}Chercher « ${esc(q.role)} » sur LinkedIn`, "btn")).join("");
+const srcBadge = (source) => `<span class="badge soft"><span class="sq"${familyAttr(source)}></span>${esc(source || "manuel")}</span>`;
+const scoreBar = (r) => {
+  const fit = r.fit ?? 0, intent = r.intent ?? 0, warm = r.warm ?? 0;
+  return `<div class="score"><b>${r.score}</b><div class="bar" title="adéquation ${fit}, intention ${intent}, lien chaud ${warm}"><i class="fit" style="width:${fit}%"></i><i class="int" style="width:${intent}%"></i><i class="warm" style="width:${warm}%"></i></div></div>`;
+};
+
+function hideToast() { clearTimeout(toast.timer); $("#toast").hidden = true; toast.onAction = null; }
+/** Feedback of an action. An error stays until "Fermer"; a removal carries "Annuler" for 5 seconds. */
+function toast(msg, opt = {}) {
+  clearTimeout(toast.timer);
+  const box = $("#toast"), btn = $("#toast-action");
+  box.setAttribute("role", opt.error ? "alert" : "status");
+  $("#toast-text").textContent = msg;
+  btn.textContent = opt.action || "Fermer";
+  btn.hidden = !opt.action && !opt.error;
+  toast.onAction = opt.onAction || null;
+  box.hidden = false;
+  if (!opt.error) toast.timer = setTimeout(hideToast, opt.action ? UNDO_MS : 3000);
+}
+
+/** The reason the server gives, in a sentence: guard violations, {error} or {status}, or a generic message. */
+function errorText(err, fallback = "Action impossible, réessayez.") {
+  if (err?.status === 401) return "Session expirée. Rechargez la page pour vous reconnecter.";
+  if (Array.isArray(err?.body)) return err.body.map((g) => String(g).replace(/^\[\w+\]\s*/, "")).join(" · ");
+  const s = err?.body?.error || err?.body?.status;
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) + "." : fallback;
+}
+
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { "Content-Type": "application/json", ...(opts.headers || {}) } });
+  if (!r.ok) { const e = new Error(String(r.status)); e.status = r.status; e.body = await r.json().catch(() => null); throw e; }
   return r.json().catch(() => ({}));
 }
 
+/** Banner above the view: the server does not answer, or the session expired. */
+function setBanner(kind) {
+  const b = $("#banner");
+  b.hidden = !kind;
+  if (!kind) return;
+  b.dataset.kind = kind;
+  $("#banner-title").textContent = kind === "expired" ? "Session expirée." : "Le serveur ne répond pas.";
+  $("#banner-text").textContent = kind === "expired" ? "Rechargez la page pour vous reconnecter."
+    : state.loaded ? "Les données affichées datent du dernier chargement réussi." : "Rien n'est affiché tant qu'il ne répond pas.";
+  $("#banner-action").textContent = kind === "expired" ? "Recharger" : "Réessayer";
+}
+
 async function load() {
-  try {
-    const [overview, drafts, approved, replies, toComplete] = await Promise.all([
-      api("/api/overview"), api("/api/drafts?status=PENDING_REVIEW"), api("/api/drafts?status=APPROVED"), api("/api/replies"), api("/api/to-complete")
-    ]);
-    state = { demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete };
-  } catch (e) {
-    state = { demo: true, overview: DEMO.overview, drafts: structuredClone(DEMO.drafts), tasks: structuredClone(DEMO.tasks), replies: structuredClone(DEMO.replies), toComplete: structuredClone(DEMO.toComplete) };
+  if (DEMO_MODE) {
+    Object.assign(state, { loaded: true, demo: true, overview: structuredClone(DEMO.overview), drafts: structuredClone(DEMO.drafts), tasks: structuredClone(DEMO.tasks), replies: structuredClone(DEMO.replies), toComplete: structuredClone(DEMO.toComplete), lastRun: DEMO.lastRun, demands: structuredClone(DEMO.demands), book: structuredClone(DEMO.book), blacklist: structuredClone(DEMO.blacklist) });
+    render();
+    return;
   }
+  try {
+    const [overview, drafts, approved, replies, toComplete, lastRun, demands, book, blacklist] = await Promise.all([
+      api("/api/overview"), api("/api/drafts?status=PENDING_REVIEW"), api("/api/drafts?status=APPROVED"), api("/api/replies"), api("/api/to-complete"),
+      api("/api/discovery/last").catch(() => null), api("/api/demands").catch(() => []),
+      api("/api/book").catch(() => []), api("/api/blacklist").catch(() => [])
+    ]);
+    Object.assign(state, { loaded: true, demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete, lastRun, demands, book, blacklist });
+  } catch (e) {
+    setBanner(e.status === 401 ? "expired" : "error");
+    return;
+  }
+  setBanner(null);
   render();
+  watchRun();
+}
+
+/** Reloads everything, unless something is being typed, confirmed or can still be undone. */
+function refresh() {
+  if (state.demo || pending.size || document.querySelector("[data-edit]:not([hidden]), .confirm")) return;
+  if ([...document.querySelectorAll("#newlist input, #block-form input")].some((i) => i.value !== i.defaultValue)) return;
+  load();
+}
+
+/** While a discovery run is in progress, its card is read again every minute; the lists follow when it ends. */
+function watchRun() {
+  clearTimeout(watchRun.timer);
+  if (state.demo || !state.lastRun?.running) return;
+  watchRun.timer = setTimeout(async () => {
+    try { state.lastRun = await api("/api/discovery/last"); } catch (_) { watchRun(); return; }
+    renderRun();
+    if (state.lastRun?.running) watchRun(); else refresh();
+  }, 60000);
 }
 
 function render() {
-  const o = state.overview;
-  const mode = $("#mode");
-  mode.className = "pill " + (state.demo ? "demo" : o.dryRun ? "dry" : "live");
-  mode.textContent = state.demo ? "Données d'exemple" : o.dryRun ? "Mode test : aucun envoi" : "Envois actifs";
-  $("#today").textContent = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long" }).format(new Date());
-
-  const k = o.kpis;
-  const tiles = [
-    ["Emails envoyés", num(k.sent), `${o.periodDays} jours`],
-    ["Taux de réponse", pct(k.replyRate), `${k.replies} réponses`],
-    ["Réponses positives", pct(k.positiveRate), `${k.positive} prospects`, k.sent > 30 && k.positiveRate < 0.02],
-    ["Nouveaux prospects", num(o.queues.discoveredThisWeek || 0), "trouvés en 7 jours"],
-    ["Rendez-vous", num(k.meetings), "objectif : 2 par semaine"],
-    ["Désinscriptions", pct(k.unsubscribeRate), `${k.unsubscribed} contact${k.unsubscribed > 1 ? "s" : ""}`, k.unsubscribeRate > 0.02],
-    ["Rebonds", pct(k.bounceRate), "seuil interne 2 %", k.bounceRate > 0.02]
-  ];
-  $("#kpis").innerHTML = tiles.map(([l, v, s, bad]) => `<div class="kpi ${bad ? "bad" : "ok"}"><span class="label">${l}</span><span class="value">${v}</span><span class="sub">${s}</span></div>`).join("");
-
-  $("#c-today").textContent = state.drafts.length + state.tasks.length + state.replies.length;
-  $("#c-new").textContent = state.toComplete.length;
-  $("#c-accounts").textContent = o.accounts.length;
-  renderDrafts(); renderReplies(); renderTasks(); renderNew(); renderAccounts(); renderPipeline(); renderHealth();
+  renderShell(); renderPilotage(); renderDrafts(); renderReplies(); renderTasks(); renderAside(); renderRun(); renderDemands(); renderNewList();
+  renderBlacklist(); renderBook(); renderResults(); renderCounts();
 }
+
+/* ---- Shell: sidebar, header, headline of the open view. */
+
+const VIEWS = { pilotage: "Pilotage", today: "À faire", prospects: "Prospects", book: "Carnet", results: "Résultats", method: "Méthode", blacklist: "Liste noire" };
+
+function renderShell() {
+  const o = state.overview, mode = $("#mode");
+  mode.hidden = false;
+  mode.textContent = state.demo ? "Données d'exemple" : o.dryRun ? "Mode test : aucun envoi" : "Envois actifs";
+  const next = o.nextSendAt ? new Date(o.nextSendAt) : null;
+  $("#side-next").textContent = next ? `Prochain envoi ${next.toLocaleDateString("fr-FR", { weekday: "long", timeZone: PARIS })} à ${next.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: PARIS })}` : "";
+}
+
+/** Headline and subline of the open view. Pilotage has none; loading views say so instead of showing empty queues. */
+function renderHero() {
+  const v = state.view, L = state.loaded;
+  const counts = { drafts: state.drafts.length, replies: state.replies.length, tasks: state.tasks.length };
+  const total = counts.drafts + counts.replies + counts.tasks, waiting = state.toComplete.length;
+  const people = state.book.reduce((n, e) => n + e.contacts.length, 0);
+  const parts = [
+    counts.drafts && plural(counts.drafts, "email à valider", "emails à valider"),
+    counts.replies && plural(counts.replies, "réponse", "réponses"),
+    counts.tasks && plural(counts.tasks, "note LinkedIn", "notes LinkedIn")
+  ].filter(Boolean);
+  const longDay = (() => { const s = new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }); return s.charAt(0).toUpperCase() + s.slice(1); })();
+  const days = state.overview?.periodDays || 30;
+  const head = {
+    pilotage: ["", ""],
+    today: !L ? ["Chargement…", "Récupération de la file du jour."] : total ? [`${plural(total, "action", "actions")} aujourd'hui`, `${parts.join(", ")}. ${longDay}.`] : ["Rien à faire aujourd'hui", "Les prochains brouillons arrivent la veille de leur créneau d'envoi."],
+    prospects: [!L ? "Chargement…" : waiting ? `${plural(waiting, "prospect", "prospects")} à compléter` : "Aucun prospect à compléter", "Trouvés par la recherche ou importés. Il manque la personne à contacter."],
+    book: [!L ? "Chargement…" : state.book.length ? `${plural(state.book.length, "entreprise", "entreprises")}, ${plural(people, "contact", "contacts")}` : "Carnet vide", "Les personnes à qui écrire, entreprise par entreprise."],
+    results: [`Résultats sur ${days} jours`, `Le pipeline, ce qui convertit et la santé de la boîte d'envoi, au ${todayLong()}.`],
+    method: ["Du signal au contrat signé", "Le pipeline en onze étapes. Pour chacune : ce qui se passe, qui le fait, et ce que cela donne sur Vélomoov, une app de vélo fictive."],
+    blacklist: ["Liste noire", "Entreprises jamais prospectées : ni recherche, ni séquence, ni email."]
+  }[v];
+  $("#hero").hidden = !head[0];
+  $("#headline").textContent = head[0];
+  $("#subline").textContent = head[1];
+  $("#subline").hidden = !head[1];
+}
+
+const setCount = (sel, n) => { $(sel).textContent = n || ""; };
+
+/** Headlines, counts, filters and empty groups. Cheap, so it runs after every action instead of a full render. */
+function renderCounts() {
+  renderHero();
+  $("#today-loading").hidden = state.loaded;
+  if (!state.loaded) return;
+  const counts = { drafts: state.drafts.length, replies: state.replies.length, tasks: state.tasks.length };
+  const total = counts.drafts + counts.replies + counts.tasks;
+  const kinds = Object.values(counts).filter(Boolean).length;
+  if (state.filter !== "all" && !counts[state.filter]) state.filter = "all";
+  document.querySelectorAll("#filters [data-filter]").forEach((c) => {
+    const k = c.dataset.filter, n = k === "all" ? total : counts[k];
+    c.querySelector(".n").textContent = n;
+    c.setAttribute("aria-selected", k === state.filter);
+    c.hidden = k !== "all" && !n;
+  });
+  $("#filters").hidden = kinds < 2;
+  document.querySelectorAll("#view-today [data-kind]").forEach((s) => {
+    s.hidden = !counts[s.dataset.kind] || (state.filter !== "all" && state.filter !== s.dataset.kind);
+  });
+  const waiting = state.toComplete.length;
+  $("#focus").hidden = total === 0;
+  $("#all-done").hidden = total > 0 || !waiting;
+  $("#done-title").textContent = waiting > 1 ? `${waiting} nouveaux prospects attendent un contact` : "1 nouveau prospect attend un contact";
+  renderFacets();
+  setCount("#c-today", total); setCount("#c-prospects", waiting); setCount("#c-book", state.book.length); setCount("#c-blacklist", state.blacklist.length);
+}
+
+/* ---- Pilotage: key figures, emails and replies over time, ranked accounts. */
+
+function renderPilotage() {
+  const o = state.overview, k = o.kpis, a = o.activity || [];
+  const sum = (list, key) => list.reduce((s, d) => s + d[key], 0);
+  const cur = a.slice(-30), prev = a.slice(-60, -30);
+  const s1 = sum(cur, "sent"), s0 = sum(prev, "sent"), r1 = sum(cur, "replies"), r0 = sum(prev, "replies");
+  const rate1 = s1 ? r1 / s1 * 100 : 0, rate0 = s0 ? r0 / s0 * 100 : 0;
+  const goal = Math.floor(o.periodDays / 7) * 2;
+  const stageOf = (s) => o.pipeline.find((x) => x.stage === s) || { count: 0, amountEur: 0 };
+  const won = stageOf("WON"), proposals = stageOf("PROPOSAL").count;
+  const open = o.pipeline.filter((s) => ["DISCOVERY_SOLD", "PROPOSAL"].includes(s.stage)).reduce((x, s) => x + s.amountEur, 0);
+  // No comparison without a previous period: a delta against zero means nothing
+  const tiles = [
+    { label: "Emails envoyés", value: num(s1), delta: s0 ? signed((s1 - s0) / s0 * 100, 0, " %") : "", up: s1 >= s0,
+      headline: !s0 ? (s1 ? "Premiers envois" : "Aucun envoi pour l'instant") : s1 >= s0 ? "En hausse sur 30 jours" : "En baisse sur 30 jours", caption: `Contre ${num(s0)} les 30 jours précédents` },
+    { label: "Taux de réponse", value: dec(rate1, 1) + " %", delta: s0 ? signed(rate1 - rate0, 1, " pt") : "", up: rate1 >= rate0,
+      headline: `${plural(r1, "réponse", "réponses")}, dont ${plural(k.positive, "positive", "positives")}`, caption: "Sur les 30 derniers jours" },
+    { label: "Rendez-vous", value: num(k.meetings), delta: `Objectif : ${goal}`, up: k.meetings >= goal,
+      headline: k.meetings >= goal ? "Objectif atteint" : "En dessous de l'objectif", caption: `2 par semaine, soit ${goal} sur ${o.periodDays} jours` },
+    { label: "Pipeline en cours", value: eur(open), delta: won.count ? plural(won.count, "gagnée", "gagnées") : "Aucune gagnée", up: won.count > 0,
+      headline: plural(proposals, "proposition envoyée", "propositions envoyées"), caption: `${eur(won.amountEur)} signés`, link: true }
+  ];
+  $("#kpis").innerHTML = tiles.map((t) => `<div class="card stat padded-y">
+      <div class="kpi-top"><div class="muted">${t.label}</div><div class="kpi-value">${t.value}</div>${t.delta ? `<span class="badge">${icon(t.up ? "up" : "down")}${t.delta}</span>` : ""}</div>
+      <div class="kpi-foot"><b>${t.headline}${icon(t.up ? "up" : "down")}</b><div class="muted">${t.caption}${t.link ? ` · <a href="#results" style="color:var(--foreground);text-decoration:underline">Voir les résultats</a>` : ""}</div></div></div>`).join("");
+  renderChart();
+  renderAccounts();
+}
+
+const M_SHORT = ["janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.", "déc."];
+const parseDay = (s) => new Date(s + "T12:00:00");
+const shortDay = (s) => { const d = parseDay(s); return d.getDate() + " " + M_SHORT[d.getMonth()]; };
+const fullDay = (s) => parseDay(s).toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" });
+
+/** By week over 3 months, by day over 30 and 7 days. */
+function chartPoints() {
+  const a = state.overview?.activity || [], range = state.range;
+  if (range === "90") {
+    const start = Math.max(0, a.length - 84), pts = [];
+    for (let i = start; i < a.length; i += 7) {
+      const b = a.slice(i, i + 7);
+      pts.push({ sent: b.reduce((s, d) => s + d.sent, 0), replies: b.reduce((s, d) => s + d.replies, 0), tick: shortDay(b[0].date), label: "Semaine du " + shortDay(b[0].date) });
+    }
+    return pts;
+  }
+  return a.slice(range === "30" ? -30 : -7).map((d) => ({ sent: d.sent, replies: d.replies, tick: shortDay(d.date), label: fullDay(d.date) }));
+}
+const chartScale = (pts) => {
+  const n = pts.length, max = Math.max(4, Math.max(0, ...pts.map((p) => Math.max(p.sent, p.replies))) * 1.15);
+  return { n, X: (i) => n > 1 ? i / (n - 1) * 1000 : 500, Y: (v) => 250 - v / max * 240 };
+};
+
+/** Two overlapping areas with smoothed curves, as in the Thermos area chart. */
+function renderChart() {
+  const pts = chartPoints(), { n, X, Y } = chartScale(pts);
+  document.querySelectorAll("#ranges [data-range]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.range === state.range));
+  const tS = pts.reduce((s, p) => s + p.sent, 0), tR = pts.reduce((s, p) => s + p.replies, 0);
+  $("#chart-sub").textContent = `${plural(tS, "email", "emails")} et ${plural(tR, "réponse", "réponses")} sur les ${state.range === "90" ? "3 derniers mois, par semaine" : state.range === "30" ? "30 derniers jours" : "7 derniers jours"}`;
+  const curve = (key) => pts.reduce((d, p, i) => {
+    const x = X(i), y = Y(p[key]);
+    if (!i) return `M${x} ${y}`;
+    const px = X(i - 1), py = Y(pts[i - 1][key]), mx = (px + x) / 2;
+    return `${d} C${mx} ${py} ${mx} ${y} ${x} ${y}`;
+  }, "");
+  const s = curve("sent"), r = curve("replies"), close = " L1000 250 L0 250 Z";
+  $("#line-s").setAttribute("d", s); $("#area-s").setAttribute("d", n ? s + close : "");
+  $("#line-r").setAttribute("d", r); $("#area-r").setAttribute("d", n ? r + close : "");
+  const step = Math.max(1, Math.ceil(n / 6)), ticks = [];
+  for (let j = 0; j < n; j += step) ticks.push(`<span style="left:${X(j) / 10}%;transform:${j === 0 ? "none" : "translateX(-50%)"}">${esc(pts[j].tick)}</span>`);
+  $("#ticks").innerHTML = ticks.join("");
+  hoverChart(null);
+}
+
+/** Tooltip of one point, from the mouse or from the arrow keys. */
+function hoverChart(i) {
+  const pts = chartPoints(), { X, Y } = chartScale(pts), els = ["#hover-line", "#dot-s", "#dot-r", "#tooltip"].map($);
+  state.hover = i;
+  if (i == null || !pts[i]) { els.forEach((e) => (e.hidden = true)); return; }
+  const p = pts[i], x = X(i), left = x / 10 + "%";
+  const [line, ds, dr, tip] = els;
+  line.style.left = ds.style.left = dr.style.left = tip.style.left = left;
+  ds.style.top = Y(p.sent) + "px"; dr.style.top = Y(p.replies) + "px";
+  tip.style.transform = x > 650 ? "translateX(calc(-100% - 12px))" : "translateX(12px)";
+  tip.innerHTML = `<b>${esc(p.label)}</b><span><i class="key k-s"></i><span>Emails envoyés</span><span class="mono">${p.sent}</span></span><span><i class="key k-r"></i><span>Réponses</span><span class="mono">${p.replies}</span></span>`;
+  els.forEach((e) => (e.hidden = false));
+}
+
+function tierOf(score) { return score >= 65 ? "ACT_NOW" : score >= 45 ? "NURTURE" : "WATCH"; }
+const TIERS = { ACT_NOW: ["Agir", "default"], NURTURE: ["Suivre", "secondary"], WATCH: ["Veille", ""] };
+const tierBadge = (score, withScore) => { const [label, cls] = TIERS[tierOf(score)]; return `<span class="badge ${cls}">${label}${withScore ? " · " + score : ""}</span>`; };
+const SORTS = {
+  name: (a, b) => a.account.name.localeCompare(b.account.name, "fr"),
+  score: (a, b) => a.score - b.score,
+  date: (a, b) => String(a.refreshedAt || "").localeCompare(String(b.refreshedAt || ""))
+};
+const accountsInTier = () => state.overview.accounts.filter((r) => state.tier === "all" || tierOf(r.score) === state.tier);
+const accountsShown = () => {
+  const { key, dir } = state.sort;
+  return accountsInTier().filter((r) => matches(state.q.accounts, r.account.name, r.account.domain)).sort((a, b) => (dir === "ascending" ? 1 : -1) * SORTS[key](a, b));
+};
+
+/** Ranked accounts: tabs by tier, sortable columns, a search from the header, checkboxes. */
+function renderAccounts() {
+  const all = state.overview.accounts, { key, dir } = state.sort;
+  $("#tiers").innerHTML = [["all", "Tous"], ["ACT_NOW", "Agir"], ["NURTURE", "Suivre"], ["WATCH", "Veille"]].map(([t, label]) =>
+    `<button role="tab" type="button" data-tier="${t}" aria-selected="${state.tier === t}">${label}<span class="n">${t === "all" ? all.length : all.filter((r) => tierOf(r.score) === t).length}</span></button>`).join("");
+  document.querySelectorAll("th[data-col]").forEach((th) => th.setAttribute("aria-sort", th.dataset.col === key ? dir : "none"));
+  const rows = accountsShown();
+  $("#accounts").innerHTML = !rows.length && all.length ? `<tr><td colspan="8" class="muted">${NO_MATCH}</td></tr>` : rows.map((r) => {
+    const on = state.sel.has(r.account.id);
+    return `<tr id="a-${r.account.id}" class="pick${on ? " on" : ""}" data-pick="${r.account.id}">
+      <td><input type="checkbox" class="check" ${on ? "checked" : ""} aria-label="Sélectionner ${esc(r.account.name)}"></td>
+      <td><div class="acct"><b>${esc(r.account.name)}</b><span class="meta">${esc(r.account.domain || "")}</span></div></td>
+      <td class="nowrap">${srcBadge(r.account.source)}</td>
+      <td class="nowrap">${scoreBar(r)}</td>
+      <td>${tierBadge(r.score)}</td>
+      <td class="nowrap">${esc(OFFERS[r.recommendedOffer] || "aucune")}</td>
+      <td class="why">${r.reasons.slice(0, 3).map(esc).join(" · ")}</td>
+      <td class="nowrap muted">${r.refreshedAt ? day(r.refreshedAt) : "jamais"}</td></tr>`;
+  }).join("");
+  const ids = accountsInTier().map((r) => r.account.id), nSel = ids.filter((id) => state.sel.has(id)).length;
+  $("#check-all").checked = ids.length > 0 && nSel === ids.length;
+  $("#sel-label").textContent = `${nSel} sur ${ids.length} ligne(s) sélectionnée(s).`;
+  // With ?demo=1 the companies are fictional: no export
+  $("#accounts-export").hidden = state.demo;
+}
+
+/** The rows shown (or the selected ones), as a CSV file built in the page. Cells starting with = + - @ are neutralised. */
+function exportAccounts() {
+  const rows = accountsShown(), picked = rows.filter((r) => state.sel.has(r.account.id)), list = picked.length ? picked : rows;
+  const cell = (v) => { let s = String(v ?? ""); if (/^[=+\-@]/.test(s)) s = "'" + s; return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [["compte", "domaine", "source", "score", "palier", "offre", "pourquoi", "mis_a_jour"].join(";"),
+    ...list.map((r) => [r.account.name, r.account.domain, r.account.source, r.score, TIERS[tierOf(r.score)][0], OFFERS[r.recommendedOffer] || "", r.reasons.join(" · "), r.refreshedAt || ""].map(cell).join(";"))];
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\n")], { type: "text/csv;charset=utf-8" }));
+  a.download = "comptes-classes.csv";
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast(`${plural(list.length, "compte exporté", "comptes exportés")}.`);
+}
+
+/* ---- À faire */
 
 function bodyWithCites(text) {
   return esc(text).replace(/\[F:([A-Za-z0-9_-]+)\]/g, (_, id) => `<button class="cite" data-fact="${id}" aria-label="Voir la source ${id}">${id.slice(0, 4)}</button>`);
 }
 
+function factList(facts) {
+  return `<div class="facts">${(facts || []).map((f) => `<div class="fact" data-fid="${esc(f.id)}" tabindex="-1"><code>${esc(String(f.id).slice(0, 4))}</code><span>${esc(f.statement)} · ${extLink(f.sourceUrl, "source")}${retrieved(f)}</span></div>`).join("")}</div>`;
+}
+
+/** Guard report of a draft: blocking reasons first; a report with warnings only asks for a check. */
+function guardHtml(report) {
+  if (!report || !report.length) return "";
+  const blocked = report.some((g) => g.startsWith("[BLOCK]"));
+  return `<div class="alert guard${blocked ? "" : " warn"}" role="alert">${icon("alert")}<div><b>${blocked ? "Bloqué par le garde-fou" : "À vérifier"}</b>${report.map((g) => `<span>${esc(g.replace(/^\[\w+\]\s*/, ""))}</span>`).join("")}</div></div>`;
+}
+
 function renderDrafts() {
-  const box = $("#drafts");
-  if (!state.drafts.length) { box.innerHTML = `<div class="empty">Rien à valider. Les brouillons arrivent la veille de leur créneau d'envoi.</div>`; return; }
-  box.innerHTML = state.drafts.map(({ draft: d, contactName, contactRole, accountName, facts }) => {
+  $("#drafts").innerHTML = state.drafts.map(({ draft: d, contactName, contactRole, accountName, facts }) => {
     const blocked = (d.guardReport || []).some((g) => g.startsWith("[BLOCK]"));
-    return `<article class="card ${blocked ? "blocked" : ""}" id="d-${d.id}">
-      <div class="who"><span><strong>${esc(contactName)}</strong>, ${esc(contactRole)} · ${esc(accountName)}</span><span class="chan">${d.channel} · étape ${d.stepIndex + 1}</span></div>
-      ${d.subject ? `<div class="subject">${esc(d.subject)}</div>` : ""}
-      <div class="body" data-view>${bodyWithCites(d.body)}</div>
+    const n = (facts || []).length;
+    return `<article class="card" id="d-${d.id}" tabindex="-1">
+      <div class="row"><span><b style="font-weight:500">${esc(contactName)}</b><span class="muted">, ${esc(contactRole)} · ${esc(accountName)}</span></span><span class="badge soft">${d.channel === "EMAIL" ? "Email" : esc(d.channel)} · étape ${d.stepIndex + 1}</span></div>
+      ${guardHtml(d.guardReport)}
+      <div class="stack" style="gap:8px" data-view>
+        ${d.subject ? `<div class="subject">${esc(d.subject)}</div>` : ""}
+        <div class="body">${bodyWithCites(d.body)}</div>
+      </div>
       <div data-edit hidden class="stack">
         ${d.subject != null ? `<input type="text" id="s-${d.id}" value="${esc(d.subject)}" aria-label="Objet">` : ""}
-        <textarea id="b-${d.id}" aria-label="Message">${esc(d.body)}</textarea>
+        <textarea id="b-${d.id}" aria-label="Message" aria-describedby="k-${d.id}">${esc(d.body)}</textarea>
+        <span class="meta" id="k-${d.id}">Cmd ou Ctrl + Entrée pour approuver, Échap pour fermer.</span>
       </div>
-      ${d.guardReport && d.guardReport.length ? `<div class="guard">${d.guardReport.map((g) => `<div class="v ${g.startsWith("[BLOCK]") ? "BLOCK" : "WARN"}">${esc(g.replace(/^\[\w+\]\s*/, ""))}</div>`).join("")}</div>` : ""}
-      <div class="why">${esc(d.rationale)}</div>
-      <div class="facts">${(facts || []).map((f) => `<div class="fact" data-fid="${f.id}"><code>${f.id.slice(0, 4)}</code><span>${esc(f.statement)} · <a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener">source</a></span></div>`).join("")}</div>
+      <details class="sources">
+        <summary>${icon("chevron")}${n ? plural(n, "source", "sources") + " et raison du message" : "Raison du message"}</summary>
+        <div class="panel"><span>${esc(d.rationale)}</span>${factList(facts)}</div>
+      </details>
       <div class="actions">
-        <button class="btn primary" data-act="approve" data-id="${d.id}" ${blocked ? "disabled title=\"Corrigez le message avant de l'approuver\"" : ""}>Approuver</button>
-        <button class="btn" data-act="edit" data-id="${d.id}">Modifier</button>
+        ${blocked ? `<button class="btn primary" data-act="edit" data-id="${d.id}" data-label="Corriger">Corriger</button>` : ""}
+        <button class="btn primary" data-act="approve" data-id="${d.id}" ${blocked ? "hidden" : ""}>Approuver</button>
+        ${blocked ? "" : `<button class="btn" data-act="edit" data-id="${d.id}" data-label="Modifier">Modifier</button>`}
         <button class="btn ghost" data-act="reject" data-id="${d.id}">Rejeter</button>
       </div>
     </article>`;
   }).join("");
 }
 
+// No ?, & or % in the address: they would add headers (cc, body) to the reply
+const EMAIL = /^[^\s@<>"?&%]+@[^\s@<>"?&%]+$/;
+
 function renderReplies() {
-  const box = $("#replies");
-  if (!state.replies.length) { box.innerHTML = `<div class="empty">Aucune réponse à traiter.</div>`; return; }
-  box.innerHTML = state.replies.map((r) => {
-    const [label, tone] = INTENTS[r.intent] || [r.intent, "neu"];
-    return `<article class="card"><div class="who"><span><strong>${esc(r.from)}</strong></span><span class="intent ${tone}">${label}</span></div>
-      <div>${esc(r.summary)}</div>${r.followUpOn ? `<div class="note">Relance prévue le ${new Date(r.followUpOn).toLocaleDateString("fr-FR")}</div>` : ""}
-      <div class="actions"><button class="btn" data-act="handled" data-id="${r.id}">Traité</button></div></article>`;
+  $("#replies").innerHTML = state.replies.map((r) => {
+    const [label, tone] = INTENTS[r.intent] || [r.intent, "neutral"];
+    // No reply button for an opposition, a refusal or a bounce: those people must not be written to again
+    const mail = tone !== "error" && EMAIL.test(r.from) ? `mailto:${encodeURIComponent(r.from)}${r.subject ? "?subject=" + encodeURIComponent("Re: " + r.subject.replace(/^re:\s*/i, "")) : ""}` : null;
+    return `<article class="card" id="r-${r.id}" tabindex="-1" style="gap:12px">
+      <div class="row"><span>${r.accountName ? `<b style="font-weight:500">${esc(r.accountName)}</b><span class="muted"> · ` : `<span class="muted">`}${esc(r.from)}</span></span><span class="badge soft"><span class="dot" style="background:${DOT[tone]}"></span>${esc(label)}</span></div>
+      <div>${esc(r.summary)}</div>${r.followUpOn ? `<div class="followup">${icon("clock")}Relance prévue le ${day(r.followUpOn)}</div>` : ""}
+      <div class="actions">${mail ? `<a class="btn primary" href="${esc(mail)}">Répondre</a>` : ""}<button class="btn" data-act="handled" data-id="${r.id}">Marquer comme traité</button></div></article>`;
   }).join("");
 }
 
 function renderTasks() {
-  const box = $("#tasks");
-  if (!state.tasks.length) { box.innerHTML = `<div class="empty">Aucune action LinkedIn aujourd'hui.</div>`; return; }
-  box.innerHTML = state.tasks.map(({ draft: d, contactName, accountName, linkedinUrl }) => `<article class="card">
-      <div class="who"><span><strong>${esc(contactName)}</strong> · ${esc(accountName)}</span><span class="chan">NOTE · ${d.body.length}/300</span></div>
-      <div class="body">${esc(d.body.replace(/\s*\[F:[^\]]+\]/g, ""))}</div>
-      <div class="actions"><button class="btn" data-act="copy" data-id="${d.id}">Copier la note</button>
-      ${linkedinUrl ? `<a class="btn" href="${esc(linkedinUrl)}" target="_blank" rel="noopener">Ouvrir le profil</a>` : ""}
-      <button class="btn primary" data-act="done" data-id="${d.id}">Fait</button></div></article>`).join("");
+  $("#tasks").innerHTML = state.tasks.map(({ draft: d, contactName, accountName, linkedinUrl }) => {
+    const text = noCites(d.body);
+    return `<article class="card" id="t-${d.id}" tabindex="-1" style="gap:12px">
+      <div class="row"><span><b style="font-weight:500">${esc(contactName)}</b><span class="muted"> · ${esc(accountName)}</span></span><span class="badge soft">Note · ${text.length}/300</span></div>
+      <div class="panel body" style="max-width:none">${esc(text)}</div>
+      <div class="actions"><button class="btn primary" data-act="copy" data-id="${d.id}">${icon("copy")}Copier la note</button>
+      ${extLink(linkedinUrl, `${icon("external")}Ouvrir le profil`, "btn")}
+      <button class="btn ghost" data-act="done" data-id="${d.id}">Fait</button></div></article>`;
+  }).join("");
 }
 
-function renderNew() {
+function renderAside() {
+  const o = state.overview, k = o.kpis;
+  $("#aside").innerHTML = `<div class="card-head"><div class="card-title">${o.periodDays} derniers jours</div><div class="muted">Au ${todayLong()}</div></div>
+    <div class="stack" style="gap:16px">
+      <div class="stat-line"><b>${num(k.sent)}</b><span>${k.sent > 1 ? "emails envoyés" : "email envoyé"}</span></div>
+      <div class="stat-line"><b>${pct(k.replyRate)}</b><span>de réponse, ${plural(k.replies, "réponse", "réponses")}</span></div>
+      <div class="stat-line"><b>${num(k.meetings)}</b><span>rendez-vous, objectif 2 par semaine</span></div>
+    </div>
+    <div class="stack" style="gap:16px">
+      <a class="btn" href="#pilotage">Ouvrir le pilotage</a>
+      <div class="hr"></div>
+      <p class="note" style="font-size:12px;line-height:20px">Au clavier : <kbd>J</kbd> <kbd>K</kbd> pour passer d'une carte à l'autre, <kbd>A</kbd> pour approuver, <kbd>E</kbd> pour modifier.</p>
+    </div>`;
+}
+
+/* ---- Prospects */
+
+const FACT_KINDS = {
+  JOB_POSTING: "Offre d'emploi", LEGAL_NOTICE: "Annonce légale", PUBLIC_TENDER: "Marché public", PUBLIC_CONTRACT: "Marché attribué", PRESS: "Presse", CODE_REPOSITORY: "Code public",
+  APP_REVIEW: "Avis App Store", APP_METADATA: "App Store", COMPANY_REGISTRY: "Annuaire des entreprises", WEB_PAGE: "Site web", MANUAL: "Saisie manuelle"
+};
+
+// Source families: an outline badge with a chart-colour square. A source outside the map keeps a grey square.
+const SOURCE_FAMILIES = { "classement App Store": "store", "offres d'emploi": "hiring", "BODACC": "legal", "marché public": "legal", "marché européen": "legal", "marché attribué": "legal", "presse": "watch", "GitHub": "watch", "Codeur": "demand" };
+const familyAttr = (source) => SOURCE_FAMILIES[source] ? ` data-family="${SOURCE_FAMILIES[source]}"` : "";
+
+/** Last discovery run: when, what each source brought, and the notes of the sources that are off or failed. */
+function renderRun() {
+  const run = state.lastRun;
+  const when = run?.ranAt ? new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(run.ranAt)).replace(/^./, (c) => c.toUpperCase()) : "";
+  $("#run-title").textContent = run?.running ? "Recherche en cours" : "Dernière recherche";
+  $("#run-sub").textContent = [when || (run?.running ? "" : "Aucune recherche pour l'instant"), ...(run?.notes || [])].filter(Boolean).join(" · ");
+  const chips = Object.entries(run?.bySource || {});
+  $("#run-chips").hidden = !chips.length;
+  $("#run-chips").innerHTML = chips.map(([label, n]) => `<span class="badge soft${n > 0 ? "" : " zero"}"><span class="sq"${n > 0 ? familyAttr(label) : ""}></span>${esc(label)}<span class="mono">${n}</span></span>`).join("");
+}
+
+/** Requests published on a marketplace: no named company, so no email. One action: answer on the platform. */
+function renderDemands() {
+  $("#demands").innerHTML = state.demands.map((d) => {
+    const detail = [(d.categories || []).join(", "), d.publishedAt && "publié le " + day(d.publishedAt)].filter(Boolean).join(" · ");
+    return `<article class="card demand" data-key="${esc(d.key)}">
+      <div><span style="font-weight:600">${esc(d.title)}</span><span class="muted">Budget : ${esc(d.budget || "non précisé")}${detail ? " · " + esc(detail) : ""}</span></div>
+      <div class="actions">${srcBadge(d.source)}${extLink(d.url, `Répondre sur ${esc(d.source)}`, "btn primary")}
+      <button class="btn ghost" data-act="dismiss-demand" data-key="${esc(d.key)}">Écarter</button></div></article>`;
+  }).join("");
+}
+
+/* ---- Filters of the Prospects view: three selects, one choice each, applied to prospects and demands.
+   Cards are hidden, not redrawn, so a form being filled keeps its fields. */
+const FACETS = [
+  ["source", "Source", [["all", "Toutes les sources"], ["store", "App Store"], ["hiring", "Emploi"], ["legal", "Registres"], ["watch", "Presse et code"], ["demand", "Codeur"], ["other", "Autres"]]],
+  ["tier", "Score", [["all", "Tous les scores"], ["ACT_NOW", "Agir, 65 et plus"], ["NURTURE", "Suivre, 45 à 64"], ["WATCH", "Veille, moins de 45"]]],
+  ["offer", "Offre", [["all", "Toutes les offres"], ...Object.entries(OFFERS)]]
+];
+// A demand has no score and no offer: a score or offer filter hides it
+const FACET_ITEM = {
+  prospect: (x) => ({ source: x.row.account.source, score: x.row.score, offer: x.offer }),
+  demand: (d) => ({ source: d.source })
+};
+const FACET_TESTS = {
+  source: (it, v) => (SOURCE_FAMILIES[it.source] || "other") === v,
+  tier: (it, v) => it.score != null && tierOf(it.score) === v,
+  offer: (it, v) => it.offer != null && it.offer === v
+};
+const passes = (it) => Object.entries(state.facets).every(([k, v]) => v === "all" || FACET_TESTS[k](it, v));
+
+function renderFacets() {
+  const items = [...state.toComplete.map(FACET_ITEM.prospect), ...state.demands.map(FACET_ITEM.demand)];
+  const focused = document.activeElement?.id;
+  // An option that matches nothing in the view is not offered, unless it is the current choice
+  $("#facets-body").innerHTML = FACETS.map(([key, label, options]) => `<label class="lbl" for="f-${key}">${label}
+    <select class="field" id="f-${key}" data-facet="${key}">${options.filter(([v]) => v === "all" || v === state.facets[key] || items.some((it) => FACET_TESTS[key](it, v)))
+      .map(([v, text]) => `<option value="${v}"${state.facets[key] === v ? " selected" : ""}>${esc(text)}</option>`).join("")}</select></label>`).join("");
+  if (focused?.startsWith("f-")) $("#" + focused)?.focus();
+  $("#facets").hidden = !items.length;
+  const active = Object.values(state.facets).filter((v) => v !== "all").length;
+
+  let prospects = 0, demands = 0;
+  state.toComplete.forEach((x) => { const el = $("#n-" + x.row.account.id), on = passes(FACET_ITEM.prospect(x)); if (el) el.hidden = !on; prospects += on; });
+  document.querySelectorAll("#demands > article").forEach((el) => {
+    const d = state.demands.find((x) => x.key === el.dataset.key), on = !!d && passes(FACET_ITEM.demand(d));
+    el.hidden = !on; demands += on;
+  });
+  $("#newlist-none").hidden = !state.toComplete.length || prospects > 0;
+  $("#demands-head").hidden = !demands;
+  $("#facets-clear").hidden = $("#facet-note").hidden = !active;
+  if (!active) return;
+  const shown = (n, all, one, many) => `${n} ${n > 1 ? many : one} sur ${all}`;
+  $("#facet-note").textContent = [
+    state.toComplete.length && shown(prospects, state.toComplete.length, "prospect", "prospects"),
+    state.demands.length && shown(demands, state.demands.length, "demande", "demandes")
+  ].filter(Boolean).join(", ") + ".";
+}
+
+function renderNewList() {
   const box = $("#newlist");
-  if (!state.toComplete.length) { box.innerHTML = `<div class="empty">Aucun nouveau prospect à compléter. La recherche tourne chaque nuit à 2h ; lance-la maintenant ou importe ta liste.</div>`; return; }
-  box.innerHTML = state.toComplete.map(({ row: r, offer, roles, why, searches, facts }) => {
-    const id = r.account.id;
-    const fit = r.fit ?? 0, intent = r.intent ?? 0, warm = r.warm ?? 0;
-    return `<article class="card" id="n-${id}">
-      <div class="who"><span><strong>${esc(r.account.name)}</strong>${r.account.domain ? " · " + esc(r.account.domain) : ""}</span><span class="src-chip">${esc(r.account.source || "manuel")}</span></div>
-      <div class="mini-score"><span>${r.score}</span><div class="bar"><i class="fit" style="width:${fit}%"></i><i class="int" style="width:${intent}%"></i><i class="warm" style="width:${warm}%"></i></div></div>
-      <div><strong>${OFFERS[offer] || offer}</strong> · à contacter : ${esc(roles.join(", "))}, ${esc(why)}</div>
-      <div class="facts">${(facts || []).map((f) => `<div class="fact"><code>${f.id.slice(0, 4)}</code><span>${esc(f.statement)} · <a href="${esc(f.sourceUrl)}" target="_blank" rel="noopener">source</a></span></div>`).join("")}</div>
-      <div class="roles">${searches.map((q) => `<a class="btn" href="${esc(q.url)}" target="_blank" rel="noopener">Chercher « ${esc(q.role)} » sur LinkedIn</a>`).join("")}</div>
-      <form class="form-grid" data-form="${id}" onsubmit="return false">
-        <label for="fn-${id}">Nom<input type="text" id="fn-${id}" placeholder="Claire Morel" autocomplete="off"></label>
-        <label for="ro-${id}">Rôle<input type="text" id="ro-${id}" list="roles-${id}" placeholder="${esc(roles[0])}"><datalist id="roles-${id}">${roles.map((x) => `<option value="${esc(x)}">`).join("")}</datalist></label>
-        <label for="em-${id}">Email (optionnel)<input type="text" id="em-${id}" inputmode="email" placeholder="claire@entreprise.fr"></label>
-        <label for="li-${id}">Profil LinkedIn (optionnel)<input type="text" id="li-${id}" placeholder="https://www.linkedin.com/in/..."></label>
-      </form>
-      <div class="actions">
-        <button class="btn primary" data-act="add-contact" data-id="${id}">Ajouter et lancer la séquence</button>
-        <button class="btn ghost" data-act="exclude" data-id="${id}">Écarter</button>
+  if (!state.toComplete.length) { box.innerHTML = `<div class="empty">La recherche tourne chaque nuit entre 2 h et 5 h. Lancez-la maintenant ou importez votre liste.</div>`; return; }
+  box.innerHTML = state.toComplete.map(prospectCard).join("");
+}
+
+function prospectCard({ row: r, offer, roles, why, searches, facts }) {
+  const id = r.account.id;
+  // The first fact is the one behind the account's signal (the server sorts them): it explains why the prospect is here
+  const [trigger, ...others] = facts || [];
+  const n = others.length;
+  const meta = [r.account.domain, r.refreshedAt ? "mis à jour le " + day(r.refreshedAt) : "jamais mis à jour"].filter(Boolean).join(" · ");
+  return `<article class="card" id="n-${id}">
+    <div class="row" style="align-items:flex-start">
+      <div class="stack" style="gap:2px"><span class="name">${esc(r.account.name)}</span><span class="meta">${esc(meta)}</span></div>
+      <div class="actions" style="gap:12px">${srcBadge(r.account.source)}${scoreBar(r)}</div>
+    </div>
+    ${trigger ? `<div class="panel" style="gap:4px"><span class="kind">${esc(FACT_KINDS[trigger.kind] || "Source")}</span><span>${esc(trigger.statement)} · ${extLink(trigger.sourceUrl, "source")}${retrieved(trigger)}</span></div>` : ""}
+    <div><span style="font-weight:500">${esc(OFFERS[offer] || offer)}</span><span class="muted"> · à contacter : ${esc(roles.join(", "))}, ${esc(why)}</span></div>
+    ${n ? `<details class="sources"><summary>${icon("chevron")}${n > 1 ? "Autres sources" : "Autre source"}</summary>${factList(others)}</details>` : ""}
+    <div class="actions">${searchButtons(searches)}</div>
+    <form class="stack" style="gap:16px">
+      <div class="form-grid">
+        <label class="lbl" for="fn-${id}">Nom<input type="text" id="fn-${id}" placeholder="Claire Morel" autocomplete="off"></label>
+        <label class="lbl" for="ro-${id}">Rôle<input type="text" id="ro-${id}" list="roles-${id}" value="${esc(roles[0] || "")}" placeholder="${esc(roles[0] || "")}"><datalist id="roles-${id}">${roles.map((x) => `<option value="${esc(x)}">`).join("")}</datalist></label>
+        <label class="lbl" for="em-${id}">Email (optionnel)<input type="text" id="em-${id}" inputmode="email" placeholder="claire@entreprise.fr"></label>
+        <label class="lbl" for="li-${id}">Profil LinkedIn (optionnel)<input type="text" id="li-${id}" inputmode="url" placeholder="https://www.linkedin.com/in/..."></label>
       </div>
-    </article>`;
-  }).join("");
+      <div class="actions">
+        <button class="btn primary" type="submit" data-act="add-contact" data-id="${id}">Ajouter et lancer la séquence</button>
+        <button class="btn ghost danger" type="button" data-act="exclude" data-id="${id}" data-name="${esc(r.account.name)}">Liste noire</button>
+      </div>
+    </form>
+  </article>`;
 }
 
-function tier(score) { return score >= 65 ? ["ACT_NOW", "agir"] : score >= 45 ? ["NURTURE", "suivre"] : ["WATCH", "veille"]; }
-function renderAccounts() {
-  $("#accounts").innerHTML = state.overview.accounts.map((r) => {
-    const fit = r.fit ?? Math.min(40, r.score), warm = r.warm ?? 0, intent = r.intent ?? Math.max(0, r.score - fit - warm);
-    const [t, tl] = tier(r.score);
-    return `<tr><td><strong>${esc(r.account.name)}</strong><br><span class="reasons">${esc(r.account.domain)}</span></td>
-      <td><div class="score"><span>${r.score}</span><div class="bar" title="adéquation ${fit}, intention ${intent}, lien chaud ${warm}"><i class="fit" style="width:${fit}%"></i><i class="int" style="width:${intent}%"></i><i class="warm" style="width:${warm}%"></i></div></div><span class="tier ${t}">${tl}</span></td>
-      <td>${OFFERS[r.recommendedOffer] || "aucune"}</td>
-      <td class="reasons">${r.reasons.slice(0, 3).map(esc).join("<br>")}</td>
-      <td class="reasons">${r.refreshedAt ? new Date(r.refreshedAt).toLocaleDateString("fr-FR") : "jamais"}</td></tr>`;
-  }).join("");
+/* ---- Liste noire and Carnet */
+
+/** Companies never prospected: excluded accounts (accountId set) and names blocked by hand share one list. */
+function renderBlacklist() {
+  const field = $("#blacklist-search");
+  field.hidden = state.blacklist.length <= 8 && !field.value;
+  $("#blacklist-wrap").hidden = !state.blacklist.length;
+  const list = state.blacklist.filter((b) => matches(state.q.blacklist, b.name, b.reason));
+  if (state.blacklist.length && !list.length) { $("#blacklist").innerHTML = `<tr><td colspan="4" class="muted">${NO_MATCH}</td></tr>`; return; }
+  $("#blacklist").innerHTML = list.map((b) => `<tr><td style="font-weight:500">${esc(b.name)}</td><td>${esc(b.reason || "")}</td><td class="muted">${b.since ? day(b.since) : ""}</td>
+      <td class="num"><button class="btn ghost" data-act="${b.accountId ? "restore" : "unblock"}" data-id="${b.id}">Réintégrer</button></td></tr>`).join("");
 }
 
-function renderPipeline() {
-  const p = state.overview.pipeline.filter((s) => s.stage !== "LOST");
+const CONTACT_STATUS = { sequence: ["Séquence en cours", "accent"], email: ["Email connu", "neutral"], "no-email": ["Email manquant", "error"] };
+
+/** Contact book: per company, the people already chosen, then the legal officers the company registry publishes. */
+function renderBook() {
+  const list = state.book;
+  // With ?demo=1 the page shows fictional companies: the export would download the real book
+  $("#book-export").hidden = state.demo;
+  if (!list.length) { $("#book-list").innerHTML = `<div class="empty">Le carnet se remplit avec les prospects au-dessus de 45 et les contacts que vous ajoutez.</div>`; return; }
+  const shown = list.filter((e) => matches(state.q.book, e.name, ...e.contacts.map((c) => c.contact.fullName), ...e.officers.map((o) => o.fullName)));
+  if (!shown.length) { $("#book-list").innerHTML = `<div class="empty">${NO_MATCH}</div>`; return; }
+  $("#book-list").innerHTML = shown.map((e) => `<article class="card">
+      <div class="row" style="align-items:flex-start">
+        <div class="stack" style="gap:2px"><span class="name">${esc(e.name)}</span><span><span style="font-weight:500">${esc(OFFERS[e.offer] || e.offer)}</span><span class="muted"> · à contacter : ${esc(e.why)}</span></span></div>
+        <div class="actions">${srcBadge(e.source)}${tierBadge(e.score, true)}</div>
+      </div>
+      ${e.contacts.length ? `<div class="people"><div>Contacts choisis</div>${e.contacts.map(({ contact: c, status }) => { const [label, tone] = CONTACT_STATUS[status] || ["", "neutral"]; return `<div class="person"><span><span><b>${esc(c.fullName)}</b><span class="muted"> · ${esc(c.role)}</span></span><small>${esc([c.email, c.dataSource].filter(Boolean).join(" · "))}</small></span>${label ? `<span class="badge soft"><span class="dot" style="background:${DOT[tone]}"></span>${label}</span>` : ""}</div>`; }).join("")}</div>` : ""}
+      ${e.officers.length ? `<div class="people"><div>Dirigeants publiés au registre</div>${e.officers.map((o, i) => `<div class="person"><span><b>${esc(o.fullName)}</b><span class="muted"> · ${esc(o.role)} · </span>${extLink(o.sourceUrl, "source")}</span><button class="btn" data-act="add-officer" data-id="${e.accountId}" data-i="${i}">Ajouter au carnet</button></div>`).join("")}</div>` : ""}
+      <div class="actions">${searchButtons(e.searches)}</div>
+    </article>`).join("");
+}
+
+/* ---- Résultats */
+
+function renderResults() {
+  const o = state.overview, k = o.kpis;
+  const tiles = [
+    ["Emails envoyés", num(k.sent), `Sur ${o.periodDays} jours`],
+    ["Taux de réponse", pct(k.replyRate), plural(k.replies, "réponse", "réponses")],
+    ["Réponses positives", pct(k.positiveRate), plural(k.positive, "prospect", "prospects")],
+    ["Rendez-vous", num(k.meetings), "Objectif : 2 par semaine"]
+  ];
+  $("#res-kpis").innerHTML = tiles.map(([l, v, s]) => `<div class="card stat padded-y"><div class="card-head"><div class="muted">${l}</div><div class="kpi-value">${v}</div></div><div class="muted">${s}</div></div>`).join("");
+
+  const p = o.pipeline.filter((s) => s.stage !== "LOST");
   const max = Math.max(1, ...p.map((s) => s.count));
-  $("#funnel").innerHTML = p.map((s) => `<div class="stage"><span>${STAGES[s.stage]}</span><div class="track"><div class="fill" style="width:${(s.count / max) * 100}%">${s.count}</div></div><span class="amt">${s.amountEur ? eur(s.amountEur) : ""}</span></div>`).join("");
-  const open = state.overview.pipeline.filter((s) => ["DISCOVERY_SOLD", "PROPOSAL"].includes(s.stage)).reduce((a, s) => a + s.amountEur, 0);
+  $("#funnel").innerHTML = p.map((s) => `<div class="stage"><span>${STAGES[s.stage]}</span><div class="track"><i style="width:${Math.max(6, s.count / max * 100)}%"></i></div><span class="mono num">${s.count}</span><span class="amt">${s.amountEur ? eur(s.amountEur) : ""}</span></div>`).join("");
+  const open = o.pipeline.filter((s) => ["DISCOVERY_SOLD", "PROPOSAL"].includes(s.stage)).reduce((a, s) => a + s.amountEur, 0);
   $("#pipe-total").textContent = `${eur(open)} en cours`;
-  const bs = state.overview.bySignal || [];
+  const bs = [...(o.bySignal || [])].sort((a, b) => b.sent - a.sent);
   const m2 = Math.max(1, ...bs.map((s) => s.sent));
-  $("#bysignal").innerHTML = bs.length ? bs.map((s) => `<div class="stage"><span>${esc(s.label)}</span><div class="track"><div class="fill" style="width:${(s.sent / m2) * 100}%">${s.sent}</div></div><span class="amt">${s.positive} pos.</span></div>`).join("")
+  $("#bysignal").innerHTML = bs.length ? bs.map((s) => `<div class="stage"><span>${esc(s.label)}</span><div class="track"><i style="width:${Math.max(6, s.sent / m2 * 100)}%"></i></div><span class="mono num">${s.sent}</span><span class="badge ${s.positive ? "secondary" : ""}">${s.positive} pos.</span></div>`).join("")
     : `<div class="empty">Pas encore assez d'envois pour comparer les signaux.</div>`;
-}
 
-function renderHealth() {
-  const k = state.overview.kpis;
+  // Spam complaints are not measured: Bloom receives no complaint feedback, so it shows no figure
   const gauges = [
-    ["Désinscriptions", k.unsubscribeRate, 0.02, "Au-delà de 2 %, le ciblage ou le message est en cause."],
-    ["Rebonds", k.bounceRate, 0.02, "Au-delà de 2 %, vérifier les adresses avant envoi."],
-    ["Plaintes spam (estimées)", 0, 0.003, "Gmail exige moins de 0,3 %, vise 0,1 %."],
-    ["Réponses positives", k.positiveRate, 0.02, "Repère bas : sous 2 %, revoir signaux et angle.", true]
+    ["Désinscriptions", k.unsubscribeRate, 0.02, "Seuil 2 %. Au-delà, le ciblage ou le message est en cause."],
+    ["Rebonds", k.bounceRate, 0.02, "Seuil 2 %. Au-delà, vérifier les adresses avant envoi."],
+    ["Plaintes spam", null, 0.003, "Bloom ne reçoit pas encore les signalements de spam. Seuil 0,3 % exigé par Gmail."],
+    ["Réponses positives", k.positiveRate, 0.02, "Repère bas 2 %. En dessous, revoir signaux et angle.", true]
   ];
   $("#gauges").innerHTML = gauges.map(([l, v, lim, note, higherIsBetter]) => {
-    const scale = Math.max(lim * 2.5, v * 1.2, 0.0001);
-    const bad = higherIsBetter ? v < lim : v > lim;
-    return `<div class="card gauge"><div class="row"><span>${l}</span><b style="color:var(${bad ? "--bad" : "--good"})">${pct(v)}</b></div>
-      <div class="track"><i style="width:${Math.min(100, (v / scale) * 100)}%;background:var(${bad ? "--bad" : "--good"})"></i><span class="limit" style="left:${(lim / scale) * 100}%"></span></div>
-      <small>Trait : seuil ${pct(lim)}. ${note}</small></div>`;
+    const scale = Math.max(lim * 2.5, (v || 0) * 1.2, 0.0001);
+    const bad = v != null && (higherIsBetter ? v < lim : v > lim);
+    const color = bad ? "var(--destructive)" : v == null ? "var(--muted-foreground)" : "var(--foreground)";
+    return `<div class="card gauge"><div class="row"><span class="muted">${l}</span><b style="color:${color}">${v == null ? "Non mesuré" : pct(v)}</b></div>
+      <div class="g-track"><i style="width:${Math.min(100, (v || 0) / scale * 100)}%;background:${bad ? "var(--destructive)" : "var(--primary)"}"></i><span class="limit" style="left:${lim / scale * 100}%"></span></div>
+      <small>${note}</small></div>`;
   }).join("");
-  $("#agents").innerHTML = state.overview.agents.map((a) => `<tr><td>${esc(a.agent)}</td><td>${num(a.runs)}</td><td style="color:var(${a.failures ? "--warn" : "--muted"})">${a.failures}</td><td>${num(a.inputTokens)}</td><td>${num(a.outputTokens)}</td><td>${(a.avgMs / 1000).toFixed(1).replace(".", ",")} s</td></tr>`).join("");
+  $("#agents").innerHTML = o.agents.map((a) => `<tr><td>${esc(a.agent)}</td><td class="num">${num(a.runs)}</td><td class="num" style="color:var(${a.failures ? "--destructive" : "--muted-foreground"});font-weight:${a.failures ? 500 : 400}">${a.failures}</td><td class="num">${num(a.inputTokens)}</td><td class="num">${num(a.outputTokens)}</td><td class="num">${(a.avgMs / 1000).toFixed(1).replace(".", ",")} s</td></tr>`).join("");
 }
 
-document.addEventListener("click", async (e) => {
-  const tab = e.target.closest("[data-tab]");
-  if (tab) {
-    document.querySelectorAll("[data-tab]").forEach((b) => b.setAttribute("aria-selected", b === tab));
-    ["today", "new", "accounts", "pipeline", "health"].forEach((v) => ($("#view-" + v).hidden = v !== tab.dataset.tab));
-    try { localStorage.setItem("prospect-tab", tab.dataset.tab); } catch (_) {}
-    return;
-  }
-  const cite = e.target.closest(".cite");
-  if (cite) {
-    const card = cite.closest(".card"); const f = card.querySelector(`[data-fid="${cite.dataset.fact}"]`);
-    if (f) { f.classList.add("flash"); f.scrollIntoView({ block: "nearest", behavior: "smooth" }); setTimeout(() => f.classList.remove("flash"), 1200); }
-    return;
-  }
-  const btn = e.target.closest("[data-act]"); if (!btn) return;
-  const id = Number(btn.dataset.id), act = btn.dataset.act;
-  if (act === "edit") {
-    const card = $("#d-" + id); const editing = !card.querySelector("[data-edit]").hidden;
-    card.querySelector("[data-edit]").hidden = editing; card.querySelector("[data-view]").hidden = !editing;
-    btn.textContent = editing ? "Modifier" : "Annuler";
-    const ap = card.querySelector('[data-act="approve"]'); ap.disabled = false; ap.removeAttribute("title");
-    return;
-  }
-  if (act === "copy") {
-    const t = state.tasks.find((x) => x.draft.id === id);
-    try { await navigator.clipboard.writeText(t.draft.body.replace(/\s*\[F:[^\]]+\]/g, "")); toast("Note copiée"); }
-    catch (_) { const b = btn.closest(".card").querySelector(".body"); const r = document.createRange(); r.selectNodeContents(b); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Texte sélectionné, copiez-le"); }
-    return;
-  }
+/* ---- Méthode: static text, drawn once */
+
+const ACTORS = { auto: ["Automatique", "secondary"], ai: ["Agent IA", ""], you: ["Vous", "default"], guard: ["Garde-fou", ""], youLi: ["Vous pour LinkedIn", "default"] };
+const STEPS = [
+  { title: "Trouver les entreprises", actors: ["auto"], when: "chaque nuit, entre 2 h et 5 h",
+    paras: ["Bloom lit des sources publiques, sans IA, puis écarte les ESN, les cabinets de recrutement et les agences."],
+    bullets: ["Les classements App Store France de 21 catégories : jusqu'à 400 apps examinées par nuit. Seules restent celles d'un éditeur français dont les avis se dégradent ou qui n'est plus mise à jour.", "Les offres d'emploi de développeur mobile publiées en France (API France Travail).", "Selon la configuration : annonces légales (BODACC), appels d'offres publics français et européens, marchés publics d'application mobile qui arrivent à échéance dans l'année, organisations GitHub qui publient du code Kotlin Multiplatform.", "Votre propre liste, importée en CSV depuis la vue Prospects."],
+    after: ["Chaque entreprise reçoit son SIREN, son effectif, son app et son site quand ils existent, et un premier score."],
+    ex: [{ eyebrow: "Vélomoov", text: "Trouvée dans le classement Voyage : éditeur français, note des avis récents en baisse." }] },
+  { title: "Collecter les faits", actors: ["auto"],
+    paras: ["Sans IA : chaque fait est enregistré avec le lien de sa source et sa date. Note et avis App Store, date de la dernière version, offres d'emploi ouvertes, effectif et secteur dans l'annuaire des entreprises."],
+    ex: [{ eyebrow: "Faits enregistrés", facts: [["a2f1", "11 avis sur 30 des 90 derniers jours signalent un problème technique, version la plus citée : 5.2"], ["7b31", "Moyenne des avis récents 2,9, contre 4,3 en moyenne globale"], ["c09e", "Tranche d'effectif INSEE : 100 à 199 salariés"]] }] },
+  { title: "Comprendre l'entreprise", actors: ["ai"],
+    paras: ["Un agent lit le site, la page carrières et le blog tech, 6 pages au maximum. Une citation n'est gardée que si le code la retrouve mot pour mot dans la page. L'agent rédige ensuite un dossier : résumé, hypothèse sur le besoin, angle d'approche, offre adaptée, et les raisons de ne pas contacter s'il y en a."],
+    ex: [{ eyebrow: "Dossier", rows: [["Hypothèse", "Une régression introduite en 5.2 dans le parcours de paiement, que les crash reports ne voient pas parce que l'app ne plante pas vraiment."], ["Offre", "Audit de 2 jours à prix fixe."]] }] },
+  { title: "Classer", actors: ["auto"],
+    paras: ["Un score sur 100, calculé sans IA donc toujours explicable : adéquation avec votre cible (40 points), force et fraîcheur des signaux (50), lien chaud (10). Au-dessus de 65, on écrit cette semaine. Entre 45 et 65, on suit. En dessous, on surveille."],
+    ex: [{ eyebrow: "Vélomoov", score: "78", note: "40 d'adéquation (app sur les deux stores, 100 à 199 personnes, secteur couvert), 38 d'intention (plaintes récentes, note en baisse)." }] },
+  { title: "Trouver la bonne personne", actors: ["you", "auto"], you: true,
+    paras: ["Pour chaque entreprise au-dessus du seuil, la vue Prospects indique qui viser selon l'offre (Head of Mobile pour un audit, Engineering Manager pour de la régie) et propose la recherche LinkedIn toute prête. Vous choisissez la personne, vous saisissez son nom et son rôle. Si Dropcontact est branché, Bloom cherche son email professionnel. La séquence est lancée."],
+    ex: [{ eyebrow: "Vélomoov", text: "Claire Morel, Head of Mobile. Séquence « App en difficulté » lancée." }] },
+  { title: "Rédiger", actors: ["ai", "guard"],
+    paras: ["L'agent part du constat sur leur app, jamais d'une présentation de Doppio Lab. Le premier email doit citer au moins un fait sourcé, et chaque chiffre du corps du message doit figurer dans un fait cité. Le garde-fou bloque aussi le jargon (« accompagner », « leader ») et tout lien dans le corps du premier email (seul le lien de désinscription du pied de message reste). L'agent corrige, deux fois au maximum."],
+    ex: [
+      { eyebrow: "Brouillon, première version refusée", guard: ["« 40 % de vos utilisateurs » : chiffre absent des faits cités", "« Nous accompagnons » : expression interdite"] },
+      { eyebrow: "Version corrigée", subject: "crash au paiement depuis la 5.2", body: "Bonjour Claire,\n\nDepuis la version 5.2, 11 avis sur 30 des 90 derniers jours signalent un problème technique, souvent au paiement [F:a2f1]. La note des avis récents est descendue à 2,9 [F:7b31].\n\nMon hypothèse : une régression côté session ou SDK de paiement, invisible dans les crash reports.\n\nOn fait des audits de 2 jours à prix fixe. Ça vaut un échange de 15 minutes ?" }
+    ] },
+  { title: "Valider", actors: ["you"], you: true,
+    paras: ["Rien ne part sans vous. Dans la vue À faire, vous approuvez, vous corrigez ou vous rejetez. Chaque fait garde le lien vers sa source. Quand vous corrigez, le garde-fou revérifie votre version, et vos corrections récentes servent d'exemples de ton pour les messages suivants."] },
+  { title: "Envoyer et relancer", actors: ["auto", "youLi"],
+    paras: ["L'email part du mardi au jeudi, entre 8 h 30 et 11 h 30, à raison de 25 envois par jour et par boîte par défaut. La désinscription se fait en un clic. Les étapes LinkedIn restent manuelles : Bloom prépare la note, vous l'envoyez et vous cochez « Fait »."],
+    ex: [{ eyebrow: "Séquence « App en difficulté »", rows: [["Jour 0", "Email avec le constat et l'offre d'audit"], ["+2 jours ouvrés", "Demande de connexion LinkedIn, sans pitch (vous)"], ["+4 jours ouvrés", "Relance courte : ce qu'un audit comparable a révélé"]] }] },
+  { title: "Lire les réponses", actors: ["ai", "auto"],
+    paras: ["Toute réponse d'une personne arrête la séquence. Un agent classe la réponse et la résume, puis le code applique la règle qui va avec."],
+    ex: [
+      { eyebrow: "Règles", rows: [["Intéressé", "Comptée comme réponse positive, résumée dans votre file"], ["Pas maintenant", "Date de recontact extraite du message et affichée"], ["Absence", "Séquence en pause"], ["Stop", "Adresse inscrite sur la liste d'opposition"]] },
+      { eyebrow: "Vélomoov", text: "Claire répond : « Oui, on a des tickets paiement depuis la 5.2. Jeudi ou vendredi matin ? »" }
+    ] },
+  { title: "Rendez-vous et signature", actors: ["you"], you: true,
+    paras: ["Vous faites l'appel avec le dossier sous les yeux. L'objectif du premier appel est de vendre l'audit de 2 jours, pas le projet. L'audit livre un rapport et des correctifs priorisés, puis ouvre le forfait ou la régie. Le pipeline des affaires se lit dans la vue Résultats."] },
+  { title: "Apprendre", actors: ["ai"], when: "le lundi, 7 h",
+    paras: ["Le lundi matin, un agent lit les chiffres de la semaine et rédige une note de 200 mots au maximum. Elle est enregistrée dans le journal et n'est pas encore affichée ici."] }
+];
+const RULES = ["Envoyer un message que vous n'avez pas validé.", "Laisser partir un premier email sans fait sourcé, ou un chiffre absent des faits cités dans le corps du message.", "Agir à votre place sur LinkedIn.", "Suivre l'ouverture des emails avec un pixel.", "Réécrire à une adresse inscrite sur la liste d'opposition."];
+
+function renderMethod() {
+  const exBox = (x) => `<div class="panel ex">${x.eyebrow ? `<span class="kind">${esc(x.eyebrow)}</span>` : ""}${x.text ? `<span>${esc(x.text)}</span>` : ""}
+    ${x.facts ? `<div class="facts">${x.facts.map(([id, s]) => `<div class="fact"><code>${id}</code><span>${esc(s)}</span></div>`).join("")}</div>` : ""}
+    ${x.rows ? `<div class="rows">${x.rows.map(([k, v]) => `<div><b>${esc(k)}</b><span>${esc(v)}</span></div>`).join("")}</div>` : ""}
+    ${x.guard ? `<div class="ex-guard">${x.guard.map((g) => `<span>${esc(g)}</span>`).join("")}</div>` : ""}
+    ${x.subject ? `<span style="font-weight:600">${esc(x.subject)}</span><div class="body">${esc(x.body).replace(/\[F:([A-Za-z0-9_-]+)\]/g, (_, id) => `<span class="cite">${id.slice(0, 4)}</span>`)}</div>` : ""}
+    ${x.score ? `<div class="score"><b>${x.score}</b><div class="bar"><i class="fit" style="width:40%"></i><i class="int" style="width:38%"></i></div></div>` : ""}
+    ${x.note ? `<span class="muted" style="font-size:13px">${esc(x.note)}</span>` : ""}</div>`;
+  $("#steps").innerHTML = STEPS.map((s, i) => `<li class="step${s.you ? " you" : ""}">
+    <span class="step-num">${String(i + 1).padStart(2, "0")}</span>
+    <div class="step-body">
+      <div class="step-head"><h3>${esc(s.title)}</h3>${s.actors.map((a) => `<span class="badge ${ACTORS[a][1]}">${ACTORS[a][0]}</span>`).join("")}${s.when ? `<span class="when">${esc(s.when)}</span>` : ""}</div>
+      ${(s.paras || []).map((p) => `<p>${esc(p)}</p>`).join("")}
+      ${s.bullets ? `<ul>${s.bullets.map((b) => `<li>${esc(b)}</li>`).join("")}</ul>` : ""}
+      ${(s.after || []).map((p) => `<p>${esc(p)}</p>`).join("")}
+      ${(s.ex || []).map(exBox).join("")}
+    </div></li>`).join("");
+  $("#rules").innerHTML = RULES.map((r) => `<div class="rule">${icon("ban")}<span>${esc(r)}</span></div>`).join("");
+}
+
+/**
+ * After an action that spreads (blacklist, restore, import, new contact), reads the lists again.
+ * Cards the server no longer returns leave the screen and new prospects are added at the end;
+ * a draft being edited or a form being filled is never redrawn.
+ */
+async function syncLists() {
+  if (state.demo) return;
+  let fresh;
   try {
-    if (act === "approve") {
-      const card = $("#d-" + id); const editing = !card.querySelector("[data-edit]").hidden;
-      const payload = editing ? { subject: card.querySelector(`#s-${id}`)?.value, body: card.querySelector(`#b-${id}`).value } : {};
-      if (!state.demo) await api(`/api/drafts/${id}/approve`, { method: "POST", body: JSON.stringify(payload) });
-      else if (editing && /accompagn|leader|\u2014/i.test(payload.body)) throw Object.assign(new Error(), { body: ["[BLOCK] vocabulaire : le message contient encore une expression interdite"] });
-      state.drafts = state.drafts.filter((d) => d.draft.id !== id); toast("Approuvé, envoi au prochain créneau");
-    } else if (act === "reject") {
-      if (!state.demo) await api(`/api/drafts/${id}/reject`, { method: "POST" });
-      state.drafts = state.drafts.filter((d) => d.draft.id !== id); toast("Rejeté");
-    } else if (act === "done") {
-      if (!state.demo) await api(`/api/drafts/${id}/done`, { method: "POST" });
-      state.tasks = state.tasks.filter((d) => d.draft.id !== id); toast("Étape suivante planifiée");
-    } else if (act === "add-contact") {
-      const v = (k) => $(`#${k}-${id}`).value.trim();
-      const payload = { fullName: v("fn"), role: v("ro") || $(`#ro-${id}`).placeholder, email: v("em") || null, linkedinUrl: v("li") || null, enroll: true };
-      if (!payload.fullName) { toast("Indique au moins le nom de la personne"); return; }
-      let msg = payload.email ? "Séquence lancée, premier brouillon dans la file À valider" : "Contact ajouté, recherche de l'email en cours";
-      if (!state.demo) msg = (await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) })).message || msg;
-      state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id); toast(msg);
-    } else if (act === "exclude") {
-      if (!state.demo) await api(`/api/accounts/${id}/exclude`, { method: "POST", body: JSON.stringify({ reason: "écarté depuis le dashboard" }) });
-      state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id); toast("Écarté, il ne reviendra pas");
-    } else if (act === "run-discovery") {
-      if (!state.demo) await api("/api/discovery/run", { method: "POST" });
-      toast("Recherche lancée, résultats dans 15 à 30 minutes"); return;
-    } else if (act === "handled") {
-      if (!state.demo) await api(`/api/replies/${id}/handled`, { method: "POST" });
-      state.replies = state.replies.filter((r) => r.id !== id); toast("Marqué comme traité");
-    }
-    render();
+    const [overview, drafts, approved, toComplete, book, blacklist] = await Promise.all([
+      api("/api/overview"), api("/api/drafts?status=PENDING_REVIEW"), api("/api/drafts?status=APPROVED"),
+      api("/api/to-complete"), api("/api/book"), api("/api/blacklist")
+    ]);
+    fresh = { overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), toComplete, book, blacklist };
+  } catch (_) { return; }
+  const prune = (list, ids, idOf, prefix) => {
+    state[list] = state[list].filter((x) => { const keep = ids.has(idOf(x)); if (!keep) $(prefix + idOf(x))?.remove(); return keep; });
+  };
+  prune("drafts", new Set(fresh.drafts.map((d) => d.draft.id)), (d) => d.draft.id, "#d-");
+  prune("tasks", new Set(fresh.tasks.map((d) => d.draft.id)), (d) => d.draft.id, "#t-");
+  prune("toComplete", new Set(fresh.toComplete.map((x) => x.row.account.id)), (x) => x.row.account.id, "#n-");
+  const known = new Set(state.toComplete.map((x) => x.row.account.id));
+  const added = fresh.toComplete.filter((x) => !known.has(x.row.account.id));
+  if (!state.toComplete.length) { state.toComplete = added; renderNewList(); }
+  else if (added.length) { state.toComplete.push(...added); $("#newlist").insertAdjacentHTML("beforeend", added.map(prospectCard).join("")); }
+  Object.assign(state, { overview: fresh.overview, book: fresh.book, blacklist: fresh.blacklist });
+  renderPilotage(); renderBook(); renderBlacklist(); renderCounts();
+}
+
+/* ---- Actions. Each one touches only its own card, so edits and forms elsewhere on the page survive. */
+
+const pending = new Map();
+const neighbour = (el) => {
+  const step = (dir) => { let n = el?.[dir]; while (n?.hidden) n = n[dir]; return n; };
+  return step("nextElementSibling") || step("previousElementSibling");
+};
+/** After a card leaves, focus goes to the next card's first action, or to the headline of the view. */
+function focusAfter(next) {
+  const target = next?.querySelector(".actions .btn:not([hidden])") || next?.querySelector(".btn:not([hidden])");
+  (target || $("#headline"))?.focus();
+}
+
+/** Takes a card out now, for an action that is already done on the server or needs no server. */
+function dropCard(el, list, match) {
+  const next = neighbour(el);
+  state[list] = state[list].filter((x) => !match(x));
+  el?.remove();
+  if (list === "toComplete" && !state.toComplete.length) renderNewList();
+  renderCounts();
+  focusAfter(next);
+}
+
+/** Takes a card out now and tells the server after 5 seconds, unless "Annuler" puts it back. */
+function removeLater(el, { list, match, send, message }) {
+  const parent = el.parentNode, after = el.nextSibling, next = neighbour(el);
+  const index = state[list].findIndex(match), item = state[list][index];
+  state[list].splice(index, 1);
+  el.remove(); renderCounts(); focusAfter(next);
+  const key = {};
+  const putBack = () => {
+    state[list].splice(Math.min(index, state[list].length), 0, item);
+    parent.insertBefore(el, after && after.parentNode === parent ? after : null);
+    renderCounts();
+    el.querySelector(".actions .btn:not([hidden])")?.focus();
+  };
+  const fire = (keepalive) => {
+    pending.delete(key);
+    if (state.demo) return;
+    send(keepalive).catch((err) => {
+      // 409: the draft or reply was already decided elsewhere, so it stays out of the queue
+      if (err.status !== 409) putBack();
+      toast(errorText(err), { error: true });
+    });
+  };
+  const timer = setTimeout(() => fire(false), UNDO_MS);
+  pending.set(key, { timer, fire });
+  toast(message, { action: "Annuler", onAction: () => { clearTimeout(timer); pending.delete(key); putBack(); toast("Annulé."); } });
+}
+// A removal still waiting for its 5 seconds is sent when the page closes
+window.addEventListener("pagehide", () => { for (const p of [...pending.values()]) { clearTimeout(p.timer); p.fire(true); } });
+
+/** One request at a time per card: the button is disabled and the card marked busy until the server answers. */
+async function busy(btn, fn) {
+  const card = btn.closest(".card, tr") || btn;
+  if (card.getAttribute("aria-busy") === "true") return;
+  card.setAttribute("aria-busy", "true"); btn.disabled = true;
+  try { await fn(); } finally { card.removeAttribute("aria-busy"); btn.disabled = false; }
+}
+
+const isEditing = (card) => !card.querySelector("[data-edit]").hidden;
+const draftOf = (id) => state.drafts.find((x) => x.draft.id === id)?.draft;
+
+/** Opens or closes the edit mode of a draft. Closing discards the edit, the text goes back to the stored draft. */
+function toggleEdit(id, open) {
+  const card = $("#d-" + id), editing = isEditing(card);
+  if (open !== undefined && open === editing) return;
+  const d = draftOf(id), body = card.querySelector(`#b-${id}`), subject = card.querySelector(`#s-${id}`);
+  if (editing) { body.value = d.body; if (subject) subject.value = d.subject ?? ""; }
+  card.querySelector("[data-edit]").hidden = editing;
+  card.querySelectorAll("[data-view]").forEach((v) => (v.hidden = !editing));
+  const eb = card.querySelector('[data-act="edit"]');
+  eb.textContent = editing ? eb.dataset.label : "Annuler";
+  // A blocked draft shows "Corriger" first; "Approuver" only appears once it is being edited
+  if (eb.dataset.label === "Corriger") { card.querySelector('[data-act="approve"]').hidden = editing; eb.classList.toggle("primary", editing); }
+  if (editing) eb.focus(); else body.focus();
+}
+
+/** The guard refused an edited draft: its reasons replace the old ones on the card and stay there. */
+function showGuard(card, report) {
+  card.querySelector(".guard")?.remove();
+  card.querySelector(".row").insertAdjacentHTML("afterend", guardHtml(report));
+  const d = draftOf(Number(card.id.slice(2))); if (d) d.guardReport = report;
+  card.querySelector("textarea")?.focus();
+}
+
+// The demo refuses an edit that still holds banned vocabulary or an em dash, like the server guard
+const DEMO_BANNED = new RegExp("accompagn|leader|" + String.fromCharCode(0x2014), "i");
+
+async function approve(id) {
+  const card = $("#d-" + id), editing = isEditing(card);
+  const payload = editing ? { subject: card.querySelector(`#s-${id}`)?.value, body: card.querySelector(`#b-${id}`).value } : {};
+  try {
+    if (!state.demo) await api(`/api/drafts/${id}/approve`, { method: "POST", body: JSON.stringify(payload) });
+    else if (editing && DEMO_BANNED.test(payload.body)) throw Object.assign(new Error(), { status: 422, body: ["[BLOCK] vocabulaire : le message contient encore une expression interdite"] });
   } catch (err) {
-    const msg = Array.isArray(err.body) ? err.body.join(" · ") : "Action impossible, réessayez.";
-    toast(msg.replace(/^\[\w+\]\s*/, ""));
+    if (err.status === 422 && Array.isArray(err.body)) { showGuard(card, err.body); toast("Le garde-fou refuse cette version. Corrigez-la puis approuvez."); return; }
+    if (err.status === 409) { dropCard(card, "drafts", (d) => d.draft.id === id); toast(errorText(err), { error: true }); return; }
+    throw err;
   }
+  dropCard(card, "drafts", (d) => d.draft.id === id);
+  toast("Approuvé, envoi au prochain créneau.");
+}
+
+function askExclude(btn) {
+  const box = btn.closest(".actions");
+  if (box.nextElementSibling?.classList.contains("confirm")) return;
+  box.hidden = true;
+  box.insertAdjacentHTML("afterend", `<div class="confirm" role="alert"><span>Mettre ${esc(btn.dataset.name)} en liste noire ? Ses séquences en cours s'arrêtent et ses brouillons en attente sont rejetés.</span><button class="btn destructive" type="button" data-act="exclude-yes" data-id="${btn.dataset.id}">Confirmer</button><button class="btn" type="button" data-act="exclude-no">Annuler</button></div>`);
+  box.nextElementSibling.querySelector(".destructive").focus();
+}
+function cancelExclude(btn) {
+  const c = btn.closest(".confirm"), box = c.previousElementSibling;
+  box.hidden = false; c.remove();
+  box.querySelector('[data-act="exclude"]').focus();
+}
+
+async function exclude(id) {
+  const gone = state.toComplete.find((x) => x.row.account.id === id)?.row.account || state.overview.accounts.find((r) => r.account.id === id)?.account;
+  if (!state.demo) await api(`/api/accounts/${id}/exclude`, { method: "POST", body: JSON.stringify({ reason: "écarté depuis le dashboard" }) });
+  const card = $("#n-" + id), next = card ? neighbour(card) : null;
+  card?.remove();
+  state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id);
+  state.overview.accounts = state.overview.accounts.filter((r) => r.account.id !== id);
+  state.sel.delete(id);
+  state.book = state.book.filter((x) => x.accountId !== id);
+  if (state.demo) { if (gone) state.blacklist = [{ id, accountId: id, name: gone.name, reason: "Écarté depuis Prospects", since: new Date().toISOString() }, ...state.blacklist]; }
+  // The server also stopped the account's sequences and rejected its drafts: those cards leave too
+  else await syncLists();
+  if (!state.toComplete.length) renderNewList();
+  renderAccounts(); renderBlacklist(); renderBook(); renderCounts();
+  focusAfter(next);
+  toast("En liste noire, il ne reviendra pas.");
+}
+
+async function addContact(id) {
+  const v = (k) => $(`#${k}-${id}`).value.trim();
+  const roles = state.toComplete.find((x) => x.row.account.id === id)?.roles || [];
+  const payload = { fullName: v("fn"), role: v("ro") || roles[0] || "inconnu", email: v("em") || null, linkedinUrl: v("li") || null, enroll: true };
+  if (!payload.fullName) { toast("Indiquez au moins le nom de la personne."); $(`#fn-${id}`).focus(); return; }
+  if (payload.linkedinUrl && !payload.linkedinUrl.startsWith("https://")) { toast("Le profil LinkedIn doit commencer par https://"); $(`#li-${id}`).focus(); return; }
+  let msg = payload.email ? "Séquence lancée, premier brouillon dans la file À valider." : "Contact ajouté, recherche de l'email en cours.";
+  if (!state.demo) msg = (await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) })).message || msg;
+  dropCard($("#n-" + id), "toComplete", (x) => x.row.account.id === id);
+  toast(msg);
+  await syncLists();
+}
+
+async function addOfficer(id, i) {
+  const entry = state.book.find((x) => x.accountId === id), o = entry?.officers[i];
+  if (!o) return;
+  const payload = { fullName: o.fullName, role: o.role, enroll: false, fromRegistry: true };
+  if (!state.demo) {
+    const r = await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) });
+    toast(r.message || "Contact ajouté.");
+  } else {
+    entry.officers = entry.officers.filter((x) => x !== o);
+    entry.contacts.push({ contact: { fullName: o.fullName, role: o.role, email: null, dataSource: "Annuaire des entreprises (dirigeant publié au registre)" }, status: "no-email" });
+    toast("Contact ajouté. Ajoutez son email pour lancer la séquence.");
+  }
+  // The company has a contact now: it leaves the prospects to complete
+  $("#n-" + id)?.remove();
+  state.toComplete = state.toComplete.filter((x) => x.row.account.id !== id);
+  if (!state.toComplete.length) renderNewList();
+  renderBook(); renderCounts();
+  await syncLists();
+}
+
+async function blockName() {
+  const name = $("#block-name").value.trim(), reason = $("#block-reason").value.trim();
+  if (!name) { toast("Indiquez le nom de l'entreprise."); $("#block-name").focus(); return; }
+  if (!state.demo) {
+    await api("/api/blacklist", { method: "POST", body: JSON.stringify({ name, reason: reason || null }) });
+    // Blocking a name also excludes the account of that name, its sequences and its drafts
+    await syncLists();
+  } else state.blacklist = [{ id: Date.now(), name, reason: reason || null, since: new Date().toISOString() }, ...state.blacklist];
+  $("#block-name").value = ""; $("#block-reason").value = "";
+  renderBlacklist(); renderCounts();
+  toast("Ajouté à la liste noire.");
+}
+
+async function unblock(id, act, btn) {
+  const line = btn.closest("tr"), next = neighbour(line);
+  if (!state.demo) await api(act === "restore" ? `/api/accounts/${id}/restore` : `/api/blacklist/${id}/remove`, { method: "POST" });
+  state.blacklist = state.blacklist.filter((b) => b.id !== id);
+  line.remove(); focusAfter(next);
+  // A restored account comes back in the ranked table and, without a contact, in the prospects to complete
+  await syncLists();
+  renderBlacklist(); renderCounts();
+  toast("Réintégré.");
+}
+
+async function runDiscovery() {
+  try { if (!state.demo) await api("/api/discovery/run", { method: "POST" }); }
+  catch (err) { if (err.status === 409) { toast("Recherche déjà en cours.", { error: true }); return; } throw err; }
+  if (!state.demo) { state.lastRun = { ...(state.lastRun || {}), running: true }; renderRun(); watchRun(); }
+  toast("Recherche lancée, résultats dans 15 à 30 minutes.");
+}
+
+async function copyNote(id, btn) {
+  const t = state.tasks.find((x) => x.draft.id === id);
+  try { await navigator.clipboard.writeText(noCites(t.draft.body)); toast("Note copiée."); }
+  catch (_) { const b = btn.closest(".card").querySelector(".body"); const r = document.createRange(); r.selectNodeContents(b); const s = getSelection(); s.removeAllRanges(); s.addRange(r); toast("Texte sélectionné, copiez-le."); }
+}
+
+async function run(btn) {
+  const id = Number(btn.dataset.id), act = btn.dataset.act;
+  if (act === "edit") return toggleEdit(id);
+  if (act === "copy") return copyNote(id, btn);
+  if (act === "exclude") return askExclude(btn);
+  if (act === "exclude-no") return cancelExclude(btn);
+  if (act === "reject") return removeLater($("#d-" + id), { list: "drafts", match: (d) => d.draft.id === id, message: "Brouillon rejeté.",
+    send: (keepalive) => api(`/api/drafts/${id}/reject`, { method: "POST", keepalive }) });
+  if (act === "handled") return removeLater($("#r-" + id), { list: "replies", match: (r) => r.id === id, message: "Réponse traitée.",
+    send: (keepalive) => api(`/api/replies/${id}/handled`, { method: "POST", keepalive }) });
+  if (act === "dismiss-demand") {
+    const key = btn.dataset.key;
+    return removeLater(btn.closest(".card"), { list: "demands", match: (d) => d.key === key, message: "Demande écartée.",
+      send: (keepalive) => api("/api/demands/dismiss", { method: "POST", keepalive, body: JSON.stringify({ key }) }) });
+  }
+  await busy(btn, async () => {
+    try {
+      if (act === "approve") await approve(id);
+      else if (act === "done") {
+        try { if (!state.demo) await api(`/api/drafts/${id}/done`, { method: "POST" }); }
+        catch (err) { if (err.status !== 409) throw err; dropCard($("#t-" + id), "tasks", (d) => d.draft.id === id); toast(errorText(err), { error: true }); return; }
+        dropCard($("#t-" + id), "tasks", (d) => d.draft.id === id); toast("Étape suivante planifiée.");
+      }
+      else if (act === "add-contact") await addContact(id);
+      else if (act === "exclude-yes") await exclude(id);
+      else if (act === "restore" || act === "unblock") await unblock(id, act, btn);
+      else if (act === "block-name") await blockName();
+      else if (act === "add-officer") await addOfficer(id, Number(btn.dataset.i));
+      else if (act === "run-discovery") await runDiscovery();
+    } catch (err) {
+      if (err.status === 401) setBanner("expired");
+      toast(errorText(err), { error: true });
+    }
+  });
+}
+
+/* ---- Navigation: the open view lives in the address (#prospects), so the back button and links work. */
+
+const narrow = matchMedia("(max-width: 900px)");
+function setSidebar(open) {
+  $("#app").classList.toggle("no-side", !open);
+  $("#toggle-side").setAttribute("aria-expanded", open);
+}
+
+function showView(name) {
+  state.view = name;
+  document.querySelectorAll(".nav a[data-view]").forEach((a) => { if (a.dataset.view === name) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current"); });
+  Object.keys(VIEWS).forEach((v) => ($("#view-" + v).hidden = v !== name));
+  $("#view-title").textContent = VIEWS[name];
+  try { localStorage.setItem("prospect-tab", name); } catch (_) {}
+  // On a narrow screen the sidebar sits over the page: it closes once a view is chosen
+  if (narrow.matches) setSidebar(false);
+  renderHero();
+}
+
+function goTab(name) {
+  if (location.hash === "#" + name) showView(name); else location.hash = name;
+  window.scrollTo(0, 0);
+}
+window.addEventListener("hashchange", () => { const v = location.hash.slice(1); if (VIEWS[v]) { showView(v); window.scrollTo(0, 0); } });
+
+/** Theme: the header button switches between light and dark and the choice is kept on the device. */
+function syncThemeIcon() { $("#theme-icon").setAttribute("d", ICONS[document.documentElement.classList.contains("dark") ? "sun" : "moon"]); }
+$("#toggle-theme").addEventListener("click", () => {
+  const dark = !document.documentElement.classList.contains("dark");
+  document.documentElement.classList.toggle("dark", dark);
+  try { localStorage.setItem("bloom-theme", dark ? "dark" : "light"); } catch (_) {}
+  syncThemeIcon();
 });
+// Without a stored choice the page follows the system setting, live
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", (e) => {
+  try { if (localStorage.getItem("bloom-theme")) return; } catch (_) {}
+  document.documentElement.classList.toggle("dark", e.matches); syncThemeIcon();
+});
+$("#toggle-side").addEventListener("click", () => setSidebar($("#app").classList.contains("no-side")));
+$("#scrim").addEventListener("click", () => setSidebar(false));
+narrow.addEventListener("change", (e) => setSidebar(!e.matches));
+
+document.addEventListener("click", (e) => {
+  const imp = e.target.closest("[data-import]");
+  // "Importer une liste" opens the Prospects view and the file picker of its CSV import
+  if (imp) { e.preventDefault(); goTab("prospects"); $("#csv").click(); return; }
+  if (e.target.closest("#accounts-export")) { exportAccounts(); return; }
+  if (e.target.closest("#toast-action")) { const f = toast.onAction; hideToast(); f?.(); return; }
+  if (e.target.closest("#banner-action")) { if ($("#banner").dataset.kind === "expired") location.reload(); else load(); return; }
+  const sort = e.target.closest("[data-sort]");
+  if (sort) {
+    const key = sort.dataset.sort, same = state.sort.key === key;
+    state.sort = { key, dir: same ? (state.sort.dir === "descending" ? "ascending" : "descending") : (key === "name" ? "ascending" : "descending") };
+    renderAccounts();
+    return;
+  }
+  const range = e.target.closest("[data-range]");
+  if (range) { state.range = range.dataset.range; renderChart(); return; }
+  const tierBtn = e.target.closest("[data-tier]");
+  if (tierBtn) { state.tier = tierBtn.dataset.tier; renderAccounts(); return; }
+  if (e.target.id === "check-all") {
+    accountsInTier().forEach((r) => (e.target.checked ? state.sel.add(r.account.id) : state.sel.delete(r.account.id)));
+    renderAccounts();
+    return;
+  }
+  const pick = e.target.closest("[data-pick]");
+  if (pick && !e.target.closest("a, button")) {
+    const id = Number(pick.dataset.pick);
+    if (state.sel.has(id)) state.sel.delete(id); else state.sel.add(id);
+    renderAccounts();
+    return;
+  }
+  if (e.target.closest("#facets-clear")) { state.facets = { ...NO_FACETS }; renderCounts(); $("#f-source")?.focus(); return; }
+  const chip = e.target.closest("[data-filter]");
+  if (chip) { state.filter = chip.dataset.filter; renderCounts(); return; }
+  const cite = e.target.closest("button.cite");
+  if (cite) {
+    const f = cite.closest(".card")?.querySelector(`[data-fid="${cite.dataset.fact}"]`);
+    if (f) { f.closest("details").open = true; f.scrollIntoView({ block: "nearest" }); f.focus({ preventScroll: true }); f.classList.add("flash"); setTimeout(() => f.classList.remove("flash"), 1200); }
+    return;
+  }
+  const btn = e.target.closest("[data-act]");
+  // A submit button is handled by the submit event, so Enter in a field does the same as the click
+  if (!btn || (btn.form && btn.type === "submit")) return;
+  run(btn);
+});
+
+document.addEventListener("change", (e) => {
+  const facet = e.target.closest?.("[data-facet]");
+  if (facet) { state.facets[facet.dataset.facet] = facet.value; renderCounts(); }
+});
+
+document.addEventListener("submit", (e) => {
+  e.preventDefault();
+  const btn = e.submitter?.dataset.act ? e.submitter : e.target.querySelector('[type="submit"][data-act]');
+  if (btn) run(btn);
+});
+
+// In a draft being edited: Cmd or Ctrl + Enter approves, Escape closes when nothing was changed
+document.addEventListener("keydown", (e) => {
+  const card = e.target.closest?.('article[id^="d-"]');
+  if (!card || !e.target.matches("textarea, input")) return;
+  const id = Number(card.id.slice(2)), d = draftOf(id);
+  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); card.querySelector('[data-act="approve"]').click(); return; }
+  if (e.key !== "Escape" || !d) return;
+  const changed = card.querySelector(`#b-${id}`).value !== d.body || (card.querySelector(`#s-${id}`)?.value ?? d.subject ?? "") !== (d.subject ?? "");
+  if (changed) toast("Modifications en cours : cliquez sur Annuler pour les abandonner.");
+  else toggleEdit(id, false);
+});
+
+// The header search looks for a company or a person: it filters the ranked accounts and the Carnet together
+document.addEventListener("input", (e) => {
+  if (e.target.id === "top-search") {
+    state.q.accounts = state.q.book = e.target.value;
+    const bookField = document.querySelector('[data-search="book"]'); if (bookField) bookField.value = e.target.value;
+    if (state.view !== "pilotage" && state.view !== "book") goTab("pilotage");
+    if (state.loaded) { renderAccounts(); renderBook(); }
+    return;
+  }
+  const list = e.target.dataset?.search;
+  if (!list) return;
+  state.q[list] = e.target.value;
+  ({ book: renderBook, blacklist: renderBlacklist })[list]();
+});
+
+// Chart: the mouse or the arrow keys pick a point and show its figures
+$("#chart-hit").addEventListener("mousemove", (e) => {
+  if (!state.loaded) return;
+  const r = e.currentTarget.getBoundingClientRect(), n = chartPoints().length;
+  const i = Math.max(0, Math.min(n - 1, Math.round((e.clientX - r.left) / r.width * (n - 1))));
+  if (i !== state.hover) hoverChart(i);
+});
+$("#chart-hit").addEventListener("mouseleave", () => hoverChart(null));
+$("#chart-hit").addEventListener("blur", () => hoverChart(null));
+$("#chart-hit").addEventListener("keydown", (e) => {
+  const n = chartPoints().length, i = state.hover ?? (e.key === "ArrowLeft" ? n : -1);
+  const to = { ArrowRight: i + 1, ArrowLeft: i - 1, Home: 0, End: n - 1 }[e.key];
+  if (to === undefined || !n) return;
+  e.preventDefault();
+  hoverChart(Math.max(0, Math.min(n - 1, to)));
+});
+
+// Work queue shortcuts, outside a field: j and k move between cards, a approves, e opens the edit mode
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey || !["j", "k", "a", "e"].includes(e.key)) return;
+  if (e.target.closest?.("input, textarea, select, [contenteditable]") || $("#view-today").hidden) return;
+  const cards = [...document.querySelectorAll("#view-today .group:not([hidden]) article.card")];
+  if (!cards.length) return;
+  const current = document.activeElement?.closest?.("#view-today article.card"), i = cards.indexOf(current);
+  if (e.key === "j" || e.key === "k") {
+    e.preventDefault();
+    const next = cards[e.key === "j" ? Math.min(i + 1, cards.length - 1) : Math.max(i - 1, 0)] || cards[0];
+    next.focus(); next.scrollIntoView({ block: "nearest" });
+    return;
+  }
+  if (!current || !current.id.startsWith("d-")) return;
+  e.preventDefault();
+  const id = Number(current.id.slice(2)), approve = current.querySelector('[data-act="approve"]');
+  if (e.key === "e") toggleEdit(id, true);
+  else if (approve.hidden) toast("Ce brouillon est bloqué : corrigez-le d'abord (touche e).");
+  else approve.click();
+});
+
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") refresh(); });
 
 $("#csv").addEventListener("change", async (e) => {
   const file = e.target.files[0]; if (!file) return;
   const text = await file.text();
-  if (state.demo) { toast(`${Math.max(0, text.trim().split(/\r?\n/).length - 1)} lignes lues (exemple, rien n'est importé)`); e.target.value = ""; return; }
-  try {
-    const r = await fetch("/api/import", { method: "POST", headers: { "Content-Type": "text/csv" }, body: text }).then((x) => x.json());
-    toast(`${r.created} créés, ${r.updated} mis à jour, ${r.contacts} contacts${r.errors.length ? `, ${r.errors.length} erreurs` : ""}`);
-    load();
-  } catch (_) { toast("Import impossible, vérifie l'en-tête du fichier"); }
   e.target.value = "";
+  if (state.demo) { toast(`${Math.max(0, text.trim().split(/\r?\n/).length - 1)} lignes lues (exemple, rien n'est importé).`); return; }
+  const report = $("#import-report");
+  try {
+    const r = await api("/api/import", { method: "POST", headers: { "Content-Type": "text/csv" }, body: text });
+    toast(`${plural(r.created, "compte créé", "comptes créés")}, ${r.updated} mis à jour, ${plural(r.contacts, "contact", "contacts")}.`);
+    report.hidden = !r.errors.length;
+    report.textContent = r.errors.length ? `Lignes non importées : ${r.errors.join(" · ")}.` : "";
+    await syncLists();
+  } catch (err) {
+    toast(err.status === 401 ? errorText(err) : "Import impossible. Vérifiez l'en-tête du fichier.", { error: true });
+  }
 });
 
-try { const t = localStorage.getItem("prospect-tab"); if (t) document.querySelector(`[data-tab="${t}"]`)?.click(); } catch (_) {}
+syncThemeIcon();
+setSidebar(!narrow.matches);
+renderMethod();
+{
+  // The address wins, then the view open at the last visit
+  let start = location.hash.slice(1);
+  if (!VIEWS[start]) { try { start = localStorage.getItem("prospect-tab"); } catch (_) {} }
+  showView(VIEWS[start] ? start : "pilotage");
+}
 load();
 </script>

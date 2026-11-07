@@ -3,3 +3,5 @@ build/
 .env
 *.iml
 .idea/
+.kotlin/
+restic.env
