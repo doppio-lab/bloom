@@ -1,9 +1,11 @@
 package lab.doppio.bloom.core.usecase
 
 import kotlinx.coroutines.CancellationException
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.InboundMail
 import lab.doppio.bloom.core.model.ReplyClassification
 import lab.doppio.bloom.core.model.ReplyIntent
+import lab.doppio.bloom.core.model.ReplyReceivedPayload
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.DraftRepository
 import lab.doppio.bloom.core.port.EventRepository
@@ -73,11 +75,11 @@ class ProcessReplies(
         replyRepo.saveReply(enrollmentId, mail.from, mail.subject, mail.body, result.intent, result.confidence, result.followUpOn,
             result.summary, mail.receivedAt, inboundKey = mail.key)
         when (result.intent) {
-            ReplyIntent.UNSUBSCRIBE -> eventRepo.logEvent("UNSUBSCRIBED", accountId, contact?.id)
-            ReplyIntent.BOUNCE -> eventRepo.logEvent("BOUNCED", accountId, contact?.id)
-            ReplyIntent.INTERESTED, ReplyIntent.MEETING_REQUEST, ReplyIntent.REFERRAL -> eventRepo.logEvent("REPLY_POSITIVE", accountId, contact?.id)
+            ReplyIntent.UNSUBSCRIBE -> eventRepo.logEvent(EventType.UNSUBSCRIBED, accountId, contact?.id)
+            ReplyIntent.BOUNCE -> eventRepo.logEvent(EventType.BOUNCED, accountId, contact?.id)
+            ReplyIntent.INTERESTED, ReplyIntent.MEETING_REQUEST, ReplyIntent.REFERRAL -> eventRepo.logEvent(EventType.REPLY_POSITIVE, accountId, contact?.id)
             else -> {}
         }
-        eventRepo.logEvent("REPLY_RECEIVED", accountId, contact?.id, payload = """{"intent":"${result.intent}"}""")
+        eventRepo.logEvent(EventType.REPLY_RECEIVED, accountId, contact?.id, payload = ReplyReceivedPayload(result.intent).toJson())
     }
 }

@@ -10,14 +10,15 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.model.DiscoveryReport
-import lab.doppio.bloom.core.usecase.AddContact
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.DiscoveryStateRepository
 import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.usecase.AddContact
 import lab.doppio.bloom.core.usecase.BookEntry
 import lab.doppio.bloom.core.usecase.ContactBook
 import lab.doppio.bloom.core.usecase.FindContactEmail
@@ -70,7 +71,7 @@ class DiscoveryRoutes(
         /** What the last discovery run found, per source, and what failed or is switched off. */
         get("/discovery/last") {
             // Before any finished run, the line still says whether one is in progress
-            val (payload, at) = eventRepo.lastEvent("DISCOVERY_RUN") ?: return@get call.respond(LastDiscovery(running = runDiscovery.running))
+            val (payload, at) = eventRepo.lastEvent(EventType.DISCOVERY_RUN) ?: return@get call.respond(LastDiscovery(running = runDiscovery.running))
             val report = runCatching { lenientJson.decodeFromString(DiscoveryReport.serializer(), payload) }.getOrDefault(DiscoveryReport())
             call.respond(LastDiscovery(at.toString(), runDiscovery.running, report.bySource, report.notes))
         }
@@ -108,14 +109,14 @@ class DiscoveryRoutes(
             val id = call.parameters["id"]!!.toLong()
             val reason = runCatching { call.receive<ExcludeRequest>().reason }.getOrDefault("").ifBlank { "écarté à la main" }
             accountRepo.excludeAccount(id, reason)
-            eventRepo.logEvent("ACCOUNT_EXCLUDED", id)
+            eventRepo.logEvent(EventType.ACCOUNT_EXCLUDED, id)
             call.respond(HttpStatusCode.OK, mapOf("status" to "écarté"))
         }
 
         post("/accounts/{id}/restore") {
             val id = call.parameters["id"]!!.toLong()
             accountRepo.restoreAccount(id)
-            eventRepo.logEvent("ACCOUNT_RESTORED", id)
+            eventRepo.logEvent(EventType.ACCOUNT_RESTORED, id)
             call.respond(HttpStatusCode.OK, mapOf("status" to "réintégré"))
         }
 
@@ -126,7 +127,7 @@ class DiscoveryRoutes(
             val req = call.receive<BlockRequest>()
             require(CompanyNames.normalize(req.name).isNotEmpty()) { "Nom obligatoire" }
             val accountId = accountRepo.blockName(req.name, req.reason?.trim()?.takeIf { it.isNotEmpty() })
-            if (accountId != null) eventRepo.logEvent("ACCOUNT_EXCLUDED", accountId)
+            if (accountId != null) eventRepo.logEvent(EventType.ACCOUNT_EXCLUDED, accountId)
             call.respond(HttpStatusCode.Created, mapOf("status" to "ajouté"))
         }
 

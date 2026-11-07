@@ -3,6 +3,7 @@ package lab.doppio.bloom.core.usecase
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.SendingPolicy
 import java.time.Instant
 import kotlin.test.BeforeTest
@@ -55,7 +56,7 @@ class PlanDraftsTest {
         plan()()
         assertTrue(writer.calls.isEmpty())
         assertEquals(EnrollmentStatus.STOPPED_MANUAL, sequences.status(enrollment.id))
-        assertEquals(listOf("ENROLLMENT_STOPPED_REJECTIONS"), events.types)
+        assertEquals(listOf(EventType.ENROLLMENT_STOPPED_REJECTIONS), events.types)
     }
 
     @Test

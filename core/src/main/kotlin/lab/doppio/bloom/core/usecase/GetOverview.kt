@@ -1,9 +1,15 @@
 package lab.doppio.bloom.core.usecase
 
+import java.time.Clock
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.DraftStatus
+import lab.doppio.bloom.core.model.EventType
+import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.model.SendingPolicy
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.AccountRow
@@ -14,10 +20,6 @@ import lab.doppio.bloom.core.port.EventRepository
 import lab.doppio.bloom.core.port.FactRepository
 import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.sequence.SequenceEngine
-import java.time.Clock
-import java.time.LocalDate
-import java.time.ZoneId
-import java.time.temporal.ChronoUnit
 
 @Serializable data class Kpis(
     val sent: Int, val replies: Int, val positive: Int, val meetings: Int, val unsubscribed: Int, val bounced: Int,
@@ -40,12 +42,12 @@ import java.time.temporal.ChronoUnit
 )
 
 private val signalLabels = mapOf(
-    "REFERRAL" to "Lien chaud", "HIRING_STUCK" to "Recrutement bloqué", "QUALITY_COMPLAINTS" to "Plaintes qualité (avis)",
-    "RATING_DROP" to "Note en baisse", "HIRING_KMP" to "Recrutement KMP", "NEW_TECH_LEADER" to "Nouveau dirigeant tech",
-    "FUNDING" to "Levée de fonds", "HIRING_MOBILE" to "Recrutement mobile", "PRODUCT_LAUNCH" to "Lancement produit",
-    "RELEASE_STALL" to "App sans mise à jour", "CONTENT_ENGAGEMENT" to "Interaction LinkedIn", "AI_ADOPTION" to "Équipe LLM",
-    "PUBLIC_TENDER" to "Marché public", "KMP_ADOPTION" to "Code KMP public",
-    "CONTRACT_RENEWAL" to "Marché à renouveler",
+    SignalType.REFERRAL to "Lien chaud", SignalType.HIRING_STUCK to "Recrutement bloqué", SignalType.QUALITY_COMPLAINTS to "Plaintes qualité (avis)",
+    SignalType.RATING_DROP to "Note en baisse", SignalType.HIRING_KMP to "Recrutement KMP", SignalType.NEW_TECH_LEADER to "Nouveau dirigeant tech",
+    SignalType.FUNDING to "Levée de fonds", SignalType.HIRING_MOBILE to "Recrutement mobile", SignalType.PRODUCT_LAUNCH to "Lancement produit",
+    SignalType.RELEASE_STALL to "App sans mise à jour", SignalType.CONTENT_ENGAGEMENT to "Interaction LinkedIn", SignalType.AI_ADOPTION to "Équipe LLM",
+    SignalType.PUBLIC_TENDER to "Marché public", SignalType.KMP_ADOPTION to "Code KMP public",
+    SignalType.CONTRACT_RENEWAL to "Marché à renouveler",
 )
 
 /** The numbers of the dashboard: funnel, queues, pipeline, agent usage, activity and conversion per signal. */
@@ -64,23 +66,23 @@ class GetOverview(
 ) {
     suspend operator fun invoke(days: Int): Overview {
         val since = clock.instant().minus(days.toLong(), ChronoUnit.DAYS)
-        val sent = eventRepo.countEvents("EMAIL_SENT", since)
-        val replies = eventRepo.countEvents("REPLY_RECEIVED", since)
-        val positive = eventRepo.countEvents("REPLY_POSITIVE", since)
-        val unsub = eventRepo.countEvents("UNSUBSCRIBED", since)
-        val bounced = eventRepo.countEvents("BOUNCED", since)
+        val sent = eventRepo.countEvents(EventType.EMAIL_SENT, since)
+        val replies = eventRepo.countEvents(EventType.REPLY_RECEIVED, since)
+        val positive = eventRepo.countEvents(EventType.REPLY_POSITIVE, since)
+        val unsub = eventRepo.countEvents(EventType.UNSUBSCRIBED, since)
+        val bounced = eventRepo.countEvents(EventType.BOUNCED, since)
         fun rate(n: Int) = if (sent == 0) 0.0 else n.toDouble() / sent
         val deals = dealRepo.deals()
         return Overview(
             periodDays = days,
-            kpis = Kpis(sent, replies, positive, eventRepo.countEvents("MEETING_BOOKED", since), unsub, bounced, rate(replies), rate(positive), rate(unsub), rate(bounced)),
+            kpis = Kpis(sent, replies, positive, eventRepo.countEvents(EventType.MEETING_BOOKED, since), unsub, bounced, rate(replies), rate(positive), rate(unsub), rate(bounced)),
             queues = Queues(
                 pendingReview = draftRepo.draftsByStatus(DraftStatus.PENDING_REVIEW).size,
                 approvedEmails = draftRepo.draftsByStatus(DraftStatus.APPROVED, Channel.EMAIL).size,
                 tasks = draftRepo.draftsByStatus(DraftStatus.APPROVED).count { it.channel != Channel.EMAIL },
                 openReplies = replyRepo.countOpenReplies().toInt(),
                 toComplete = accountRepo.accountsToComplete().size,
-                discoveredThisWeek = eventRepo.countEvents("ACCOUNT_DISCOVERED", clock.instant().minus(7, ChronoUnit.DAYS)),
+                discoveredThisWeek = eventRepo.countEvents(EventType.ACCOUNT_DISCOVERED, clock.instant().minus(7, ChronoUnit.DAYS)),
             ),
             pipeline = DealStage.entries.map { s -> deals.filter { it.stage == s }.let { StageRow(s, it.size, it.sumOf { d -> d.amountEur }) } },
             accounts = accountRepo.accountsByScore(50),
@@ -98,20 +100,20 @@ class GetOverview(
         val zone = ZoneId.of(policy.timezone)
         val today = LocalDate.now(clock.withZone(zone))
         val first = today.minusDays(ACTIVITY_DAYS - 1)
-        val events = eventRepo.eventTimes(setOf("EMAIL_SENT", "REPLY_RECEIVED"), first.atStartOfDay(zone).toInstant())
+        val events = eventRepo.eventTimes(setOf(EventType.EMAIL_SENT, EventType.REPLY_RECEIVED), first.atStartOfDay(zone).toInstant())
             .groupBy({ it.second.atZone(zone).toLocalDate() }, { it.first })
         return (0 until ACTIVITY_DAYS).map { first.plusDays(it) }.map { day ->
             val types = events[day].orEmpty()
-            DayCount(day.toString(), types.count { it == "EMAIL_SENT" }, types.count { it == "REPLY_RECEIVED" })
+            DayCount(day.toString(), types.count { it == EventType.EMAIL_SENT }, types.count { it == EventType.REPLY_RECEIVED })
         }
     }
 
     /** Réponses positives par signal dominant des comptes contactés, sur 90 jours. */
     private suspend fun conversionBySignal(): List<SignalRow> {
         val events = eventRepo.eventsSince(clock.instant().minus(90, ChronoUnit.DAYS))
-        val sent = events.filter { it.first == "EMAIL_SENT" }.mapNotNull { it.second }.toSet()
-        val positive = events.filter { it.first == "REPLY_POSITIVE" }.mapNotNull { it.second }.toSet()
-        return sent.groupBy { factRepo.dominantSignal(it)?.name ?: "NONE" }
+        val sent = events.filter { it.first == EventType.EMAIL_SENT }.mapNotNull { it.second }.toSet()
+        val positive = events.filter { it.first == EventType.REPLY_POSITIVE }.mapNotNull { it.second }.toSet()
+        return sent.groupBy { factRepo.dominantSignal(it) }
             .map { (type, ids) -> SignalRow(signalLabels[type] ?: "Sans signal", ids.size, ids.count { it in positive }) }
             .sortedByDescending { it.sent }
     }

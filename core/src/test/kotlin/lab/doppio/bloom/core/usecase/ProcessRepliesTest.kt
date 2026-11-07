@@ -2,6 +2,7 @@ package lab.doppio.bloom.core.usecase
 
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.ReplyIntent
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -28,7 +29,7 @@ class ProcessRepliesTest {
         process()()
         assertTrue("bounced@client.test" in replies.suppressed)
         assertEquals(EnrollmentStatus.STOPPED_BOUNCE, sequences.status(e.id))
-        assertEquals(listOf("BOUNCED", "REPLY_RECEIVED"), events.types)
+        assertEquals(listOf(EventType.BOUNCED, EventType.REPLY_RECEIVED), events.types)
         assertEquals(listOf(1L), inbox.seen[mailboxA.address])
     }
 
@@ -40,7 +41,7 @@ class ProcessRepliesTest {
         process()()
         assertTrue(contact.email!! in replies.suppressed)
         assertEquals(EnrollmentStatus.STOPPED_UNSUBSCRIBE, sequences.status(e.id))
-        assertEquals(listOf("UNSUBSCRIBED", "REPLY_RECEIVED"), events.types)
+        assertEquals(listOf(EventType.UNSUBSCRIBED, EventType.REPLY_RECEIVED), events.types)
     }
 
     @Test
@@ -56,7 +57,7 @@ class ProcessRepliesTest {
         assertEquals(EnrollmentStatus.REPLIED, sequences.status(paused.id))
         assertEquals(EnrollmentStatus.COMPLETED, sequences.status(completed.id))
         assertEquals(EnrollmentStatus.STOPPED_BOUNCE, sequences.status(bounced.id))
-        assertEquals(listOf("REPLY_POSITIVE", "REPLY_RECEIVED"), events.types)
+        assertEquals(listOf(EventType.REPLY_POSITIVE, EventType.REPLY_RECEIVED), events.types)
         assertEquals(listOf(contact.id), contacts.inbound)
     }
 

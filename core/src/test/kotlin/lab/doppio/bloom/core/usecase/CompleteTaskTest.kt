@@ -5,6 +5,7 @@ import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.DraftStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import lab.doppio.bloom.core.model.EventType
 
 class CompleteTaskTest {
     private val drafts = FakeDraftRepository()
@@ -22,7 +23,7 @@ class CompleteTaskTest {
         assertEquals(CompleteTask.Result.DONE, complete(task.id))
         assertEquals(DraftStatus.TASK_DONE, drafts.status(task.id))
         assertEquals(2, sequences.enrollment(enrollment.id)!!.nextStep)
-        assertEquals(listOf("LINKEDIN_TASK_DONE"), events.types)
+        assertEquals(listOf(EventType.LINKEDIN_TASK_DONE), events.types)
     }
 
     @Test

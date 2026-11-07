@@ -3,6 +3,7 @@ package lab.doppio.bloom.core.usecase
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.DraftStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.port.AccountRow
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -29,7 +30,7 @@ class DecideDraftTest {
         val draft = pending()
         assertEquals(DecideDraft.Result.Done, decide.approve(draft.id))
         assertEquals(DraftStatus.APPROVED, drafts.status(draft.id))
-        assertEquals(listOf("DRAFT_APPROVED"), events.types)
+        assertEquals(listOf(EventType.DRAFT_APPROVED), events.types)
     }
 
     @Test
@@ -38,7 +39,7 @@ class DecideDraftTest {
         assertEquals(DecideDraft.Result.Done, decide.approve(draft.id, "Autre objet", "Bonjour, une question courte ?"))
         assertEquals("Autre objet", drafts.drafts.getValue(draft.id).subject)
         assertEquals("Bonjour, une question courte ?", drafts.drafts.getValue(draft.id).body)
-        assertEquals(listOf("DRAFT_EDITED_APPROVED"), events.types)
+        assertEquals(listOf(EventType.DRAFT_EDITED_APPROVED), events.types)
     }
 
     @Test
@@ -76,6 +77,6 @@ class DecideDraftTest {
         val draft = pending()
         assertEquals(DecideDraft.Result.Done, decide.reject(draft.id))
         assertEquals(DraftStatus.REJECTED, drafts.status(draft.id))
-        assertEquals(listOf("DRAFT_REJECTED"), events.types)
+        assertEquals(listOf(EventType.DRAFT_REJECTED), events.types)
     }
 }

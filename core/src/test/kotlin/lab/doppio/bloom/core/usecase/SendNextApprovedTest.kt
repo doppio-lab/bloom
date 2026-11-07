@@ -4,6 +4,7 @@ import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.SendingPolicy
 import java.time.Instant
 import kotlin.test.Test
@@ -96,7 +97,7 @@ class SendNextApprovedTest {
         sender.failure = RuntimeException("boom")
         drafts.failureStatus = DraftStatus.FAILED
         send()()
-        assertEquals(listOf("EMAIL_FAILED"), events.types)
+        assertEquals(listOf(EventType.EMAIL_FAILED), events.types)
     }
 
     @Test
@@ -109,7 +110,7 @@ class SendNextApprovedTest {
         val (recorded, thread) = drafts.sent.single()
         assertEquals(draft.id, recorded.id)
         assertEquals(out.messageId, thread)
-        assertEquals(listOf("EMAIL_SENT"), events.types)
+        assertEquals(listOf(EventType.EMAIL_SENT), events.types)
     }
 
     @Test

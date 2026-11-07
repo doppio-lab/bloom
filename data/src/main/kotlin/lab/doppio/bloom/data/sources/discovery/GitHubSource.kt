@@ -17,6 +17,7 @@ import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.data.discovery.DiscoverySource
 import lab.doppio.bloom.data.discovery.Lead
+import lab.doppio.bloom.data.discovery.SeenKeys
 import lab.doppio.bloom.data.sources.http.RateLimiter
 import lab.doppio.bloom.data.sources.http.sourcesJson
 import java.time.Clock
@@ -37,7 +38,7 @@ class GitHubSource(
     private val maxLookups: Int = 25,
     clock: Clock = Clock.systemDefaultZone(),
 ) : DiscoverySource {
-    override val key = "github"
+    override val key = KEY
     override val label = "GitHub"
     override val recheckAfterDays: Long = 90
     private val limiter = RateLimiter(Duration.ofSeconds(7), clock)
@@ -61,7 +62,7 @@ class GitHubSource(
         val leads = mutableListOf<Lead>()
         var lookups = 0
         for ((login, repoUrl) in repos) {
-            val seenKey = "github:${login.lowercase()}"
+            val seenKey = SeenKeys.of(KEY, login.lowercase())
             if (wasSeen(seenKey)) continue
             if (lookups++ >= maxLookups) break
             val org = GitHub.parseOrg(api("/orgs/$login"))
@@ -88,5 +89,9 @@ class GitHubSource(
             )
         }
         return leads
+    }
+
+    companion object {
+        const val KEY = "github"
     }
 }

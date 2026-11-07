@@ -1,33 +1,35 @@
 package lab.doppio.bloom.data.discovery
 
-import lab.doppio.bloom.core.port.AccountRepository
-import lab.doppio.bloom.core.port.DiscoveryStateRepository
-import lab.doppio.bloom.core.port.EventRepository
-import lab.doppio.bloom.core.port.FactRepository
-import lab.doppio.bloom.core.port.OfficerRepository
 import java.time.Clock
+import java.time.Instant
+import java.time.temporal.ChronoUnit
 import kotlinx.serialization.json.JsonObject
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.Exclusions
 import lab.doppio.bloom.core.discovery.SectorMapping
 import lab.doppio.bloom.core.model.Account
-import lab.doppio.bloom.core.model.Market
-import lab.doppio.bloom.core.model.Sector
-import lab.doppio.bloom.core.scoring.Scoring
+import lab.doppio.bloom.core.model.AccountDiscoveredPayload
+import lab.doppio.bloom.core.model.AppMeta
 import lab.doppio.bloom.core.model.Demand
 import lab.doppio.bloom.core.model.DiscoveryReport
+import lab.doppio.bloom.core.model.EventType
+import lab.doppio.bloom.core.model.Market
+import lab.doppio.bloom.core.model.Sector
+import lab.doppio.bloom.core.model.SourceResult
+import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.Discovery
+import lab.doppio.bloom.core.port.DiscoveryStateRepository
+import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.port.FactRepository
+import lab.doppio.bloom.core.port.OfficerRepository
 import lab.doppio.bloom.core.port.OfficerRow
-import lab.doppio.bloom.core.model.AppMeta
-import lab.doppio.bloom.data.sources.facts.AppStoreSource
+import lab.doppio.bloom.core.scoring.Scoring
 import lab.doppio.bloom.data.sources.discovery.CodeurSource
+import lab.doppio.bloom.data.sources.facts.AppStoreSource
 import lab.doppio.bloom.data.sources.facts.CompanyRegistrySource
 import lab.doppio.bloom.data.sources.facts.FranceTravailSource
 import lab.doppio.bloom.data.sources.facts.JobBoardSource
-import lab.doppio.bloom.core.model.SourceResult
 import org.slf4j.LoggerFactory
-import java.time.Instant
-import java.time.temporal.ChronoUnit
 
 /**
  * Étape 1 du pipeline : trouver des entreprises qui ont un besoin mobile maintenant, sans que personne
@@ -100,7 +102,7 @@ class DiscoveryService(
             }
         }
         runCatching { refreshOfficers() }.onFailure { log.warn("Lecture des dirigeants en échec", it) }
-        eventRepo.logEvent("DISCOVERY_RUN", payload = kotlinx.serialization.json.Json.encodeToString(DiscoveryReport.serializer(), report))
+        eventRepo.logEvent(EventType.DISCOVERY_RUN, payload = kotlinx.serialization.json.Json.encodeToString(DiscoveryReport.serializer(), report))
         return report
     }
 
@@ -119,7 +121,7 @@ class DiscoveryService(
         if (offers.isEmpty() && errors.size == config.jobKeywords.size) error(errors.first())
 
         // Offres sans nom d'entreprise (confidentielles) et offres déjà traitées : ignorées
-        val fresh = offers.filter { o -> ft.companyName(o) != null && ft.offerId(o)?.let { !discoveryState.wasSeen("ft:$it", 365) } == true }
+        val fresh = offers.filter { o -> ft.companyName(o) != null && ft.offerId(o)?.let { !discoveryState.wasSeen(SeenKeys.franceTravail(it), 365) } == true }
         val byCompany: Map<String, List<JsonObject>> = fresh.groupBy { CompanyNames.normalize(ft.companyName(it)!!) }
 
         var created = 0; var refreshed = 0; var excluded = 0
@@ -135,7 +137,7 @@ class DiscoveryService(
                 Outcome.Skipped -> {}
             }
             // After an error the offers stay unseen, so the company gets another chance next night
-            if (outcome != Outcome.Skipped) companyOffers.forEach { o -> ft.offerId(o)?.let { discoveryState.markSeen("ft:$it", outcome != Outcome.Excluded, outcome.name) } }
+            if (outcome != Outcome.Skipped) companyOffers.forEach { o -> ft.offerId(o)?.let { discoveryState.markSeen(SeenKeys.franceTravail(it), outcome != Outcome.Excluded, outcome.name) } }
         }
         return DiscoveryReport(created, refreshed, excluded, offersRead = offers.size)
     }
@@ -167,7 +169,7 @@ class DiscoveryService(
         persist(accountId, result, now)
         if (isNew) {
             company?.siren?.let { factRepo.saveFacts(registry.facts(accountId, it)) }
-            eventRepo.logEvent("ACCOUNT_DISCOVERED", accountId, payload = """{"source":"jobs","offers":${offers.size}}""")
+            eventRepo.logEvent(EventType.ACCOUNT_DISCOVERED, accountId, payload = AccountDiscoveredPayload("jobs", offers = offers.size).toJson())
         }
         return if (isNew) Outcome.Created else Outcome.Refreshed
     }
@@ -178,13 +180,13 @@ class DiscoveryService(
         val candidates = config.chartGenres
             .flatMap { g -> config.chartKinds.flatMap { kind -> runCatching { appStore.topChart(g, chart = kind) }.getOrDefault(emptyList()) } }
             .distinctBy { it.appId }
-            .filter { !discoveryState.wasSeen("app:${it.appId}", config.recheckAfterDays) }
+            .filter { !discoveryState.wasSeen(SeenKeys.app(it.appId), config.recheckAfterDays) }
             .take(config.appsPerRun)
 
         var created = 0; var refreshed = 0; var excluded = 0; var checked = 0
         for (app in candidates) {
             checked++
-            val key = "app:${app.appId}"
+            val key = SeenKeys.app(app.appId)
             val byName = Exclusions.reason(app.artist, extra = blocked)
             if (byName != null) { discoveryState.markSeen(key, false, byName); excluded++; continue }
             // On ne garde que les éditeurs immatriculés en France : le classement français contient aussi Netflix ou Uber.
@@ -215,7 +217,7 @@ class DiscoveryService(
             ), now)
             if (isNew) {
                 factRepo.saveFacts(registry.facts(accountId, company.siren))
-                eventRepo.logEvent("ACCOUNT_DISCOVERED", accountId, payload = """{"source":"appstore","appId":${app.appId}}""")
+                eventRepo.logEvent(EventType.ACCOUNT_DISCOVERED, accountId, payload = AccountDiscoveredPayload("appstore", appId = app.appId).toJson())
                 created++
             } else refreshed++
             discoveryState.markSeen(key, true, "signaux : ${analysis.signals.joinToString { it.type.name }}")
@@ -284,7 +286,7 @@ class DiscoveryService(
         persist(accountId, lead.build(accountId, now), now)
         if (isNew) {
             company?.siren?.let { factRepo.saveFacts(registry.facts(accountId, it)) }
-            eventRepo.logEvent("ACCOUNT_DISCOVERED", accountId, payload = """{"source":"${source.key}"}""")
+            eventRepo.logEvent(EventType.ACCOUNT_DISCOVERED, accountId, payload = AccountDiscoveredPayload(source.key).toJson())
         }
         discoveryState.markSeen(key, true, source.key)
         return if (isNew) Outcome.Created else Outcome.Refreshed
@@ -299,7 +301,7 @@ class DiscoveryService(
     override suspend fun pollDemands(): Int {
         val source = codeur ?: return 0
         return source.mobileProjects().count { p ->
-            discoveryState.saveDemand(Demand("codeur:${p.id}", DEMANDS_LABEL, p.title, p.url, p.budget, p.categories, p.publishedAt?.toString()))
+            discoveryState.saveDemand(Demand(SeenKeys.codeur(p.id), DEMANDS_LABEL, p.title, p.url, p.budget, p.categories, p.publishedAt?.toString()))
         }
     }
 

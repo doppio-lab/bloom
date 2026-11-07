@@ -4,6 +4,7 @@ import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.EnrollmentStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import lab.doppio.bloom.core.model.EventType
 
 class StopContactSequencesTest {
     private val sequences = FakeSequenceRepository()
@@ -41,6 +42,6 @@ class StopContactSequencesTest {
         assertEquals(true, contact.email!! in replies.suppressed)
         assertEquals(EnrollmentStatus.STOPPED_UNSUBSCRIBE, sequences.status(running.id))
         assertEquals(EnrollmentStatus.COMPLETED, sequences.status(done.id))
-        assertEquals(listOf("UNSUBSCRIBED"), events.types)
+        assertEquals(listOf(EventType.UNSUBSCRIBED), events.types)
     }
 }

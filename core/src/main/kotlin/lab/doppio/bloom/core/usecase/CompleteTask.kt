@@ -2,6 +2,7 @@ package lab.doppio.bloom.core.usecase
 
 import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.DraftStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.DraftRepository
 import lab.doppio.bloom.core.port.EventRepository
@@ -23,7 +24,7 @@ class CompleteTask(
         sequenceRepo.advance(draft.enrollmentId, draft.stepIndex + 1)
         val e = sequenceRepo.enrollment(draft.enrollmentId)
         val c = e?.let { contactRepo.contact(it.contactId) }
-        eventRepo.logEvent("${draft.channel}_TASK_DONE", c?.accountId, c?.id, draftId)
+        eventRepo.logEvent(EventType.taskDone(draft.channel), c?.accountId, c?.id, draftId)
         return Result.DONE
     }
 }

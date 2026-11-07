@@ -10,13 +10,14 @@ import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.launch
 import lab.doppio.bloom.app.outreach.UnsubscribeTokens
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.Deal
 import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.DraftStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.DealRepository
@@ -148,7 +149,7 @@ class ApiRoutes(
         post("/drafts/{id}/approve") {
             val req = runCatching { call.receive<DecisionRequest>() }.getOrDefault(DecisionRequest())
             when (val result = decideDraft.approve(call.parameters["id"]!!.toLong(), req.subject, req.body)) {
-                DecideDraft.Result.Done -> call.respond(HttpStatusCode.OK, mapOf("status" to "APPROVED"))
+                DecideDraft.Result.Done -> call.respond(HttpStatusCode.OK, mapOf("status" to DraftStatus.APPROVED.name))
                 DecideDraft.Result.NotFound -> call.respond(HttpStatusCode.NotFound)
                 DecideDraft.Result.NotPending -> call.respond(HttpStatusCode.Conflict, mapOf("error" to NOT_PENDING))
                 is DecideDraft.Result.Violations -> call.respond(HttpStatusCode.UnprocessableEntity, result.messages)
@@ -157,7 +158,7 @@ class ApiRoutes(
 
         post("/drafts/{id}/reject") {
             when (decideDraft.reject(call.parameters["id"]!!.toLong())) {
-                DecideDraft.Result.Done -> call.respond(HttpStatusCode.OK, mapOf("status" to "REJECTED"))
+                DecideDraft.Result.Done -> call.respond(HttpStatusCode.OK, mapOf("status" to DraftStatus.REJECTED.name))
                 DecideDraft.Result.NotFound -> call.respond(HttpStatusCode.NotFound)
                 else -> call.respond(HttpStatusCode.Conflict, mapOf("error" to NOT_PENDING))
             }
@@ -165,7 +166,7 @@ class ApiRoutes(
 
         post("/drafts/{id}/done") {
             when (completeTask(call.parameters["id"]!!.toLong())) {
-                CompleteTask.Result.DONE -> call.respond(HttpStatusCode.OK, mapOf("status" to "TASK_DONE"))
+                CompleteTask.Result.DONE -> call.respond(HttpStatusCode.OK, mapOf("status" to DraftStatus.TASK_DONE.name))
                 CompleteTask.Result.NOT_FOUND -> call.respond(HttpStatusCode.NotFound)
                 CompleteTask.Result.NOT_A_PENDING_TASK -> call.respond(HttpStatusCode.Conflict, mapOf("error" to "cette tâche n'est plus à faire"))
             }
@@ -182,7 +183,7 @@ class ApiRoutes(
         post("/deals") {
             val d = call.receive<Deal>()
             val id = dealRepo.upsertDeal(d)
-            if (d.stage == DealStage.MEETING) eventRepo.logEvent("MEETING_BOOKED", d.accountId)
+            if (d.stage == DealStage.MEETING) eventRepo.logEvent(EventType.MEETING_BOOKED, d.accountId)
             call.respond(HttpStatusCode.OK, mapOf("id" to id))
         }
     }

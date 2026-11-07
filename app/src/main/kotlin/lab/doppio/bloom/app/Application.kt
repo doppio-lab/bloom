@@ -50,6 +50,10 @@ import kotlin.time.Duration.Companion.minutes
 
 private val log = org.slf4j.LoggerFactory.getLogger("bloom")
 
+/** Name of the Basic auth provider and of its rate limit, and the only user it accepts. */
+private const val ADMIN_AUTH = "admin"
+private const val ADMIN_USER = "doppio"
+
 fun main() {
     // Fail before touching the database when a secret, DRY_RUN or any other setting is unusable
     val dotEnv = DotEnv.find(Path.of(""))
@@ -104,25 +108,25 @@ fun Application.module() {
     }
     val adminPassword = get<BloomConfig>().server.adminPassword.toByteArray()
     install(Authentication) {
-        basic("admin") {
+        basic(ADMIN_AUTH) {
             realm = "Doppio Bloom"
             validate {
                 // Constant-time compare: the response time says nothing about how much of the password matched
                 val ok = java.security.MessageDigest.isEqual(it.password.toByteArray(), adminPassword)
-                if (it.name == "doppio" && ok) UserIdPrincipal(it.name) else null
+                if (it.name == ADMIN_USER && ok) UserIdPrincipal(it.name) else null
             }
         }
     }
     // One shared budget for the dashboard: behind a proxy every request comes from the same address
-    install(RateLimit) { register(RateLimitName("admin")) { rateLimiter(limit = 600, refillPeriod = 1.minutes) } }
+    install(RateLimit) { register(RateLimitName(ADMIN_AUTH)) { rateLimiter(limit = 600, refillPeriod = 1.minutes) } }
     val unsubscribe = get<UnsubscribeRoutes>()
     val api = get<ApiRoutes>()
     val discovery = get<DiscoveryRoutes>()
     routing {
         // Public : la désinscription doit marcher sans compte, en un clic
         unsubscribe.mount(this)
-        rateLimit(RateLimitName("admin")) {
-            authenticate("admin") {
+        rateLimit(RateLimitName(ADMIN_AUTH)) {
+            authenticate(ADMIN_AUTH) {
                 install(CrossSiteGuard)
                 staticResources("/", "static")
                 api.mount(this)

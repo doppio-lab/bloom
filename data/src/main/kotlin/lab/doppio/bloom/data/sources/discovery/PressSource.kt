@@ -13,6 +13,7 @@ import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.data.discovery.DiscoverySource
 import lab.doppio.bloom.data.discovery.Lead
+import lab.doppio.bloom.data.discovery.SeenKeys
 import java.time.Duration
 import java.time.Instant
 
@@ -25,7 +26,7 @@ class PressSource(
     ),
     private val maxAgeDays: Long = 14,
 ) : DiscoverySource {
-    override val key = "press"
+    override val key = KEY
     override val label = "presse"
 
     override suspend fun leads(now: Instant): List<Lead> {
@@ -47,7 +48,7 @@ class PressSource(
             .map { (item, round) ->
                 Lead(
                     name = round.company,
-                    seenKey = "press:${FactIds.of(item.link, round.company)}",
+                    seenKey = SeenKeys.of(KEY, FactIds.of(item.link, round.company)),
                     // A headline gives a trade name only: two companies with that name means we cannot tell which one
                     requireUniqueMatch = true,
                     build = { accountId, at ->
@@ -63,5 +64,9 @@ class PressSource(
                     },
                 )
             }
+    }
+
+    companion object {
+        const val KEY = "press"
     }
 }

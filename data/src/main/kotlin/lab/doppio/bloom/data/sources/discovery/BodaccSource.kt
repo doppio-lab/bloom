@@ -9,6 +9,7 @@ import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.data.discovery.DiscoverySource
 import lab.doppio.bloom.data.discovery.Lead
+import lab.doppio.bloom.data.discovery.SeenKeys
 import lab.doppio.bloom.data.sources.http.RateLimiter
 import java.time.Clock
 import java.time.Duration
@@ -22,7 +23,7 @@ class BodaccSource(
     private val maxPages: Int = 5,
     clock: Clock = Clock.systemDefaultZone(),
 ) : DiscoverySource {
-    override val key = "bodacc"
+    override val key = KEY
     override val label = "BODACC"
     private val limiter = RateLimiter(Duration.ofMillis(500), clock)
 
@@ -39,7 +40,7 @@ class BodaccSource(
         return notices.filter { Bodacc.isCandidate(it, minCapitalEur) }.map { n ->
             Lead(
                 name = n.name,
-                seenKey = "bodacc:${n.id}",
+                seenKey = SeenKeys.of(KEY, n.id),
                 siren = n.siren,
                 minHeadcount = 10,
                 requireSectorOrApp = true,
@@ -59,7 +60,8 @@ class BodaccSource(
         }
     }
 
-    private companion object {
-        const val URL = "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records"
+    companion object {
+        const val KEY = "bodacc"
+        private const val URL = "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records"
     }
 }

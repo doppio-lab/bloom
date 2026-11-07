@@ -20,6 +20,9 @@ import java.time.OffsetDateTime
  * response of a source and returns typed values, so it can be tested on recorded responses.
  */
 
+/** The `nature` of a tender that is still a call for bids (BOAMP writes it this way, TED notices are mapped to it). */
+internal const val CALL_FOR_TENDERS = "APPEL_OFFRE"
+
 private val lenient = Json { ignoreUnknownKeys = true; isLenient = true }
 
 private fun JsonElement?.text(): String? = (this as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() && it != "null" }
@@ -107,7 +110,7 @@ object Boamp {
 
     /** A call for tenders (not an award notice) still open, whose subject asks for a mobile app. */
     fun isOpenMobileTender(tender: Tender, now: Instant): Boolean =
-        tender.nature == "APPEL_OFFRE" && tender.deadline?.isAfter(now) == true && mobileApp.containsMatchIn(tender.subject)
+        tender.nature == CALL_FOR_TENDERS && tender.deadline?.isAfter(now) == true && mobileApp.containsMatchIn(tender.subject)
 }
 
 // --- DECP: public contracts already awarded ---------------------------------------------------------

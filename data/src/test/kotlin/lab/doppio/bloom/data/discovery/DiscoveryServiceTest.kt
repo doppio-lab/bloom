@@ -3,6 +3,7 @@ package lab.doppio.bloom.data.discovery
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.AccountId
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Sector
@@ -126,7 +127,7 @@ class DiscoveryServiceTest {
         assertEquals(SignalType.FUNDING, facts.signals.single().type)
         assertEquals(1, accounts.scores.size)
         assertEquals(Triple("stub:1", true, "stub"), state.marked.single())
-        assertTrue("ACCOUNT_DISCOVERED" in events.types && "DISCOVERY_RUN" in events.types)
+        assertTrue(EventType.ACCOUNT_DISCOVERED in events.types && EventType.DISCOVERY_RUN in events.types)
     }
 
     @Test

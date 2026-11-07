@@ -1,6 +1,7 @@
 package lab.doppio.bloom.core.usecase
 
 import kotlinx.coroutines.test.runTest
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.SendingPolicy
 import java.time.LocalDate
 import java.time.ZoneId
@@ -63,8 +64,8 @@ class RunPeriodicJobsTest {
     fun `the coach memo is logged with the text, once per week`() = runTest {
         run(at("2026-11-02", 8)) // Monday 8h
         run(at("2026-11-04", 8)) // Wednesday, same week
-        assertEquals(1, events.types.count { it == "WEEKLY_MEMO" })
-        assertEquals("\"note du lundi\"", events.events.first { it.first == "WEEKLY_MEMO" }.second)
+        assertEquals(1, events.types.count { it == EventType.WEEKLY_MEMO })
+        assertEquals("\"note du lundi\"", events.events.first { it.first == EventType.WEEKLY_MEMO }.second)
     }
 
     @Test
@@ -73,8 +74,8 @@ class RunPeriodicJobsTest {
         assertTrue("gdpr-purge" !in names)
         run(at("2026-12-01", 4))
         run(at("2026-12-15", 10))
-        assertEquals(1, events.types.count { it == "GDPR_PURGE" })
-        assertEquals("""{"contacts":2,"officers":1,"demands":3}""", events.events.first { it.first == "GDPR_PURGE" }.second)
+        assertEquals(1, events.types.count { it == EventType.GDPR_PURGE })
+        assertEquals("""{"contacts":2,"officers":1,"demands":3}""", events.events.first { it.first == EventType.GDPR_PURGE }.second)
     }
 
     @Test

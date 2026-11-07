@@ -7,11 +7,12 @@ import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.data.discovery.Lead
+import lab.doppio.bloom.data.discovery.SeenKeys
 
 /** A tender becomes a lead on its buyer. Shared by BOAMP and TED, which publish the same kind of notice. */
 internal fun tenderLead(t: Tender, prefix: String) = Lead(
     name = t.buyer,
-    seenKey = "$prefix:${t.id}",
+    seenKey = SeenKeys.of(prefix, t.id),
     // Town halls and public bodies are not always matched by name in the registry
     requireRegistry = false,
     build = { accountId, at ->

@@ -21,7 +21,7 @@ import java.time.Instant
 
 /** TED : marchés publics européens passés en France (API de recherche ouverte, sans clé). */
 class TedSource(private val http: HttpClient, private val lookbackDays: Long = 60) : DiscoverySource {
-    override val key = "ted"
+    override val key = KEY
     override val label = "marché européen"
 
     override suspend fun leads(now: Instant): List<Lead> {
@@ -40,6 +40,10 @@ class TedSource(private val http: HttpClient, private val lookbackDays: Long = 6
         if (!res.status.isSuccess()) error("TED HTTP ${res.status.value}")
         val notices = (sourcesJson.parseToJsonElement(res.bodyAsText()).jsonObject["notices"] as? JsonArray).orEmpty()
         // The search is full text: only the notices whose subject asks for a mobile app are kept
-        return notices.mapNotNull { Ted.parse(it.jsonObject) }.filter { Boamp.isOpenMobileTender(it, now) }.map { tenderLead(it, "ted") }
+        return notices.mapNotNull { Ted.parse(it.jsonObject) }.filter { Boamp.isOpenMobileTender(it, now) }.map { tenderLead(it, KEY) }
+    }
+
+    companion object {
+        const val KEY = "ted"
     }
 }

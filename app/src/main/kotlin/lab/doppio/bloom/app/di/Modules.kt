@@ -177,9 +177,9 @@ fun sourcesModule(config: BloomConfig): Module = module {
         val http = get<HttpClient>()
         val clock = get<Clock>()
         listOfNotNull(
-            BodaccSource(http, minCapitalEur = discovery.bodaccMinCapitalEur, clock = clock).takeIf { "bodacc" in enabled },
-            BoampSource(http).takeIf { "boamp" in enabled },
-            TedSource(http).takeIf { "ted" in enabled },
+            BodaccSource(http, minCapitalEur = discovery.bodaccMinCapitalEur, clock = clock).takeIf { BodaccSource.KEY in enabled },
+            BoampSource(http).takeIf { BoampSource.KEY in enabled },
+            TedSource(http).takeIf { TedSource.KEY in enabled },
             DecpSource(
                 http,
                 buyerName = { siren -> get<CompanyRegistrySource>().bySiren(siren)?.name },
@@ -187,14 +187,14 @@ fun sourcesModule(config: BloomConfig): Module = module {
                 markSeen = { key, kept, reason -> discoveryState.markSeen(key, kept, reason) },
                 maxMonths = discovery.decpRenewalMonths,
                 clock = clock,
-            ).takeIf { "decp" in enabled },
-            PressSource(http).takeIf { "press" in enabled },
+            ).takeIf { DecpSource.KEY in enabled },
+            PressSource(http).takeIf { PressSource.KEY in enabled },
             GitHubSource(
                 http, discovery.githubToken,
                 wasSeen = { discoveryState.wasSeen(it, 90) },
                 markSeen = { key, kept, reason -> discoveryState.markSeen(key, kept, reason) },
                 clock = clock,
-            ).takeIf { "github" in enabled },
+            ).takeIf { GitHubSource.KEY in enabled },
         )
     }
     single {
@@ -208,8 +208,8 @@ fun sourcesModule(config: BloomConfig): Module = module {
                 extraExclusions = discovery.extraExclusions,
             ),
             sources = get(),
-            jobBoards = JobBoardSource(get(), get()).takeIf { "jobboards" in discovery.sources },
-            codeur = CodeurSource(get(), minBudgetEur = discovery.codeurMinBudgetEur).takeIf { "codeur" in discovery.sources },
+            jobBoards = JobBoardSource(get(), get()).takeIf { JobBoardSource.KEY in discovery.sources },
+            codeur = CodeurSource(get(), minBudgetEur = discovery.codeurMinBudgetEur).takeIf { CodeurSource.KEY in discovery.sources },
             clock = get(),
         )
     } bind Discovery::class

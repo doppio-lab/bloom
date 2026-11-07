@@ -1,9 +1,5 @@
 package lab.doppio.bloom.agents
 
-import lab.doppio.bloom.core.port.AccountRepository
-import lab.doppio.bloom.core.port.EventRepository
-import lab.doppio.bloom.core.port.FactRepository
-import java.time.Clock
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
@@ -11,26 +7,32 @@ import ai.koog.agents.core.tools.annotations.Tool
 import ai.koog.agents.core.tools.reflect.ToolSet
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.model.executeStructured
+import java.time.Clock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.model.Account
+import lab.doppio.bloom.core.model.AccountResearchedPayload
+import lab.doppio.bloom.core.model.Dossier
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
-import lab.doppio.bloom.core.scoring.ScoreBreakdown
-import lab.doppio.bloom.core.scoring.Scoring
-import lab.doppio.bloom.core.model.Dossier
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.core.model.latestPerTopic
 import lab.doppio.bloom.core.guard.MessageGuard
+import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.AppStoreFacts
 import lab.doppio.bloom.core.port.PlayStoreFacts
 import lab.doppio.bloom.core.port.CompanyRegistryFacts
+import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.port.FactRepository
 import lab.doppio.bloom.core.port.JobOfferFacts
 import lab.doppio.bloom.core.port.Researcher
 import lab.doppio.bloom.core.port.WebPages
+import lab.doppio.bloom.core.scoring.ScoreBreakdown
+import lab.doppio.bloom.core.scoring.Scoring
 import org.slf4j.LoggerFactory
 
 /**
@@ -98,7 +100,7 @@ class ResearchAgent(
                     maxIterations = 20,
                     installFeatures = tokens.feature,
                 )
-                tracker.trackAgent("research-explore", account.id, llm.research, tokens) {
+                tracker.trackAgent(AgentName.RESEARCH_EXPLORE, account.id, llm.research, tokens) {
                     agent.run(
                         "Entreprise : ${account.name}, site https://$domain. " +
                             "Commence par la page d'accueil, puis cherche une page carrières et un blog tech.",
@@ -115,7 +117,7 @@ class ResearchAgent(
 
         val score = Scoring.score(account, factRepo.signalsOf(account.id), clock.instant(), factRepo.factsOf(account.id))
         accountRepo.saveScore(score)
-        eventRepo.logEvent("ACCOUNT_RESEARCHED", accountId = account.id, payload = """{"score":${score.total}}""")
+        eventRepo.logEvent(EventType.ACCOUNT_RESEARCHED, accountId = account.id, payload = AccountResearchedPayload(score.total).toJson())
         return score
     }
 
@@ -129,7 +131,7 @@ class ResearchAgent(
         val hypotheses: List<Hypothesis>,
         @property:LLMDescription("Angle d'approche en une phrase, centré sur le problème du prospect")
         val angle: String,
-        @property:LLMDescription("Offre Doppio recommandée : DISCOVERY, FORFAIT, REGIE, TRAINING_KMP, TRAINING_ANTHROPIC ou NONE")
+        @property:LLMDescription("Offre Doppio recommandée : $OFFER_LIST ou NONE")
         val offer: String,
         @property:LLMDescription("Raisons de ne pas contacter ce compte, liste vide s'il n'y en a pas")
         val disqualifiers: List<String>,
@@ -148,7 +150,7 @@ class ResearchAgent(
         val known = facts.associateBy { it.id }
         // The read date is given so the model can tell a fresh fact from an old one
         val factList = facts.joinToString("\n") { "[${it.id}] (${it.kind}, lu le ${it.retrievedAt.take(10)}) ${it.statement}" + (it.excerpt?.let { e -> "\n    extrait : ${e.take(300)}" } ?: "") }
-        val output = tracker.track("research-synthesis", account.id, llm.research) {
+        val output = tracker.track(AgentName.RESEARCH_SYNTHESIS, account.id, llm.research) {
             val r = llm.executor.executeStructured<DossierOutput>(
                 prompt = prompt("dossier-${account.id}") {
                     system(Prompts.synthesis)
@@ -175,7 +177,7 @@ class ResearchAgent(
                 noFit = offer == null,
             ),
         )
-        if (offer == null) eventRepo.logEvent("DOSSIER_NO_FIT", accountId = account.id)
+        if (offer == null) eventRepo.logEvent(EventType.DOSSIER_NO_FIT, accountId = account.id)
     }
 }
 

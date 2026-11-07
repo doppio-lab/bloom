@@ -2,6 +2,7 @@ package lab.doppio.bloom.core.usecase
 
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.EventRepository
@@ -52,7 +53,7 @@ class EnrollContact(
             ?: Offer.DISCOVERY
         val seq = sequenceRepo.sequenceFor(chosen) ?: sequenceRepo.sequenceFor(Offer.DISCOVERY) ?: return Result.NoSequence
         val id = sequenceRepo.enroll(contact.id, seq.id)
-        eventRepo.logEvent("ENROLLED", contact.accountId, contact.id)
+        eventRepo.logEvent(EventType.ENROLLED, contact.accountId, contact.id)
         afterEnrolled()
         return Result.Enrolled(id)
     }

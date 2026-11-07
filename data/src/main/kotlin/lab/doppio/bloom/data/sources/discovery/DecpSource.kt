@@ -9,6 +9,7 @@ import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.data.discovery.DiscoverySource
 import lab.doppio.bloom.data.discovery.Lead
+import lab.doppio.bloom.data.discovery.SeenKeys
 import lab.doppio.bloom.data.sources.http.RateLimiter
 import java.time.Clock
 import java.time.Duration
@@ -28,7 +29,7 @@ class DecpSource(
     private val lookbackYears: Long = 6,
     clock: Clock = Clock.systemDefaultZone(),
 ) : DiscoverySource {
-    override val key = "decp"
+    override val key = KEY
     override val label = "marché attribué"
     private val limiter = RateLimiter(Duration.ofMillis(500), clock)
 
@@ -49,7 +50,7 @@ class DecpSource(
 
         val leads = mutableListOf<Lead>()
         for ((dataset, c) in contracts) {
-            val seenKey = "decp:${c.buyerSiret}:${c.id}"
+            val seenKey = SeenKeys.of(KEY, "${c.buyerSiret}:${c.id}")
             if (wasSeen(seenKey)) continue
             val name = buyerName(c.buyerSiren)
             if (name == null) { markSeen(seenKey, false, "acheteur absent de l'annuaire français"); continue }
@@ -77,8 +78,9 @@ class DecpSource(
         return leads
     }
 
-    private companion object {
-        const val BASE = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets"
-        val DATASETS = listOf("decp-2022-marches-valides", "decp-v3-marches-valides")
+    companion object {
+        const val KEY = "decp"
+        private const val BASE = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets"
+        private val DATASETS = listOf("decp-2022-marches-valides", "decp-v3-marches-valides")
     }
 }

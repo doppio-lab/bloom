@@ -82,7 +82,7 @@ object Ted {
             // A deadline is a day: the tender stays open until the end of it
             deadline = deadline?.plusDays(1)?.atStartOfDay(ZoneOffset.UTC)?.toInstant(),
             // "cn-..." is a contract notice (a call for tenders); "can-..." announces an award
-            nature = if (notice["notice-type"].text()?.startsWith("cn-") == true) "APPEL_OFFRE" else notice["notice-type"].text(),
+            nature = if (notice["notice-type"].text()?.startsWith("cn-") == true) CALL_FOR_TENDERS else notice["notice-type"].text(),
             url = "https://ted.europa.eu/fr/notice/-/detail/$id",
         )
     }

@@ -60,7 +60,7 @@ class ExposedAccountRepository(private val clock: Clock = Clock.systemDefaultZon
             val fillSiren = row[AccountsTable.siren] == null && a.siren != null
             val fillHeadcount = row[AccountsTable.headcount] == null && a.headcount != null
             val fillApp = row[AccountsTable.iosAppId] == null && a.iosAppId != null
-            val fillSector = row[AccountsTable.sector] == "OTHER" && a.sector.name != "OTHER"
+            val fillSector = row[AccountsTable.sector] == Sector.OTHER.name && a.sector != Sector.OTHER
             // Exposed refuses an UPDATE that sets nothing: an account that is already complete is left alone
             if (fillDomain || fillSiren || fillHeadcount || fillApp || fillSector) {
                 AccountsTable.update({ AccountsTable.id eq existing }) {

@@ -1,12 +1,5 @@
 package lab.doppio.bloom.agents
 
-import lab.doppio.bloom.core.port.AccountRepository
-import lab.doppio.bloom.core.port.AgentRunRepository
-import lab.doppio.bloom.core.port.Coach
-import lab.doppio.bloom.core.port.DealRepository
-import lab.doppio.bloom.core.port.ReplyClassifier
-import lab.doppio.bloom.core.port.EventRepository
-import java.time.Clock
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
@@ -14,12 +7,20 @@ import ai.koog.agents.core.tools.annotations.Tool
 import ai.koog.agents.core.tools.reflect.ToolSet
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.model.executeStructured
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
-import lab.doppio.bloom.core.model.ReplyClassification
-import lab.doppio.bloom.core.model.ReplyIntent
+import java.time.Clock
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import lab.doppio.bloom.core.model.EventType
+import lab.doppio.bloom.core.model.ReplyClassification
+import lab.doppio.bloom.core.model.ReplyIntent
+import lab.doppio.bloom.core.port.AccountRepository
+import lab.doppio.bloom.core.port.AgentRunRepository
+import lab.doppio.bloom.core.port.Coach
+import lab.doppio.bloom.core.port.DealRepository
+import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.port.ReplyClassifier
 
 /**
  * Classifieur de réponses. Modèle rapide, sortie structurée.
@@ -30,7 +31,7 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
     @Serializable
     @SerialName("ReplyClassification")
     data class Classification(
-        @property:LLMDescription("Intention : INTERESTED, MEETING_REQUEST, NOT_NOW, WRONG_PERSON, REFERRAL, NOT_INTERESTED, UNSUBSCRIBE, OUT_OF_OFFICE, BOUNCE, OTHER")
+        @property:LLMDescription("Intention : $REPLY_INTENT_LIST")
         val intent: String,
         @property:LLMDescription("Confiance entre 0 et 1")
         val confidence: Double,
@@ -50,7 +51,7 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
         if (isHardStop(trimmed)) {
             return ReplyClassification(ReplyIntent.UNSUBSCRIBE, 1.0, null, null, "Demande d'arrêt détectée par mot-clé", null)
         }
-        val c = tracker.track("reply-classifier", accountId, llm.fast) {
+        val c = tracker.track(AgentName.REPLY_CLASSIFIER, accountId, llm.fast) {
             val r = llm.executor.executeStructured<Classification>(
                 prompt = prompt("reply") {
                     system(Prompts.replyClassifier + "\nDate du jour : $today.")
@@ -93,11 +94,15 @@ class MetricsTools(
 ) : ToolSet {
 
     @Tool
-    @LLMDescription("Compte les événements d'un type sur les N derniers jours. Types : EMAIL_SENT, REPLY_RECEIVED, REPLY_POSITIVE, MEETING_BOOKED, UNSUBSCRIBED, BOUNCED, DRAFT_APPROVED, DRAFT_REJECTED, LINKEDIN_TASK_DONE")
+    @LLMDescription("Compte les événements d'un type sur les N derniers jours. Types : $COACH_EVENT_LIST")
     suspend fun countEvents(
         @LLMDescription("Type d'événement") type: String,
         @LLMDescription("Nombre de jours") days: Int,
-    ): String = eventRepo.countEvents(type, clock.instant().minus(days.toLong(), ChronoUnit.DAYS)).toString()
+    ): String {
+        // An unknown type counts as zero, as before the journal was typed
+        val eventType = EventType.fromName(type.trim().uppercase()) ?: return "0"
+        return eventRepo.countEvents(eventType, clock.instant().minus(days.toLong(), ChronoUnit.DAYS)).toString()
+    }
 
     @Tool
     @LLMDescription("Liste les 15 comptes les mieux classés avec score, offre recommandée et raisons")
@@ -116,8 +121,8 @@ class MetricsTools(
     suspend fun replyRateBySignal(): String {
         val since = clock.instant().minus(90, ChronoUnit.DAYS)
         val events = eventRepo.eventsSince(since)
-        val sentByAccount = events.filter { it.first == "EMAIL_SENT" }.mapNotNull { it.second }.toSet()
-        val positiveByAccount = events.filter { it.first == "REPLY_POSITIVE" }.mapNotNull { it.second }.toSet()
+        val sentByAccount = events.filter { it.first == EventType.EMAIL_SENT }.mapNotNull { it.second }.toSet()
+        val positiveByAccount = events.filter { it.first == EventType.REPLY_POSITIVE }.mapNotNull { it.second }.toSet()
         val rows = accountRepo.accountsByScore(500).filter { it.account.id in sentByAccount }
         return rows.groupBy { it.recommendedOffer }.entries.joinToString("\n") { (offer, list) ->
             val pos = list.count { it.account.id in positiveByAccount }
@@ -151,7 +156,7 @@ class WeeklyCoachAgent(
             maxIterations = 15,
             installFeatures = tokens.feature,
         )
-        return tracker.trackAgent("weekly-coach", null, llm.writer, tokens) {
+        return tracker.trackAgent(AgentName.WEEKLY_COACH, null, llm.writer, tokens) {
             agent.run("Prépare la note du lundi ${LocalDate.now(clock)}.")
         }
     }

@@ -1,11 +1,14 @@
 package lab.doppio.bloom.core.usecase
 
+import java.time.Clock
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.Csv
 import lab.doppio.bloom.core.discovery.Targeting
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.Contact
+import lab.doppio.bloom.core.model.EventType
+import lab.doppio.bloom.core.model.ImportPayload
 import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.port.AccountRepository
@@ -14,7 +17,6 @@ import lab.doppio.bloom.core.port.EventRepository
 import lab.doppio.bloom.core.port.FactRepository
 import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.scoring.Scoring
-import java.time.Clock
 
 @Serializable data class ImportReport(val created: Int, val updated: Int, val contacts: Int, val errors: List<String>)
 
@@ -74,7 +76,7 @@ class ImportAccounts(
                 }
             }.onFailure { errors += "ligne $line : ${it.message}" }
         }
-        eventRepo.logEvent("IMPORT", payload = """{"created":$created,"updated":$updated,"contacts":$contacts}""")
+        eventRepo.logEvent(EventType.IMPORT, payload = ImportPayload(created, updated, contacts).toJson())
         return ImportReport(created, updated, contacts, errors)
     }
 }

@@ -3,6 +3,7 @@ package lab.doppio.bloom.app
 import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.post
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -32,6 +33,7 @@ class CrossSiteGuardTest {
         listOf("cross-site", "same-site").forEach { site ->
             val response = client.post("/api/drafts/1/approve") { header("Sec-Fetch-Site", site) }
             assertEquals(HttpStatusCode.Forbidden, response.status, site)
+            assertEquals("""{"error":"requête refusée : elle ne vient pas du dashboard"}""", response.bodyAsText(), site)
         }
         assertEquals(0, calls())
     }

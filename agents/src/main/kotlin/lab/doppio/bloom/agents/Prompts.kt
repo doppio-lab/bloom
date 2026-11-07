@@ -1,5 +1,14 @@
 package lab.doppio.bloom.agents
 
+import lab.doppio.bloom.core.model.ReplyIntent
+
+// Annotation texts need compile-time constants, so these lists are written out. A test pins each one
+// to the enum it lists, so adding a value without updating them fails the build.
+internal const val REPLY_INTENT_LIST = "INTERESTED, MEETING_REQUEST, NOT_NOW, WRONG_PERSON, REFERRAL, NOT_INTERESTED, UNSUBSCRIBE, OUT_OF_OFFICE, BOUNCE, OTHER"
+internal const val OFFER_LIST = "DISCOVERY, FORFAIT, REGIE, TRAINING_KMP, TRAINING_ANTHROPIC"
+internal const val COACH_EVENT_LIST =
+    "EMAIL_SENT, REPLY_RECEIVED, REPLY_POSITIVE, MEETING_BOOKED, UNSUBSCRIBED, BOUNCED, DRAFT_APPROVED, DRAFT_REJECTED, LINKEDIN_TASK_DONE"
+
 /**
  * Prompts système. La voix de Doppio est codée ici une fois, et vérifiée ensuite par MessageGuard.
  */
@@ -96,8 +105,8 @@ object Prompts {
 
     val replyClassifier = """
         Tu classes les réponses aux emails de prospection de Doppio Lab.
-        Intentions possibles : INTERESTED, MEETING_REQUEST, NOT_NOW, WRONG_PERSON, REFERRAL, NOT_INTERESTED,
-        UNSUBSCRIBE, OUT_OF_OFFICE, BOUNCE, OTHER.
+        Intentions possibles : ${ReplyIntent.entries.take(6).joinToString(", ")},
+        ${ReplyIntent.entries.drop(6).joinToString(", ")}.
         - Toute demande d'arrêt, même polie ou implicite (« retirez-moi », « pas intéressé, ne me recontactez pas »), est UNSUBSCRIBE.
         - NOT_NOW : extrais la date de recontact si elle est donnée ou déductible (format AAAA-MM-JJ), sinon null.
         - OUT_OF_OFFICE : extrais la date de retour si elle est donnée.

@@ -1,9 +1,14 @@
 package lab.doppio.bloom.core.usecase
 
+import java.time.Clock
+import java.time.Duration
+import java.time.Instant
+import java.time.ZoneId
 import kotlinx.coroutines.CancellationException
 import lab.doppio.bloom.core.guard.MessageGuard
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Mailbox
 import lab.doppio.bloom.core.model.SendingPolicy
 import lab.doppio.bloom.core.port.ContactRepository
@@ -14,10 +19,6 @@ import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.port.SequenceRepository
 import lab.doppio.bloom.core.sequence.SequenceEngine
 import org.slf4j.LoggerFactory
-import java.time.Clock
-import java.time.Duration
-import java.time.Instant
-import java.time.ZoneId
 
 /**
  * Sends at most one approved email per pass: inside the sending window, under the daily cap of a mailbox,
@@ -80,10 +81,10 @@ class SendNextApproved(
         } catch (e: Exception) {
             val status = draftRepo.recordSendFailure(draft.id, e.message ?: e.javaClass.simpleName, now)
             log.warn("Envoi du brouillon ${draft.id} refusé, statut $status", e)
-            if (status == DraftStatus.FAILED) eventRepo.logEvent("EMAIL_FAILED", contact.accountId, contact.id, draft.id)
+            if (status == DraftStatus.FAILED) eventRepo.logEvent(EventType.EMAIL_FAILED, contact.accountId, contact.id, draft.id)
             return
         }
         draftRepo.recordSent(draft, threadMessageId = thread ?: messageId, now = now)
-        eventRepo.logEvent("EMAIL_SENT", contact.accountId, contact.id, draft.id)
+        eventRepo.logEvent(EventType.EMAIL_SENT, contact.accountId, contact.id, draft.id)
     }
 }

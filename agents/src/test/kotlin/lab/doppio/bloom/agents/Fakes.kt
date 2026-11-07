@@ -19,6 +19,7 @@ import lab.doppio.bloom.core.model.ContactId
 import lab.doppio.bloom.core.model.Draft
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.Dossier
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
@@ -129,18 +130,18 @@ class FakeDraftRepository : DraftRepository {
 }
 
 class FakeEventRepository : EventRepository {
-    data class Event(val type: String, val accountId: AccountId?, val payload: String)
+    data class Event(val type: EventType, val accountId: AccountId?, val payload: String)
 
     val events = mutableListOf<Event>()
 
-    override suspend fun logEvent(type: String, accountId: AccountId?, contactId: ContactId?, draftId: Long?, payload: String) {
+    override suspend fun logEvent(type: EventType, accountId: AccountId?, contactId: ContactId?, draftId: Long?, payload: String) {
         events += Event(type, accountId, payload)
     }
 
-    override suspend fun lastEvent(type: String): Pair<String, Instant>? = TODO()
-    override suspend fun countEvents(type: String, since: Instant): Int = TODO()
-    override suspend fun eventTimes(types: Set<String>, since: Instant): List<Pair<String, Instant>> = TODO()
-    override suspend fun eventsSince(since: Instant): List<Triple<String, Long?, Instant>> = TODO()
+    override suspend fun lastEvent(type: EventType): Pair<String, Instant>? = TODO()
+    override suspend fun countEvents(type: EventType, since: Instant): Int = TODO()
+    override suspend fun eventTimes(types: Set<EventType>, since: Instant): List<Pair<EventType, Instant>> = TODO()
+    override suspend fun eventsSince(since: Instant): List<Triple<EventType, Long?, Instant>> = TODO()
 }
 
 class FakeFactRepository(private val facts: List<Fact>, private val dossier: Dossier? = null) : FactRepository {

@@ -17,6 +17,7 @@ import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EnrollmentStatus
 import lab.doppio.bloom.core.model.ReplyIntent
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.port.AccountRow
 import lab.doppio.bloom.core.port.ReplyRow
 import kotlin.test.Test
@@ -138,7 +139,7 @@ class RoutesTest {
         assertEquals(3, statuses.count { it == EnrollmentStatus.STOPPED_UNSUBSCRIBE })
         EnrollmentStatus.entries.filterNot { it in setOf(EnrollmentStatus.ACTIVE, EnrollmentStatus.PAUSED, EnrollmentStatus.STOPPED_UNSUBSCRIBE) }
             .forEach { assertEquals(1, statuses.count { s -> s == it }, it.name) }
-        assertTrue(ports.events.types.contains("UNSUBSCRIBED"))
+        assertTrue(ports.events.types.contains(EventType.UNSUBSCRIBED))
     }
 
     @Test

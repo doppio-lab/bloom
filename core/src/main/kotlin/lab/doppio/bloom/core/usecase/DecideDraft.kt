@@ -3,6 +3,7 @@ package lab.doppio.bloom.core.usecase
 import lab.doppio.bloom.core.guard.GuardInput
 import lab.doppio.bloom.core.guard.MessageGuard
 import lab.doppio.bloom.core.model.DraftStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.DraftRepository
@@ -42,7 +43,7 @@ class DecideDraft(
         )
         if (!MessageGuard.isPublishable(violations)) return Result.Violations(violations.map { it.toString() })
         draftRepo.decideDraft(draftId, DraftStatus.APPROVED, subject, body)
-        eventRepo.logEvent(if (body != null) "DRAFT_EDITED_APPROVED" else "DRAFT_APPROVED", a.id, c.id, draftId)
+        eventRepo.logEvent(if (body != null) EventType.DRAFT_EDITED_APPROVED else EventType.DRAFT_APPROVED, a.id, c.id, draftId)
         return Result.Done
     }
 
@@ -50,7 +51,7 @@ class DecideDraft(
         val draft = draftRepo.draft(draftId) ?: return Result.NotFound
         if (draft.status != DraftStatus.PENDING_REVIEW) return Result.NotPending
         draftRepo.decideDraft(draftId, DraftStatus.REJECTED)
-        eventRepo.logEvent("DRAFT_REJECTED", draftId = draftId)
+        eventRepo.logEvent(EventType.DRAFT_REJECTED, draftId = draftId)
         return Result.Done
     }
 }

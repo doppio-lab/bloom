@@ -138,6 +138,15 @@ class TokenCounter {
     val outputTokens: Int get() = output.get()
 }
 
+/** Names under which agent runs are recorded in agent_runs, read back by the dashboard. */
+object AgentName {
+    const val REPLY_CLASSIFIER = "reply-classifier"
+    const val WEEKLY_COACH = "weekly-coach"
+    const val RESEARCH_EXPLORE = "research-explore"
+    const val RESEARCH_SYNTHESIS = "research-synthesis"
+    const val WRITER = "writer"
+}
+
 /** Mesure chaque exécution d'agent (durée, tokens, échec) dans agent_runs pour le dashboard. */
 class RunTracker(
     private val agentRunRepo: AgentRunRepository,

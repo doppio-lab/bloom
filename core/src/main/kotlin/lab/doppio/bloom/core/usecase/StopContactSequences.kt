@@ -2,6 +2,7 @@ package lab.doppio.bloom.core.usecase
 
 import lab.doppio.bloom.core.model.ContactId
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.EventRepository
 import lab.doppio.bloom.core.port.ReplyRepository
@@ -35,6 +36,6 @@ class UnsubscribeContact(
         val contact = contactRepo.contact(contactId)
         contact?.email?.let { replyRepo.suppress(it, "lien de désinscription") }
         contact?.let { stop(it.id, EnrollmentStatus.STOPPED_UNSUBSCRIBE) }
-        eventRepo.logEvent("UNSUBSCRIBED", contact?.accountId, contactId)
+        eventRepo.logEvent(EventType.UNSUBSCRIBED, contact?.accountId, contactId)
     }
 }

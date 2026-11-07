@@ -6,6 +6,14 @@ import lab.doppio.bloom.app.outreach.MailConfig
 import lab.doppio.bloom.core.model.Mailbox
 import lab.doppio.bloom.core.model.SendingPolicy
 import lab.doppio.bloom.data.persistence.DbConfig
+import lab.doppio.bloom.data.sources.discovery.BoampSource
+import lab.doppio.bloom.data.sources.discovery.BodaccSource
+import lab.doppio.bloom.data.sources.discovery.CodeurSource
+import lab.doppio.bloom.data.sources.discovery.DecpSource
+import lab.doppio.bloom.data.sources.discovery.GitHubSource
+import lab.doppio.bloom.data.sources.discovery.PressSource
+import lab.doppio.bloom.data.sources.discovery.TedSource
+import lab.doppio.bloom.data.sources.facts.JobBoardSource
 
 /** HTTP server and the dashboard login. */
 data class ServerConfig(val port: Int, val adminPassword: String)
@@ -50,7 +58,9 @@ data class BloomConfig(
     val discovery: DiscoverySettings,
 ) {
     companion object {
-        const val DEFAULT_DISCOVERY_SOURCES = "bodacc,boamp,ted,decp,codeur,press,github,jobboards"
+        val DEFAULT_DISCOVERY_SOURCES = listOf(
+            BodaccSource.KEY, BoampSource.KEY, TedSource.KEY, DecpSource.KEY, CodeurSource.KEY, PressSource.KEY, GitHubSource.KEY, JobBoardSource.KEY,
+        ).joinToString(",")
 
         fun from(env: Map<String, String>): BloomConfig {
             val e = EnvReader(env)

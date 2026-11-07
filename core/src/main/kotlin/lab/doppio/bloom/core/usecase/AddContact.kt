@@ -3,6 +3,7 @@ package lab.doppio.bloom.core.usecase
 import lab.doppio.bloom.core.discovery.Targeting
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.Contact
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.EmailFinder
 import lab.doppio.bloom.core.port.EventRepository
@@ -52,10 +53,10 @@ class FindContactEmail(
         val found = finder.findEmail(contact.fullName, account.name, account.domain)
         if (found != null) {
             contactRepo.updateContactEmail(contact.id, found.email, "Dropcontact (${found.qualification}) à partir du nom saisi")
-            eventRepo.logEvent("EMAIL_FOUND", account.id, contact.id)
+            eventRepo.logEvent(EventType.EMAIL_FOUND, account.id, contact.id)
             if (enroll) contactRepo.contact(contact.id)?.let { enrollContact(it) }
         } else {
-            eventRepo.logEvent("EMAIL_NOT_FOUND", account.id, contact.id)
+            eventRepo.logEvent(EventType.EMAIL_NOT_FOUND, account.id, contact.id)
         }
     }
 }

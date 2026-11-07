@@ -1,12 +1,6 @@
 package lab.doppio.bloom.agents
 
 import lab.doppio.bloom.core.model.latestPerTopic
-import lab.doppio.bloom.core.port.AccountRepository
-import lab.doppio.bloom.core.port.ContactRepository
-import lab.doppio.bloom.core.port.Drafter
-import lab.doppio.bloom.core.port.DraftRepository
-import lab.doppio.bloom.core.port.EventRepository
-import lab.doppio.bloom.core.port.FactRepository
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.model.executeStructured
@@ -17,10 +11,18 @@ import lab.doppio.bloom.core.guard.MessageGuard
 import lab.doppio.bloom.core.guard.Violation
 import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.Draft
+import lab.doppio.bloom.core.model.DraftCreatedPayload
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.Enrollment
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Sequence
 import lab.doppio.bloom.core.model.SequenceStep
+import lab.doppio.bloom.core.port.AccountRepository
+import lab.doppio.bloom.core.port.ContactRepository
+import lab.doppio.bloom.core.port.DraftRepository
+import lab.doppio.bloom.core.port.Drafter
+import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.port.FactRepository
 import lab.doppio.bloom.core.references.ReferenceLibrary
 
 /**
@@ -92,7 +94,7 @@ class WriterAgent(
         var violations: List<Violation>
         var feedback = ""
         do {
-            output = tracker.track("writer", account.id, llm.writer) {
+            output = tracker.track(AgentName.WRITER, account.id, llm.writer) {
                 val r = llm.executor.executeStructured<DraftOutput>(
                     prompt = prompt("draft-${enrollment.id}-${step.index}-$attempt") {
                         system(Prompts.writer(contact.language, senderName))
@@ -135,7 +137,7 @@ class WriterAgent(
                 guardReport = violations.map { it.toString() },
             ),
         )
-        eventRepo.logEvent("DRAFT_CREATED", account.id, contact.id, draftId, """{"attempts":$attempt,"publishable":${MessageGuard.isPublishable(violations)}}""")
+        eventRepo.logEvent(EventType.DRAFT_CREATED, account.id, contact.id, draftId, DraftCreatedPayload(attempt, MessageGuard.isPublishable(violations)).toJson())
         return draftId
     }
 }

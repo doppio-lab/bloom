@@ -71,4 +71,8 @@ class JobBoardSource(private val http: HttpClient, private val clock: Clock = Cl
         }
         return SourceResult(facts, signals)
     }
+
+    companion object {
+        const val KEY = "jobboards"
+    }
 }

@@ -1,23 +1,24 @@
 package lab.doppio.bloom.core.usecase
 
+import java.time.Clock
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.SendingPolicy
 import lab.doppio.bloom.core.port.ContactRepository
-import lab.doppio.bloom.core.port.Drafter
 import lab.doppio.bloom.core.port.DraftRepository
+import lab.doppio.bloom.core.port.Drafter
 import lab.doppio.bloom.core.port.EventRepository
 import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.port.SequenceRepository
 import lab.doppio.bloom.core.sequence.NextAction
 import lab.doppio.bloom.core.sequence.SequenceEngine
 import org.slf4j.LoggerFactory
-import java.time.Clock
-import java.time.Instant
-import java.time.temporal.ChronoUnit
-import java.util.concurrent.ConcurrentHashMap
 
 /**
  * Prepares the drafts that are due: asks the writer for the next step of every running enrollment, unless the
@@ -58,7 +59,7 @@ class PlanDrafts(
                     // Trois brouillons rejetés pour la même étape : la séquence s'arrête au lieu d'en réécrire sans fin
                     if (draftRepo.rejectedDrafts(e.id, action.step.index) >= MAX_REJECTIONS_PER_STEP) {
                         sequenceRepo.setEnrollmentStatus(e.id, EnrollmentStatus.STOPPED_MANUAL)
-                        eventRepo.logEvent("ENROLLMENT_STOPPED_REJECTIONS", contact.accountId, contact.id)
+                        eventRepo.logEvent(EventType.ENROLLMENT_STOPPED_REJECTIONS, contact.accountId, contact.id)
                         continue
                     }
                     val key = e.id to action.step.index

@@ -3,6 +3,7 @@ package lab.doppio.bloom.core.usecase
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.Dossier
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Offer
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -27,7 +28,7 @@ class EnrollContactTest {
         val contact = contacts.add()
         val result = assertIs<EnrollContact.Result.Enrolled>(enroll(contact))
         assertEquals(2, sequences.enrollment(result.enrollmentId)!!.sequenceId)
-        assertEquals(listOf("ENROLLED"), events.types)
+        assertEquals(listOf(EventType.ENROLLED), events.types)
         assertEquals(1, planned)
     }
 

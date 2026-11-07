@@ -18,4 +18,8 @@ class CodeurSource(private val http: HttpClient, private val minBudgetEur: Int =
         if (!res.status.isSuccess()) error("Codeur HTTP ${res.status.value}")
         return Codeur.parseFeed(res.bodyAsText()).filter { Codeur.isMobileProject(it, minBudgetEur) }
     }
+
+    companion object {
+        const val KEY = "codeur"
+    }
 }

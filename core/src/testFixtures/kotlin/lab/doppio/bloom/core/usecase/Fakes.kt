@@ -13,6 +13,7 @@ import lab.doppio.bloom.core.model.Draft
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.Enrollment
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.InboundMail
 import lab.doppio.bloom.core.model.Mailbox
@@ -192,14 +193,14 @@ class FakeReplyRepository : ReplyRepository {
 }
 
 class FakeEventRepository : EventRepository {
-    val events = mutableListOf<Pair<String, String>>()
-    val types: List<String> get() = events.map { it.first }
+    val events = mutableListOf<Pair<EventType, String>>()
+    val types: List<EventType> get() = events.map { it.first }
 
-    override suspend fun logEvent(type: String, accountId: AccountId?, contactId: ContactId?, draftId: Long?, payload: String) { events += type to payload }
-    override suspend fun lastEvent(type: String): Pair<String, Instant>? = null
-    override suspend fun countEvents(type: String, since: Instant): Int = 0
-    override suspend fun eventTimes(types: Set<String>, since: Instant): List<Pair<String, Instant>> = emptyList()
-    override suspend fun eventsSince(since: Instant): List<Triple<String, Long?, Instant>> = emptyList()
+    override suspend fun logEvent(type: EventType, accountId: AccountId?, contactId: ContactId?, draftId: Long?, payload: String) { events += type to payload }
+    override suspend fun lastEvent(type: EventType): Pair<String, Instant>? = null
+    override suspend fun countEvents(type: EventType, since: Instant): Int = 0
+    override suspend fun eventTimes(types: Set<EventType>, since: Instant): List<Pair<EventType, Instant>> = emptyList()
+    override suspend fun eventsSince(since: Instant): List<Triple<EventType, Long?, Instant>> = emptyList()
 }
 
 class FakeJobRunRepository : JobRunRepository {
