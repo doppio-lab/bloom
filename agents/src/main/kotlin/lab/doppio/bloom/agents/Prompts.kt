@@ -1,5 +1,6 @@
 package lab.doppio.bloom.agents
 
+import lab.doppio.bloom.core.guard.GuardLimits
 import lab.doppio.bloom.core.model.ReplyIntent
 
 // Annotation texts need compile-time constants, so these lists are written out. A test pins each one
@@ -41,8 +42,8 @@ object Prompts {
         - Une citation est un fait précis (une techno, un poste, un projet), pas une phrase de présentation. Si une page n'a rien
           de tel, n'enregistre rien : un dossier court et exact vaut mieux qu'un dossier rempli.
         - Cherche en priorité la page carrières (postes mobile, stack demandée) puis le blog tech, avant la page d'accueil.
-        - Lis au maximum 6 pages. Arrête-toi dès que tu as 3 à 5 citations utiles.
-        - Termine par un résumé de 5 lignes maximum de ce que tu as trouvé et de ce qui manque.
+        - Lis au maximum ${ResearchLimits.MAX_PAGES} pages. Arrête-toi dès que tu as ${ResearchLimits.USEFUL_QUOTES_MIN} à ${ResearchLimits.USEFUL_QUOTES_MAX} citations utiles.
+        - Termine par un résumé de ${ResearchLimits.REPORT_MAX_LINES} lignes maximum de ce que tu as trouvé et de ce qui manque.
     """.trimIndent()
 
     val synthesis = """
@@ -50,8 +51,8 @@ object Prompts {
         $doppio
 
         On te donne une liste de faits sourcés, chacun avec un identifiant et sa date de lecture. Produis :
-        - un résumé factuel (3 phrases maximum) ;
-        - 1 à 3 hypothèses sur le besoin, chacune appuyée sur des identifiants de faits existants ;
+        - un résumé factuel (${ResearchLimits.SUMMARY_MAX_SENTENCES} phrases maximum) ;
+        - ${ResearchLimits.HYPOTHESES_MIN} à ${ResearchLimits.HYPOTHESES_MAX} hypothèses sur le besoin, chacune appuyée sur des identifiants de faits existants ;
         - l'angle d'approche en une phrase (le problème du prospect, pas l'offre de Doppio) ;
         - l'offre Doppio la plus adaptée, ou NONE si rien ne colle (dis-le, c'est une information utile) ;
         - les raisons de ne PAS contacter ce compte s'il y en a.
@@ -76,8 +77,8 @@ object Prompts {
         - Première phrase : un constat précis et sourcé sur LEUR app ou LEUR équipe, pas une présentation de Doppio.
         - Ensuite : une hypothèse technique honnête (formulée comme une hypothèse), puis ce que Doppio propose concrètement.
         - Une seule question à la fin, simple, à laquelle on peut répondre en une ligne.
-        - Premier email : 120 mots maximum, aucun lien. Relance : 80 mots maximum. Note LinkedIn : 300 caractères maximum.
-        - Objet : 2 à 6 mots, en minuscules sauf noms propres, sans « Re: ».
+        - Premier email : ${GuardLimits.FIRST_EMAIL_WORDS} mots maximum, aucun lien. Relance : ${GuardLimits.FOLLOW_UP_WORDS} mots maximum. Note LinkedIn : ${GuardLimits.LINKEDIN_CHARS} caractères maximum.
+        - Objet : ${GuardLimits.SUBJECT_MIN_WORDS} à ${GuardLimits.SUBJECT_MAX_WORDS} mots, en minuscules sauf noms propres, sans « Re: ».
         Interdits : tiret cadratin, emojis, points d'exclamation, « accompagner », « digitalisation », « synergie »,
         « leader », « incontournable », « n'hésitez pas », « je me permets », tout superlatif.
         Preuves :
@@ -96,8 +97,8 @@ object Prompts {
         Style: a senior engineer writing to a peer. Short sentences, concrete, no flattery.
         First sentence: a precise, sourced observation about THEIR app or THEIR team. Then an honest technical hypothesis,
         then what Doppio concretely offers. End with one simple question.
-        First email: 120 words max, no links. Follow-up: 80 words max. LinkedIn note: 300 characters max.
-        Subject: 2 to 6 words, no fake "Re:".
+        First email: ${GuardLimits.FIRST_EMAIL_WORDS} words max, no links. Follow-up: ${GuardLimits.FOLLOW_UP_WORDS} words max. LinkedIn note: ${GuardLimits.LINKEDIN_CHARS} characters max.
+        Subject: ${GuardLimits.SUBJECT_MIN_WORDS} to ${GuardLimits.SUBJECT_MAX_WORDS} words, no fake "Re:".
         Forbidden: em dashes, emojis, exclamation marks, "leverage", "synergy", "cutting-edge", "world-class", superlatives.
         Every claim about the prospect is followed by its [F:id] marker. Every number must come from a cited fact
         or from the chosen reference proof. Cite a client reference only from the allowed list, only if it helps.
@@ -118,7 +119,7 @@ object Prompts {
     val coach = """
         Tu es le coach commercial hebdomadaire de Doppio Lab.
         $doppio
-        Tu as accès aux métriques de prospection via des outils. Écris une note du lundi, en français, 200 mots maximum :
+        Tu as accès aux métriques de prospection via des outils. Écris une note du lundi, en français, ${CoachLimits.MEMO_MAX_WORDS} mots maximum :
         1. Ce qui a marché cette semaine (signal, séquence, offre) avec les chiffres.
         2. Ce qui n'a pas marché, et une hypothèse.
         3. Trois actions précises pour la semaine (comptes à appeler, séquence à modifier, signal à surveiller).

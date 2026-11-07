@@ -13,6 +13,7 @@ import java.time.temporal.ChronoUnit
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.model.EventType
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.model.ReplyClassification
 import lab.doppio.bloom.core.model.ReplyIntent
 import lab.doppio.bloom.core.port.AccountRepository
@@ -76,12 +77,12 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
 /** Mots qui déclenchent l'opposition sans attendre le LLM, par prudence. */
 private val hardStop = Regex("(?i)(désinscri|unsubscribe|ne plus me contacter|retirez[- ]moi|\\bstop\\b|remove me|opt[- ]out)")
 
-/** Keeps the reply itself: cuts at the first quoted line, then at 4000 characters. */
+/** Keeps the reply itself: cuts at the first quoted line, then at [ReplyLimits.REPLY_CHARS] characters. */
 internal fun trimQuoted(body: String): String =
-    body.lines().takeWhile { line -> !line.startsWith(">") && !line.contains("a écrit") && !line.contains("wrote:") }.joinToString("\n").take(4_000)
+    body.lines().takeWhile { line -> !line.startsWith(">") && !line.contains("a écrit") && !line.contains("wrote:") }.joinToString("\n").take(ReplyLimits.REPLY_CHARS)
 
 /** True when the start of the reply holds an unambiguous request to stop. */
-internal fun isHardStop(trimmed: String): Boolean = hardStop.containsMatchIn(trimmed.take(400))
+internal fun isHardStop(trimmed: String): Boolean = hardStop.containsMatchIn(trimmed.take(ReplyLimits.HARD_STOP_SCAN_CHARS))
 
 /** Outils de lecture des métriques pour le coach hebdomadaire. Lecture seule. */
 @LLMDescription("Lecture des métriques de prospection de Doppio")
@@ -105,9 +106,9 @@ class MetricsTools(
     }
 
     @Tool
-    @LLMDescription("Liste les 15 comptes les mieux classés avec score, offre recommandée et raisons")
-    suspend fun topAccounts(): String = accountRepo.accountsByScore(15).joinToString("\n") {
-        "${it.account.name} : ${it.score} pts, offre ${it.recommendedOffer ?: "aucune"}, ${it.reasons.take(3).joinToString("; ")}"
+    @LLMDescription("Liste les ${CoachLimits.TOP_ACCOUNTS} comptes les mieux classés avec score, offre recommandée et raisons")
+    suspend fun topAccounts(): String = accountRepo.accountsByScore(CoachLimits.TOP_ACCOUNTS).joinToString("\n") {
+        "${it.account.name} : ${it.score} pts, offre ${it.recommendedOffer ?: "aucune"}, ${it.reasons.take(CoachLimits.TOP_ACCOUNT_REASONS).joinToString("; ")}"
     }
 
     @Tool
@@ -117,13 +118,13 @@ class MetricsTools(
     }
 
     @Tool
-    @LLMDescription("Taux de réponse positive par type de signal à l'origine du contact, sur 90 jours")
+    @LLMDescription("Taux de réponse positive par type de signal à l'origine du contact, sur ${Limits.REPLY_RATE_DAYS} jours")
     suspend fun replyRateBySignal(): String {
-        val since = clock.instant().minus(90, ChronoUnit.DAYS)
+        val since = clock.instant().minus(Limits.REPLY_RATE_DAYS, ChronoUnit.DAYS)
         val events = eventRepo.eventsSince(since)
         val sentByAccount = events.filter { it.first == EventType.EMAIL_SENT }.mapNotNull { it.second }.toSet()
         val positiveByAccount = events.filter { it.first == EventType.REPLY_POSITIVE }.mapNotNull { it.second }.toSet()
-        val rows = accountRepo.accountsByScore(500).filter { it.account.id in sentByAccount }
+        val rows = accountRepo.accountsByScore(Limits.ALL_ACCOUNTS).filter { it.account.id in sentByAccount }
         return rows.groupBy { it.recommendedOffer }.entries.joinToString("\n") { (offer, list) ->
             val pos = list.count { it.account.id in positiveByAccount }
             "${offer ?: "sans offre"} : ${list.size} comptes contactés, $pos réponses positives"
@@ -131,8 +132,8 @@ class MetricsTools(
     }
 
     @Tool
-    @LLMDescription("Coût et fiabilité des agents sur 7 jours")
-    suspend fun agentCosts(): String = agentRunRepo.agentStats(clock.instant().minus(7, ChronoUnit.DAYS)).joinToString("\n") {
+    @LLMDescription("Coût et fiabilité des agents sur ${Limits.WEEK_DAYS} jours")
+    suspend fun agentCosts(): String = agentRunRepo.agentStats(clock.instant().minus(Limits.WEEK_DAYS, ChronoUnit.DAYS)).joinToString("\n") {
         "${it.agent} : ${it.runs} exécutions, ${it.failures} échecs, ${it.inputTokens} tokens en entrée, ${it.outputTokens} en sortie, ${it.avgMs} ms en moyenne"
     }
 }
@@ -153,7 +154,7 @@ class WeeklyCoachAgent(
             llmModel = llm.writer,
             systemPrompt = Prompts.coach,
             toolRegistry = ToolRegistry { tools(MetricsTools(eventRepo, accountRepo, dealRepo, agentRunRepo, clock)) },
-            maxIterations = 15,
+            maxIterations = CoachLimits.MAX_ITERATIONS,
             installFeatures = tokens.feature,
         )
         return tracker.trackAgent(AgentName.WEEKLY_COACH, null, llm.writer, tokens) {

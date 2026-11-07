@@ -1,6 +1,5 @@
 package lab.doppio.bloom.agents
 
-import lab.doppio.bloom.core.port.AgentRunRepository
 import ai.koog.agents.features.eventHandler.feature.EventHandler
 import ai.koog.prompt.executor.clients.anthropic.AnthropicLLMClient
 import ai.koog.prompt.executor.clients.anthropic.AnthropicModels
@@ -14,6 +13,8 @@ import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
 import ai.koog.prompt.structure.StructuredResponse
+import lab.doppio.bloom.core.model.BloomTime
+import lab.doppio.bloom.core.port.AgentRunRepository
 
 enum class LlmProvider {
     /** Anthropic API, paid. The default, meant for production. */
@@ -152,7 +153,7 @@ class RunTracker(
     private val agentRunRepo: AgentRunRepository,
     /** Tokens allowed per day, all agents together. 0: no limit. */
     private val dailyTokenBudget: Long = 0,
-    private val zone: java.time.ZoneId = java.time.ZoneId.of("Europe/Paris"),
+    private val zone: java.time.ZoneId = BloomTime.PARIS,
     private val clock: java.time.Clock = java.time.Clock.systemDefaultZone(),
 ) {
     /** Refuses a new run once the day's budget is spent: the caller retries later, nothing is lost. */

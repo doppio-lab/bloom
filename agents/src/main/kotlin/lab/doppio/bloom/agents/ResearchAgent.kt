@@ -97,7 +97,7 @@ class ResearchAgent(
                     llmModel = llm.research,
                     systemPrompt = Prompts.researcher,
                     toolRegistry = ToolRegistry { tools(siteTools) },
-                    maxIterations = 20,
+                    maxIterations = ResearchLimits.MAX_ITERATIONS,
                     installFeatures = tokens.feature,
                 )
                 tracker.trackAgent(AgentName.RESEARCH_EXPLORE, account.id, llm.research, tokens) {
@@ -125,9 +125,9 @@ class ResearchAgent(
     @SerialName("AccountDossier")
     @LLMDescription("Dossier de prospection d'un compte")
     data class DossierOutput(
-        @property:LLMDescription("Résumé factuel, 3 phrases maximum")
+        @property:LLMDescription("Résumé factuel, ${ResearchLimits.SUMMARY_MAX_SENTENCES} phrases maximum")
         val summary: String,
-        @property:LLMDescription("1 à 3 hypothèses de besoin, chacune avec les identifiants des faits qui l'appuient")
+        @property:LLMDescription("${ResearchLimits.HYPOTHESES_MIN} à ${ResearchLimits.HYPOTHESES_MAX} hypothèses de besoin, chacune avec les identifiants des faits qui l'appuient")
         val hypotheses: List<Hypothesis>,
         @property:LLMDescription("Angle d'approche en une phrase, centré sur le problème du prospect")
         val angle: String,
@@ -149,7 +149,7 @@ class ResearchAgent(
     private suspend fun synthesize(account: Account, facts: List<Fact>) {
         val known = facts.associateBy { it.id }
         // The read date is given so the model can tell a fresh fact from an old one
-        val factList = facts.joinToString("\n") { "[${it.id}] (${it.kind}, lu le ${it.retrievedAt.take(10)}) ${it.statement}" + (it.excerpt?.let { e -> "\n    extrait : ${e.take(300)}" } ?: "") }
+        val factList = facts.joinToString("\n") { "[${it.id}] (${it.kind}, lu le ${it.retrievedAt.take(10)}) ${it.statement}" + (it.excerpt?.let { e -> "\n    extrait : ${e.take(ResearchLimits.SYNTHESIS_EXCERPT_CHARS)}" } ?: "") }
         val output = tracker.track(AgentName.RESEARCH_SYNTHESIS, account.id, llm.research) {
             val r = llm.executor.executeStructured<DossierOutput>(
                 prompt = prompt("dossier-${account.id}") {
@@ -211,7 +211,6 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
     private val pages = mutableMapOf<String, String>()
     val recorded = mutableListOf<Fact>()
     val signals = mutableListOf<Signal>()
-    private val maxPages = 6
     private val categories = setOf("STACK", "MOBILE_PROJECT", "HIRING", "AI_USAGE", "APP_ISSUE")
 
     /** Curly quotes and non-breaking spaces differ between the page and what the model types back: compare without them. */
@@ -229,10 +228,10 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
         url: String,
     ): String {
         if (!sameSite.matches(url)) return "Refusé : seules les pages de $domain sont autorisées."
-        if (pages.size >= maxPages && url !in pages) return "Limite de $maxPages pages atteinte. Termine ton analyse."
+        if (pages.size >= ResearchLimits.MAX_PAGES && url !in pages) return "Limite de ${ResearchLimits.MAX_PAGES} pages atteinte. Termine ton analyse."
         val (_, text) = web.read(accountId, url) ?: return "Page illisible : $url"
         pages[url] = text
-        return text.take(5_000)
+        return text.take(ResearchLimits.PAGE_CHARS)
     }
 
     @Tool
@@ -240,7 +239,7 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
     fun recordQuote(
         @LLMDescription("URL de la page déjà lue avec readPage")
         url: String,
-        @LLMDescription("Citation exacte, copiée de la page, 300 caractères maximum")
+        @LLMDescription("Citation exacte, copiée de la page, ${ResearchLimits.QUOTE_MAX_CHARS} caractères maximum")
         quote: String,
         @LLMDescription("Ce que la citation établit, en une phrase neutre")
         meaning: String,
@@ -249,7 +248,9 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
     ): String {
         val page = pages[url] ?: return "Refusé : lis d'abord la page avec readPage."
         val normalized = quote.trim().replace(Regex("\\s+"), " ")
-        if (normalized.length !in 12..300) return "Refusé : la citation doit faire entre 12 et 300 caractères."
+        if (normalized.length !in ResearchLimits.QUOTE_MIN_CHARS..ResearchLimits.QUOTE_MAX_CHARS) {
+            return "Refusé : la citation doit faire entre ${ResearchLimits.QUOTE_MIN_CHARS} et ${ResearchLimits.QUOTE_MAX_CHARS} caractères."
+        }
         if (!plain(page).contains(plain(normalized), ignoreCase = true)) {
             return "Refusé : citation introuvable mot pour mot sur la page. Copie le texte exact."
         }
@@ -258,9 +259,9 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
         val f = fact(accountId, FactKind.WEB_PAGE, "$meaning (« $normalized »)", url, excerpt = normalized, at = clock.instant())
         recorded += f
         when (cat) {
-            "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, 0.6, clock.instant().toString(), listOf(f.id))
-            "MOBILE_PROJECT" -> signals += Signal(accountId, SignalType.PRODUCT_LAUNCH, 0.6, clock.instant().toString(), listOf(f.id))
-            "APP_ISSUE" -> signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, 0.4, clock.instant().toString(), listOf(f.id))
+            "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, ResearchLimits.AI_USAGE_STRENGTH, clock.instant().toString(), listOf(f.id))
+            "MOBILE_PROJECT" -> signals += Signal(accountId, SignalType.PRODUCT_LAUNCH, ResearchLimits.MOBILE_PROJECT_STRENGTH, clock.instant().toString(), listOf(f.id))
+            "APP_ISSUE" -> signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, ResearchLimits.APP_ISSUE_STRENGTH, clock.instant().toString(), listOf(f.id))
         }
         return "Enregistré sous l'identifiant ${f.id}."
     }

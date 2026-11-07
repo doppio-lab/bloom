@@ -7,6 +7,7 @@ import ai.koog.prompt.executor.model.executeStructured
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.guard.GuardInput
+import lab.doppio.bloom.core.guard.GuardLimits
 import lab.doppio.bloom.core.guard.MessageGuard
 import lab.doppio.bloom.core.guard.Violation
 import lab.doppio.bloom.core.model.Channel
@@ -39,13 +40,13 @@ class WriterAgent(
     private val factRepo: FactRepository,
     private val tracker: RunTracker,
     private val senderName: String,
-    private val maxRepairs: Int = 2,
+    private val maxRepairs: Int = WriterLimits.MAX_REPAIRS,
 ) : Drafter {
     @Serializable
     @SerialName("OutreachDraft")
     @LLMDescription("Brouillon de message de prospection")
     data class DraftOutput(
-        @property:LLMDescription("Objet de l'email, 2 à 6 mots. Vide pour LinkedIn et téléphone.")
+        @property:LLMDescription("Objet de l'email, ${GuardLimits.SUBJECT_MIN_WORDS} à ${GuardLimits.SUBJECT_MAX_WORDS} mots. Vide pour LinkedIn et téléphone.")
         val subject: String,
         @property:LLMDescription("Corps du message, avec les marqueurs [F:id] après chaque affirmation sur le prospect")
         val body: String,
@@ -63,7 +64,7 @@ class WriterAgent(
         val facts = factRepo.factsOf(account.id).latestPerTopic()
         val dossier = factRepo.dossier(account.id)
         val references = ReferenceLibrary.eligible(account.sector, sequence.offer)
-        val examples = draftRepo.humanEditedExamples(3)
+        val examples = draftRepo.humanEditedExamples(WriterLimits.HUMAN_EXAMPLES)
         val previous = draftRepo.draftsByStatus(DraftStatus.SENT).filter { it.enrollmentId == enrollment.id }
 
         val context = buildString {
