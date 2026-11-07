@@ -42,7 +42,12 @@ class UnsubscribeTokens(private val secret: String) {
     private fun mac(data: String): String {
         val m = Mac.getInstance("HmacSHA256")
         m.init(SecretKeySpec(secret.toByteArray(), "HmacSHA256"))
-        return m.doFinal(data.toByteArray()).joinToString("") { "%02x".format(it) }.take(20)
+        return m.doFinal(data.toByteArray()).joinToString("") { "%02x".format(it) }.take(TOKEN_CHARS)
+    }
+
+    private companion object {
+        /** Hex characters of the signature kept in the link: 80 bits, plenty against guessing and short in a URL. */
+        const val TOKEN_CHARS = 20
     }
 
     fun tokenFor(contactId: Long): String = "$contactId.${mac(contactId.toString())}"
@@ -125,6 +130,11 @@ class ImapPoller(private val config: MailConfig, private val clock: java.time.Cl
     private val log = LoggerFactory.getLogger(javaClass)
     private val messageIdPattern = Regex("<[^<>\\s@]+@[^<>\\s]+>")
 
+    private companion object {
+        /** A returned message is read for its headers only: no need to keep more than this. */
+        const val RAW_MESSAGE_CHARS = 200_000
+    }
+
     override suspend fun poll(): List<InboundMail> = withContext(Dispatchers.IO) {
         if (config.dryRun) return@withContext emptyList()
         config.mailboxes.flatMap { mb ->
@@ -174,7 +184,7 @@ class ImapPoller(private val config: MailConfig, private val clock: java.time.Cl
     private fun raw(m: Message): String {
         val out = java.io.ByteArrayOutputStream()
         runCatching { m.writeTo(out) }
-        return out.toString(Charsets.UTF_8).take(200_000)
+        return out.toString(Charsets.UTF_8).take(RAW_MESSAGE_CHARS)
     }
 
     private fun textOf(p: Part): String = when {

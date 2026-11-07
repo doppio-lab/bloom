@@ -5,21 +5,25 @@ import io.ktor.client.request.get
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.isSuccess
-import kotlinx.serialization.json.JsonArray
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.jsonObject
-import lab.doppio.bloom.data.sources.http.sourcesJson
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import lab.doppio.bloom.core.model.BloomTime
+import lab.doppio.bloom.data.sources.http.sourcesJson
 
 /** Shared by the discovery sources: dates and amounts as the facts print them, and the open data records endpoint. */
 
 internal val frDate: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
-internal val paris: ZoneId = ZoneId.of("Europe/Paris")
+internal val paris: ZoneId = BloomTime.PARIS
+
+/** Records requested per call to an open data endpoint: the most the platform returns at once. */
+internal const val OPEN_DATA_PAGE_SIZE = 100
 internal fun day(iso: String): String = runCatching { LocalDate.parse(iso.take(10)).format(frDate) }.getOrDefault(iso)
 internal fun startOfDay(iso: String, fallback: Instant): Instant =
     runCatching { LocalDate.parse(iso.take(10)).atStartOfDay(ZoneOffset.UTC).toInstant() }.getOrDefault(fallback)

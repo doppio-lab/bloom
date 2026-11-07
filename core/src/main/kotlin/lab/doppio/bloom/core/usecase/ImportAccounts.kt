@@ -6,6 +6,7 @@ import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.Csv
 import lab.doppio.bloom.core.discovery.Targeting
 import lab.doppio.bloom.core.model.Account
+import lab.doppio.bloom.core.model.CompanyIds
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.ImportPayload
@@ -47,7 +48,7 @@ class ImportAccounts(
                 val account = Account(
                     name = name,
                     domain = CompanyNames.domainOf(r["domain"]) ?: r["domain"]?.takeIf { it.contains('.') }?.lowercase(),
-                    siren = r["siren"]?.filter { it.isDigit() }?.takeIf { it.length == 9 },
+                    siren = r["siren"]?.filter { it.isDigit() }?.takeIf { it.length == CompanyIds.SIREN_DIGITS },
                     sector = r["sector"]?.uppercase()?.let { s -> Sector.entries.firstOrNull { it.name == s } } ?: Sector.OTHER,
                     market = Market.FR,
                     headcount = r["headcount"]?.toIntOrNull(),

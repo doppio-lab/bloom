@@ -8,6 +8,10 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Parameters
+import java.time.Clock
+import java.time.Duration
+import java.time.Instant
+import java.time.ZonedDateTime
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
@@ -23,12 +27,9 @@ import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.core.port.JobOfferFacts
+import lab.doppio.bloom.data.discovery.DiscoverySource
 import lab.doppio.bloom.data.sources.http.sourcesJson
 import lab.doppio.bloom.data.sources.http.str
-import java.time.Clock
-import java.time.Duration
-import java.time.Instant
-import java.time.ZonedDateTime
 
 /** France Travail : offres d'emploi (API Offres d'emploi v2, OAuth2 client credentials). */
 class FranceTravailSource(
@@ -39,6 +40,26 @@ class FranceTravailSource(
 ) : JobOfferFacts {
     private var token: String? = null
     private var tokenExpiry: Instant = Instant.EPOCH
+
+    companion object {
+        /** Offers are read again after this many days: a posting is stable, and the key is the offer id. */
+        const val RECHECK_AFTER_DAYS = DiscoverySource.DEFAULT_RECHECK_DAYS
+
+        /** Token lifetime assumed when the API does not state one. */
+        private const val DEFAULT_TOKEN_TTL_SECONDS = 1400
+
+        /** The token is renewed this long before it expires. */
+        private const val TOKEN_MARGIN_SECONDS = 60L
+
+        /** The API caps a page at 150 results (and 1 150 per request). */
+        private const val PAGE_SIZE = 150
+
+        /** Pages read per search. */
+        private const val MAX_PAGES = 3
+
+        /** Characters of the offer description kept as the fact excerpt. */
+        private const val EXCERPT_CHARS = 400
+    }
 
     private suspend fun accessToken(): String {
         token?.takeIf { clock.instant().isBefore(tokenExpiry) }?.let { return it }
@@ -52,9 +73,9 @@ class FranceTravailSource(
             },
         ).body<JsonObject>()
         val t = res["access_token"].str() ?: error("France Travail : pas de jeton (${res})")
-        val ttl = res["expires_in"]?.jsonPrimitive?.intOrNull ?: 1400
+        val ttl = res["expires_in"]?.jsonPrimitive?.intOrNull ?: DEFAULT_TOKEN_TTL_SECONDS
         token = t
-        tokenExpiry = clock.instant().plusSeconds(ttl - 60L)
+        tokenExpiry = clock.instant().plusSeconds(ttl - TOKEN_MARGIN_SECONDS)
         return t
     }
 
@@ -62,20 +83,20 @@ class FranceTravailSource(
      * Recherche d'offres. [publieeDepuis] accepte 1, 3, 7, 14 ou 31 jours. L'API plafonne à 150 résultats
      * par page et 1 150 par requête : on pagine jusqu'à [maxPages].
      */
-    suspend fun search(motsCles: String, publieeDepuis: Int? = null, maxPages: Int = 3): List<JsonObject> = buildList {
+    suspend fun search(motsCles: String, publieeDepuis: Int? = null, maxPages: Int = MAX_PAGES): List<JsonObject> = buildList {
         for (page in 0 until maxPages) {
             val res = http.get("https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search") {
                 header("Authorization", "Bearer ${accessToken()}")
                 parameter("motsCles", motsCles)
                 publieeDepuis?.let { parameter("publieeDepuis", it) }
-                parameter("range", "${page * 150}-${page * 150 + 149}")
+                parameter("range", "${page * PAGE_SIZE}-${page * PAGE_SIZE + PAGE_SIZE - 1}")
             }
             // Rejected credentials must be visible: silently reading zero offers hid a misconfiguration
             if (res.status.value == 401 || res.status.value == 403) error("France Travail a refusé les identifiants (HTTP ${res.status.value})")
             if (res.status.value == 204 || res.status.value >= 400) break
             val results = sourcesJson.parseToJsonElement(res.bodyAsText()).jsonObject["resultats"]?.jsonArray.orEmpty().map { it.jsonObject }
             addAll(results)
-            if (results.size < 150) break
+            if (results.size < PAGE_SIZE) break
         }
     }
 
@@ -100,14 +121,14 @@ class FranceTravailSource(
                 accountId, FactKind.JOB_POSTING,
                 "Offre d'emploi « $title »" + (age?.let { " publiée il y a $it jours" } ?: ""),
                 url,
-                excerpt = description.take(400),
+                excerpt = description.take(EXCERPT_CHARS),
                 at = now,
             )
             facts += f
             // The need dates from the day the posting went up, not from the day we read it
             val observed = HiringRules.observedAt(created, now)
-            signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, observed.toString(), listOf(f.id))
-            if (HiringRules.mentionsKmp(title + description)) signals += Signal(accountId, SignalType.HIRING_KMP, 0.9, observed.toString(), listOf(f.id))
+            signals += Signal(accountId, SignalType.HIRING_MOBILE, HiringRules.MOBILE_STRENGTH, observed.toString(), listOf(f.id))
+            if (HiringRules.mentionsKmp(title + description)) signals += Signal(accountId, SignalType.HIRING_KMP, HiringRules.KMP_STRENGTH, observed.toString(), listOf(f.id))
             HiringRules.stuckStrength(age)?.let { signals += Signal(accountId, SignalType.HIRING_STUCK, it, now.toString(), listOf(f.id)) }
             if (HiringRules.indicatesCrossPlatformStack(title + " " + description)) {
                 facts += fact(accountId, FactKind.JOB_POSTING, HiringRules.crossPlatformStatement(title), url, at = now)

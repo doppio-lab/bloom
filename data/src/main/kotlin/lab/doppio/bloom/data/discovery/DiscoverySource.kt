@@ -32,6 +32,11 @@ interface DiscoverySource {
     /** What is stored on the account and shown in the dashboard ("BODACC"). */
     val label: String
     /** A lead whose key was seen within this delay is skipped. */
-    val recheckAfterDays: Long get() = 365
+    val recheckAfterDays: Long get() = DEFAULT_RECHECK_DAYS
     suspend fun leads(now: Instant): List<Lead>
+
+    companion object {
+        /** One evidence (a notice, a contract, an offer) does not change within a year, so it is read once a year. */
+        const val DEFAULT_RECHECK_DAYS = 365L
+    }
 }

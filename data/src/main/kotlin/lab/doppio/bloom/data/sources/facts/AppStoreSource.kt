@@ -40,7 +40,55 @@ class AppStoreSource(
     private val country: String = "fr",
     clock: Clock = Clock.systemDefaultZone(),
 ) : AppStoreFacts {
-    private val limiter = RateLimiter(Duration.ofSeconds(3), clock)
+    private val limiter = RateLimiter(MIN_INTERVAL, clock)
+
+    companion object {
+        /** Apple tolerates about 20 calls per minute on its Search and Lookup APIs: one every 3 seconds. */
+        private val MIN_INTERVAL: Duration = Duration.ofSeconds(3)
+
+        /** Reviews older than this say nothing about the app as it is today. */
+        const val REVIEW_WINDOW_DAYS = 90L
+
+        /** The RSS feed holds at most 50 reviews per page: 2 pages cover [REVIEW_WINDOW_DAYS] for most apps. */
+        const val REVIEW_PAGES = 2
+
+        /** No release for this long starts to look like an abandoned app (the rule is shared with Google Play). */
+        const val RELEASE_STALL_AFTER_DAYS = ReleaseRules.STALL_AFTER_DAYS
+
+        /** Fewer recent reviews than this say nothing about the average rating. */
+        const val MIN_REVIEWS_FOR_RATING = 10
+
+        /** The recent average must sit this far below the overall one to count as a drop. */
+        const val RATING_DROP_MIN = 0.4
+
+        /** A drop of this many stars gives the full strength. */
+        private const val RATING_DROP_FULL = 1.5
+
+        /** Fewer recent reviews than this cannot show a pattern of complaints. */
+        const val MIN_REVIEWS_FOR_COMPLAINTS = 5
+
+        /** Only low ratings (this or below) count as complaints. */
+        const val COMPLAINT_MAX_RATING = ReviewRules.COMPLAINT_MAX_RATING
+
+        /** The share of complaining reviews must reach this to count as a quality problem. */
+        const val COMPLAINT_SHARE_MIN = 0.15
+
+        /** A share of 50 percent gives the full strength. */
+        private const val COMPLAINT_SHARE_FACTOR = 2
+
+        /** Complaints quoted in the fact excerpt, and characters kept from each. */
+        const val COMPLAINT_EXAMPLES = 3
+        const val COMPLAINT_EXCERPT_CHARS = 140
+
+        /** A signal never weighs less than this once it exists. */
+        const val MIN_STRENGTH = 0.2
+
+        /** Apps read per chart: the most the RSS feed returns. */
+        const val CHART_SIZE = 200
+
+        /** Candidate apps returned by a search by company name. */
+        const val SEARCH_RESULTS = 5
+    }
 
     override suspend fun analyze(accountId: AccountId, appId: Long, now: Instant): SourceResult {
         val facts = mutableListOf<Fact>()
@@ -73,20 +121,20 @@ class AppStoreSource(
         }
 
         val reviews = recentReviews(appId)
-        val recent = reviews.filter { r -> r.updated?.let { Duration.between(it, now).toDays() <= 90 } ?: false }
+        val recent = reviews.filter { r -> r.updated?.let { Duration.between(it, now).toDays() <= REVIEW_WINDOW_DAYS } ?: false }
         val rssUrl = "https://itunes.apple.com/$country/rss/customerreviews/page=1/id=$appId/sortBy=mostRecent/json"
 
-        if (recent.size >= 10 && avg != null) {
+        if (recent.size >= MIN_REVIEWS_FOR_RATING && avg != null) {
             val recentAvg = recent.map { it.rating }.average()
             val drop = avg - recentAvg
             val f = fact(
                 accountId, FactKind.APP_REVIEW,
-                "$name : moyenne des ${recent.size} avis des 90 derniers jours ${"%.1f".format(recentAvg).replace('.', ',')}, contre ${"%.1f".format(avg).replace('.', ',')} en moyenne globale",
+                "$name : moyenne des ${recent.size} avis des $REVIEW_WINDOW_DAYS derniers jours ${"%.1f".format(recentAvg).replace('.', ',')}, contre ${"%.1f".format(avg).replace('.', ',')} en moyenne globale",
                 rssUrl,
                 at = now,
             )
             facts += f
-            if (drop >= 0.4) signals += Signal(accountId, SignalType.RATING_DROP, (drop / 1.5).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
+            if (drop >= RATING_DROP_MIN) signals += Signal(accountId, SignalType.RATING_DROP, (drop / RATING_DROP_FULL).coerceIn(MIN_STRENGTH, 1.0), now.toString(), listOf(f.id))
         }
 
         val complaints = recent.filter { r -> ReviewRules.isTechnicalComplaint(r.rating, r.title, r.content) }
@@ -95,11 +143,11 @@ class AppStoreSource(
             val versions = complaints.mapNotNull { it.version }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
             val f = fact(
                 accountId, FactKind.APP_REVIEW,
-                "$name : ${complaints.size} avis sur ${recent.size} des 90 derniers jours signalent un problème technique" +
+                "$name : ${complaints.size} avis sur ${recent.size} des $REVIEW_WINDOW_DAYS derniers jours signalent un problème technique" +
                     (versions?.let { " (version la plus citée : $it)" } ?: ""),
                 rssUrl,
                 at = now,
-                excerpt = complaints.take(3).joinToString(" | ") { "${it.rating}/5 « ${it.title} » ${it.content.take(140)}" },
+                excerpt = complaints.take(COMPLAINT_EXAMPLES).joinToString(" | ") { "${it.rating}/5 « ${it.title} » ${it.content.take(COMPLAINT_EXCERPT_CHARS)}" },
             )
             facts += f
             facts += issueFacts(accountId, name, complaints, recent.size, rssUrl, now)
@@ -146,7 +194,7 @@ class AppStoreSource(
     data class ChartApp(val appId: Long, val name: String, val artist: String, val genreId: Int?)
 
     /** Classement d'un genre sur le storefront (gratuites par défaut, ou « topgrossingapplications »). Flux public sans clé. */
-    suspend fun topChart(genreId: Int, limit: Int = 200, chart: String = "topfreeapplications"): List<ChartApp> {
+    suspend fun topChart(genreId: Int, limit: Int = CHART_SIZE, chart: String = "topfreeapplications"): List<ChartApp> {
         val url = "https://itunes.apple.com/$country/rss/$chart/limit=$limit/genre=$genreId/json"
         val feed = runCatching { limiter.run { sourcesJson.parseToJsonElement(http.get(url).bodyAsText()).jsonObject } }
             .getOrNull()?.get("feed")?.jsonObject ?: return emptyList()
@@ -167,7 +215,7 @@ class AppStoreSource(
     }
 
     /** Recherche d'apps par nom d'entreprise : sert à retrouver l'app et le site d'une entreprise qui recrute. */
-    suspend fun searchByCompany(company: String, limit: Int = 5): List<AppMeta> {
+    suspend fun searchByCompany(company: String, limit: Int = SEARCH_RESULTS): List<AppMeta> {
         val res = runCatching {
             limiter.run {
                 sourcesJson.parseToJsonElement(

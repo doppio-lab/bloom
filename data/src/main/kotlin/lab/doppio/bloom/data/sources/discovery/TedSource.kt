@@ -20,7 +20,7 @@ import lab.doppio.bloom.data.sources.http.sourcesJson
 import java.time.Instant
 
 /** TED : marchés publics européens passés en France (API de recherche ouverte, sans clé). */
-class TedSource(private val http: HttpClient, private val lookbackDays: Long = 60) : DiscoverySource {
+class TedSource(private val http: HttpClient, private val lookbackDays: Long = LOOKBACK_DAYS) : DiscoverySource {
     override val key = KEY
     override val label = "marché européen"
 
@@ -31,7 +31,7 @@ class TedSource(private val http: HttpClient, private val lookbackDays: Long = 6
             setBody(buildJsonObject {
                 put("query", Ted.query(since))
                 put("fields", JsonArray(Ted.fields.map { JsonPrimitive(it) }))
-                put("limit", 100)
+                put("limit", OPEN_DATA_PAGE_SIZE)
                 put("scope", "ACTIVE")
                 put("paginationMode", "PAGE_NUMBER")
                 put("page", 1)
@@ -45,5 +45,8 @@ class TedSource(private val http: HttpClient, private val lookbackDays: Long = 6
 
     companion object {
         const val KEY = "ted"
+
+        /** European notices are published later than the French ones: a wider window. */
+        const val LOOKBACK_DAYS = 60L
     }
 }

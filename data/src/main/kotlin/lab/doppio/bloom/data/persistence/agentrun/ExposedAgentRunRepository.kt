@@ -2,6 +2,7 @@ package lab.doppio.bloom.data.persistence.agentrun
 
 import java.time.Instant
 import lab.doppio.bloom.core.model.AccountId
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.port.AgentRunRepository
 import lab.doppio.bloom.core.port.AgentStats
 import lab.doppio.bloom.data.persistence.dbQuery
@@ -17,7 +18,7 @@ class ExposedAgentRunRepository : AgentRunRepository {
         dbQuery {
             AgentRunsTable.insert {
                 it[this.agent] = agent; it[this.accountId] = accountId; it[this.model] = model; it[inputTokens] = inTok; it[outputTokens] = outTok
-                it[this.durationMs] = durationMs; it[this.success] = success; it[this.error] = error?.take(2000)
+                it[this.durationMs] = durationMs; it[this.success] = success; it[this.error] = error?.take(Limits.AGENT_RUN_ERROR_CHARS)
             }
         }
     }

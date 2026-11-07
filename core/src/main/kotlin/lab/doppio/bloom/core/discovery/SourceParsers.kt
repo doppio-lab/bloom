@@ -1,5 +1,8 @@
 package lab.doppio.bloom.core.discovery
 
+import java.time.Instant
+import java.time.LocalDate
+import java.time.OffsetDateTime
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -11,6 +14,7 @@ import kotlinx.serialization.json.jsonObject
 import lab.doppio.bloom.core.model.AppReview
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
+import lab.doppio.bloom.core.model.CompanyIds
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -58,7 +62,7 @@ object Bodacc {
 
     fun parse(record: JsonObject): CapitalNotice? {
         val id = record["id"].text() ?: return null
-        val siren = (record["registre"] as? JsonArray)?.firstNotNullOfOrNull { it.text()?.filter(Char::isDigit)?.takeIf { d -> d.length == 9 } } ?: return null
+        val siren = (record["registre"] as? JsonArray)?.firstNotNullOfOrNull { it.text()?.filter(Char::isDigit)?.takeIf { d -> d.length == CompanyIds.SIREN_DIGITS } } ?: return null
         val people = record["listepersonnes"].embedded()?.get("personne")
         val person = people.obj() ?: (people as? JsonArray)?.firstOrNull().obj()
         return CapitalNotice(
@@ -125,20 +129,26 @@ data class AwardedContract(
     val durationMonths: Int,
     val amountEur: Long?,
 ) {
-    val buyerSiren: String get() = buyerSiret.take(9)
+    val buyerSiren: String get() = buyerSiret.take(CompanyIds.SIREN_DIGITS)
     val endsOn: LocalDate get() = notifiedOn.plusMonths(durationMonths.toLong())
 }
 
 object Decp {
+    /** A contract ending sooner than this is too late to approach: the new tender is already written. */
+    const val RENEWAL_MIN_MONTHS = 1L
+
+    /** A buyer whose contract ends within a year will tender again. */
+    const val RENEWAL_MAX_MONTHS = 12L
+
     private val mobileApp = Regex("(?i)\\b(appli(cations?)?|apps?)\\b.{0,25}\\b(mobiles?|smartphones?|ios|android)\\b")
 
     fun parse(record: JsonObject): AwardedContract? {
-        val buyer = record["acheteur_id"].text()?.filter(Char::isDigit)?.takeIf { it.length == 14 } ?: return null
+        val buyer = record["acheteur_id"].text()?.filter(Char::isDigit)?.takeIf { it.length == CompanyIds.SIRET_DIGITS } ?: return null
         return AwardedContract(
             id = record["id"].text() ?: return null,
             subject = record["objet"].text() ?: return null,
             buyerSiret = buyer,
-            holderSiret = record["titulaire_id_1"].text()?.filter(Char::isDigit)?.takeIf { it.length == 14 },
+            holderSiret = record["titulaire_id_1"].text()?.filter(Char::isDigit)?.takeIf { it.length == CompanyIds.SIRET_DIGITS },
             notifiedOn = record["datenotification"].text()?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() } ?: return null,
             durationMonths = record["dureemois"].text()?.toDoubleOrNull()?.toInt()?.takeIf { it > 0 } ?: return null,
             amountEur = record["montant"].text()?.toDoubleOrNull()?.toLong(),
@@ -149,7 +159,12 @@ object Decp {
      * A mobile app contract that ends between [minMonths] and [maxMonths] from [today]: the buyer has to
      * renew it, and usually prepares the new tender a few months before the end.
      */
-    fun isRenewalCandidate(contract: AwardedContract, today: LocalDate, minMonths: Long = 1, maxMonths: Long = 12): Boolean =
+    fun isRenewalCandidate(
+        contract: AwardedContract,
+        today: LocalDate,
+        minMonths: Long = RENEWAL_MIN_MONTHS,
+        maxMonths: Long = RENEWAL_MAX_MONTHS,
+    ): Boolean =
         mobileApp.containsMatchIn(contract.subject) &&
             !contract.endsOn.isBefore(today.plusMonths(minMonths)) &&
             !contract.endsOn.isAfter(today.plusMonths(maxMonths))
@@ -315,6 +330,21 @@ object Registry {
 
 /** Rules shared by every source of job postings (France Travail, hosted job boards). */
 object HiringRules {
+    /** Strength of a posting for a mobile role. */
+    const val MOBILE_STRENGTH = 0.7
+
+    /** Strength of a posting that names Kotlin Multiplatform: the stack Doppio trains and staffs. */
+    const val KMP_STRENGTH = 0.9
+
+    /** A posting open for more than this many days means the hire is stuck. */
+    const val STUCK_AFTER_DAYS = 45L
+
+    /** Days past [STUCK_AFTER_DAYS] it takes to reach the full strength. */
+    private const val STUCK_RAMP_DAYS = 60.0
+
+    /** A stuck posting never weighs less than this. */
+    private const val STUCK_MIN_STRENGTH = 0.3
+
     // Native mobile stacks are enough on their own. Cross-platform stacks are not: Doppio builds native
     // (and Kotlin Multiplatform) apps, so a Flutter or React Native opening is not a need it can serve.
     private val nativeTitle = Regex("(?i)\\b(ios|android|swiftui|kotlin)\\b")
@@ -349,12 +379,16 @@ object HiringRules {
     /** When a hiring signal is dated: the publication day when the source gives it (never in the future), else the read time. */
     fun observedAt(publishedAt: Instant?, now: Instant): Instant = publishedAt?.takeIf { !it.isAfter(now) } ?: now
 
-    /** A posting open for more than 45 days: the hire is stuck. Null below that. */
-    fun stuckStrength(ageDays: Long?): Double? = ageDays?.takeIf { it > 45 }?.let { ((it - 45) / 60.0).coerceIn(0.3, 1.0) }
+    /** A posting open for more than [STUCK_AFTER_DAYS]: the hire is stuck. Null below that. */
+    fun stuckStrength(ageDays: Long?): Double? =
+        ageDays?.takeIf { it > STUCK_AFTER_DAYS }?.let { ((it - STUCK_AFTER_DAYS) / STUCK_RAMP_DAYS).coerceIn(STUCK_MIN_STRENGTH, 1.0) }
 }
 
 /** Reads app reviews: which low ratings describe a technical problem Doppio could audit. */
 object ReviewRules {
+    /** Only low ratings (this or below) count as complaints. */
+    const val COMPLAINT_MAX_RATING = 2
+
     /**
      * What a low-rated review complains about, by keyword. [label] completes "N avis parlent de ...".
      * Whole words only: a plain substring test matched "lent" in "excellent" and "bug" in "debug".
@@ -381,14 +415,14 @@ object ReviewRules {
         "$title $content".let { text -> Theme.entries.filterTo(mutableSetOf()) { it.regex.containsMatchIn(text) } }
 
     fun isTechnicalComplaint(rating: Int, title: String, content: String): Boolean =
-        rating <= 2 && themes(title, content).isNotEmpty()
+        rating <= COMPLAINT_MAX_RATING && themes(title, content).isNotEmpty()
 
     /**
      * The low-rated reviews worth quoting to the company: the ones that name a technical problem first, then the
      * most recent. A rating with no text says nothing and is left out.
      */
     fun mostTelling(reviews: List<AppReview>, limit: Int = 5): List<AppReview> =
-        reviews.filter { it.rating <= 2 && it.content.isNotBlank() }
+        reviews.filter { it.rating <= COMPLAINT_MAX_RATING && it.content.isNotBlank() }
             .sortedWith(
                 compareByDescending<AppReview> { themes(it.title, it.content).isNotEmpty() }
                     .thenByDescending { it.updated ?: Instant.MIN },

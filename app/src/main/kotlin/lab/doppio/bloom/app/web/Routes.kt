@@ -18,6 +18,7 @@ import lab.doppio.bloom.core.model.Deal
 import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EventType
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.DealRepository
@@ -37,6 +38,9 @@ import lab.doppio.bloom.core.usecase.ReviewQueue
 import lab.doppio.bloom.core.usecase.UnsubscribeContact
 
 /** Answer to a decision on a draft that is no longer waiting for review (decided elsewhere, blacklisted, sent). */
+/** Window of the overview counters when the request gives none. */
+private const val DEFAULT_OVERVIEW_DAYS = 30
+
 private const val NOT_PENDING = "ce brouillon n'est plus à valider"
 
 private val researchLog = org.slf4j.LoggerFactory.getLogger("Research")
@@ -71,11 +75,11 @@ class ApiRoutes(
     fun mount(parent: Route) = parent.route("/api") {
 
         get("/overview") {
-            call.respond(overview(call.request.queryParameters["days"]?.toIntOrNull() ?: 30))
+            call.respond(overview(call.request.queryParameters["days"]?.toIntOrNull() ?: DEFAULT_OVERVIEW_DAYS))
         }
 
         // --- Comptes ---------------------------------------------------------------------------------
-        get("/accounts") { call.respond(accountRepo.accountsByScore(500)) }
+        get("/accounts") { call.respond(accountRepo.accountsByScore(Limits.ALL_ACCOUNTS)) }
 
         post("/accounts") {
             val req = call.receive<NewAccount>()

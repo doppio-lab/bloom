@@ -18,23 +18,23 @@ import java.time.Instant
 /** BODACC : annonces légales, augmentations de capital (open data, sans clé). */
 class BodaccSource(
     private val http: HttpClient,
-    private val minCapitalEur: Long = 100_000,
-    private val lookbackDays: Long = 7,
-    private val maxPages: Int = 5,
+    private val minCapitalEur: Long = DEFAULT_MIN_CAPITAL_EUR,
+    private val lookbackDays: Long = LOOKBACK_DAYS,
+    private val maxPages: Int = MAX_PAGES,
     clock: Clock = Clock.systemDefaultZone(),
 ) : DiscoverySource {
     override val key = KEY
     override val label = "BODACC"
-    private val limiter = RateLimiter(Duration.ofMillis(500), clock)
+    private val limiter = RateLimiter(MIN_INTERVAL, clock)
 
     override suspend fun leads(now: Instant): List<Lead> {
         val since = now.atZone(paris).toLocalDate().minusDays(lookbackDays)
         val where = "familleavis=\"modification\" and search(modificationsgenerales,\"augmentation\") and dateparution>=date'$since'"
         val notices = buildList {
             for (page in 0 until maxPages) {
-                val batch = limiter.run { http.records(URL, where, limit = 100, offset = page * 100) }
+                val batch = limiter.run { http.records(URL, where, limit = OPEN_DATA_PAGE_SIZE, offset = page * OPEN_DATA_PAGE_SIZE) }
                 addAll(batch.mapNotNull { Bodacc.parse(it) })
-                if (batch.size < 100) break
+                if (batch.size < OPEN_DATA_PAGE_SIZE) break
             }
         }
         return notices.filter { Bodacc.isCandidate(it, minCapitalEur) }.map { n ->
@@ -42,7 +42,7 @@ class BodaccSource(
                 name = n.name,
                 seenKey = SeenKeys.of(KEY, n.id),
                 siren = n.siren,
-                minHeadcount = 10,
+                minHeadcount = MIN_HEADCOUNT,
                 requireSectorOrApp = true,
                 build = { accountId, at ->
                     // The notice gives the capital after the change, never the amount raised: the fact says exactly that
@@ -53,7 +53,7 @@ class BodaccSource(
                         excerpt = n.description,
                         at = at,
                     )
-                    val strength = ((n.capitalEur ?: 0) / 1_000_000.0).coerceIn(0.4, 1.0)
+                    val strength = ((n.capitalEur ?: 0) / STRENGTH_FULL_CAPITAL_EUR).coerceIn(MIN_STRENGTH, 1.0)
                     SourceResult(listOf(f), listOf(Signal(accountId, SignalType.FUNDING, strength, startOfDay(n.publishedOn, at).toString(), listOf(f.id))))
                 },
             )
@@ -62,6 +62,24 @@ class BodaccSource(
 
     companion object {
         const val KEY = "bodacc"
+
+        /** A capital below this is a micro-company or a holding: not a company that buys apps. */
+        const val DEFAULT_MIN_CAPITAL_EUR = 100_000L
+
+        /** Notices from the last week: the source runs nightly and the platform lags by days. */
+        const val LOOKBACK_DAYS = 7L
+
+        /** Pages of [OPEN_DATA_PAGE_SIZE] notices read per run. */
+        const val MAX_PAGES = 5
+
+        /** Companies the registry shows below this headcount are dropped: too small to buy an app project. */
+        const val MIN_HEADCOUNT = 10
+
+        /** A capital of this amount or more gives the full strength; below it the strength scales down. */
+        const val STRENGTH_FULL_CAPITAL_EUR = 1_000_000.0
+
+        const val MIN_STRENGTH = 0.4
+        private val MIN_INTERVAL: Duration = Duration.ofMillis(500)
         private const val URL = "https://bodacc-datadila.opendatasoft.com/api/explore/v2.1/catalog/datasets/annonces-commerciales/records"
     }
 }

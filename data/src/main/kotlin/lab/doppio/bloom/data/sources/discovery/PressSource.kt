@@ -24,7 +24,7 @@ class PressSource(
         "https://www.frenchweb.fr/feed", "https://www.maddyness.com/feed/", "https://www.journaldunet.com/rss/",
         "https://www.usine-digitale.fr/rss", "https://siecledigital.fr/feed/",
     ),
-    private val maxAgeDays: Long = 14,
+    private val maxAgeDays: Long = MAX_AGE_DAYS,
 ) : DiscoverySource {
     override val key = KEY
     override val label = "presse"
@@ -60,7 +60,7 @@ class PressSource(
                             excerpt = item.title,
                             at = at,
                         )
-                        SourceResult(listOf(f), listOf(Signal(accountId, SignalType.FUNDING, 0.8, published.toString(), listOf(f.id))))
+                        SourceResult(listOf(f), listOf(Signal(accountId, SignalType.FUNDING, STRENGTH, published.toString(), listOf(f.id))))
                     },
                 )
             }
@@ -68,5 +68,11 @@ class PressSource(
 
     companion object {
         const val KEY = "press"
+
+        /** A funding headline older than two weeks is no longer news. */
+        const val MAX_AGE_DAYS = 14L
+
+        /** A headline gives a trade name and an amount, not a registry fact: weaker than a legal notice. */
+        const val STRENGTH = 0.8
     }
 }

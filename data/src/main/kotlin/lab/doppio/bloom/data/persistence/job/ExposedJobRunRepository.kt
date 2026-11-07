@@ -3,6 +3,7 @@ package lab.doppio.bloom.data.persistence.job
 import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.port.JobRunRepository
 import lab.doppio.bloom.data.persistence.dbQuery
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
@@ -24,6 +25,6 @@ class ExposedJobRunRepository(private val clock: Clock = Clock.systemDefaultZone
 
     override suspend fun finishJob(name: String, error: String?, now: Instant?) {
         val at = now ?: clock.instant()
-        dbQuery { JobRunsTable.update({ JobRunsTable.name eq name }) { it[finishedAt] = at; it[this.error] = error?.take(500) } }
+        dbQuery { JobRunsTable.update({ JobRunsTable.name eq name }) { it[finishedAt] = at; it[this.error] = error?.take(Limits.ERROR_TEXT_CHARS) } }
     }
 }

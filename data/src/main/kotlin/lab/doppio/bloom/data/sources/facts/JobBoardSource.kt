@@ -27,7 +27,7 @@ import java.time.Instant
  * What it adds over France Travail: the exact publication date, hence how long a mobile role has been open.
  */
 class JobBoardSource(private val http: HttpClient, private val clock: Clock = Clock.systemDefaultZone()) {
-    private val limiter = RateLimiter(Duration.ofSeconds(1), clock)
+    private val limiter = RateLimiter(MIN_INTERVAL, clock)
 
     private suspend fun fetch(url: String): String? = runCatching {
         limiter.run { http.get(url).takeIf { it.status.isSuccess() }?.bodyAsText() }
@@ -50,7 +50,7 @@ class JobBoardSource(private val http: HttpClient, private val clock: Clock = Cl
     }
 
     /** Facts and signals from the mobile postings of a board. Same rules as the France Travail offers. */
-    fun result(accountId: AccountId, postings: List<Posting>, now: Instant = clock.instant(), max: Int = 5): SourceResult {
+    fun result(accountId: AccountId, postings: List<Posting>, now: Instant = clock.instant(), max: Int = MAX_POSTINGS): SourceResult {
         val facts = mutableListOf<Fact>()
         val signals = mutableListOf<Signal>()
         postings.filter { HiringRules.isMobile(it.title) }.take(max).forEach { p ->
@@ -65,8 +65,8 @@ class JobBoardSource(private val http: HttpClient, private val clock: Clock = Cl
             )
             facts += f
             val observed = HiringRules.observedAt(p.publishedAt?.takeIf { p.dateIsFirstPublication }, now)
-            signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, observed.toString(), listOf(f.id))
-            if (HiringRules.mentionsKmp(p.title)) signals += Signal(accountId, SignalType.HIRING_KMP, 0.9, observed.toString(), listOf(f.id))
+            signals += Signal(accountId, SignalType.HIRING_MOBILE, HiringRules.MOBILE_STRENGTH, observed.toString(), listOf(f.id))
+            if (HiringRules.mentionsKmp(p.title)) signals += Signal(accountId, SignalType.HIRING_KMP, HiringRules.KMP_STRENGTH, observed.toString(), listOf(f.id))
             HiringRules.stuckStrength(age)?.let { signals += Signal(accountId, SignalType.HIRING_STUCK, it, now.toString(), listOf(f.id)) }
         }
         return SourceResult(facts, signals)
@@ -74,5 +74,12 @@ class JobBoardSource(private val http: HttpClient, private val clock: Clock = Cl
 
     companion object {
         const val KEY = "jobboards"
+
+        /** A known board is searched again, and a missing one looked for again, after this many days. */
+        const val REFRESH_AFTER_DAYS = 30L
+
+        /** Mobile postings turned into facts per board: enough to describe the need, not to flood the dossier. */
+        private const val MAX_POSTINGS = 5
+        private val MIN_INTERVAL: Duration = Duration.ofSeconds(1)
     }
 }

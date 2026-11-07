@@ -25,13 +25,13 @@ class DecpSource(
     private val buyerName: suspend (siren: String) -> String?,
     private val wasSeen: suspend (String) -> Boolean,
     private val markSeen: suspend (String, Boolean, String) -> Unit,
-    private val maxMonths: Long = 12,
-    private val lookbackYears: Long = 6,
+    private val maxMonths: Long = Decp.RENEWAL_MAX_MONTHS,
+    private val lookbackYears: Long = LOOKBACK_YEARS,
     clock: Clock = Clock.systemDefaultZone(),
 ) : DiscoverySource {
     override val key = KEY
     override val label = "marché attribué"
-    private val limiter = RateLimiter(Duration.ofMillis(500), clock)
+    private val limiter = RateLimiter(MIN_INTERVAL, clock)
 
     override suspend fun leads(now: Instant): List<Lead> {
         val today = now.atZone(paris).toLocalDate()
@@ -40,10 +40,10 @@ class DecpSource(
         // The same contracts are published in two datasets (2022 and 2024 formats): one lead per buyer and contract
         val contracts = DATASETS.flatMap { dataset ->
             buildList {
-                for (page in 0 until 3) {
-                    val batch = limiter.run { http.records("$BASE/$dataset/records", where, limit = 100, offset = page * 100, orderBy = "datenotification desc") }
+                for (page in 0 until MAX_PAGES) {
+                    val batch = limiter.run { http.records("$BASE/$dataset/records", where, limit = OPEN_DATA_PAGE_SIZE, offset = page * OPEN_DATA_PAGE_SIZE, orderBy = "datenotification desc") }
                     addAll(batch.mapNotNull { Decp.parse(it)?.let { c -> dataset to c } })
-                    if (batch.size < 100) break
+                    if (batch.size < OPEN_DATA_PAGE_SIZE) break
                 }
             }
         }.filter { (_, c) -> Decp.isRenewalCandidate(c, today, maxMonths = maxMonths) }.distinctBy { (_, c) -> c.buyerSiret to c.id }
@@ -80,6 +80,13 @@ class DecpSource(
 
     companion object {
         const val KEY = "decp"
+
+        /** Contracts last years: the ones ending within the renewal window were notified up to six years ago. */
+        const val LOOKBACK_YEARS = 6L
+
+        /** Pages of [OPEN_DATA_PAGE_SIZE] contracts read per dataset and per run. */
+        const val MAX_PAGES = 3
+        private val MIN_INTERVAL: Duration = Duration.ofMillis(500)
         private const val BASE = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets"
         private val DATASETS = listOf("decp-2022-marches-valides", "decp-v3-marches-valides")
     }

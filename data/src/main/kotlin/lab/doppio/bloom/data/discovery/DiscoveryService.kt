@@ -13,6 +13,7 @@ import lab.doppio.bloom.core.model.AppMeta
 import lab.doppio.bloom.core.model.Demand
 import lab.doppio.bloom.core.model.DiscoveryReport
 import lab.doppio.bloom.core.model.EventType
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Sector
 import lab.doppio.bloom.core.model.SourceResult
@@ -121,7 +122,7 @@ class DiscoveryService(
         if (offers.isEmpty() && errors.size == config.jobKeywords.size) error(errors.first())
 
         // Offres sans nom d'entreprise (confidentielles) et offres déjà traitées : ignorées
-        val fresh = offers.filter { o -> ft.companyName(o) != null && ft.offerId(o)?.let { !discoveryState.wasSeen(SeenKeys.franceTravail(it), 365) } == true }
+        val fresh = offers.filter { o -> ft.companyName(o) != null && ft.offerId(o)?.let { !discoveryState.wasSeen(SeenKeys.franceTravail(it), FranceTravailSource.RECHECK_AFTER_DAYS) } == true }
         val byCompany: Map<String, List<JsonObject>> = fresh.groupBy { CompanyNames.normalize(ft.companyName(it)!!) }
 
         var created = 0; var refreshed = 0; var excluded = 0
@@ -309,9 +310,9 @@ class DiscoveryService(
 
     /** Finds the hosted job board of known accounts (once a month) and reads their mobile postings (every run). */
     private suspend fun refreshJobBoards(boards: JobBoardSource, now: Instant): DiscoveryReport {
-        val stale = now.minus(30, ChronoUnit.DAYS)
+        val stale = now.minus(JobBoardSource.REFRESH_AFTER_DAYS, ChronoUnit.DAYS)
         var lookups = 0; var read = 0; var withMobile = 0
-        for (row in accountRepo.accountsByScore(500)) {
+        for (row in accountRepo.accountsByScore(Limits.ALL_ACCOUNTS)) {
             val domain = row.account.domain ?: continue
             val id = row.account.id
             val known = discoveryState.jobBoard(id)

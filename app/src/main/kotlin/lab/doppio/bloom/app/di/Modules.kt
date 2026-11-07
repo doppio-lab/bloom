@@ -183,7 +183,7 @@ fun sourcesModule(config: BloomConfig): Module = module {
             DecpSource(
                 http,
                 buyerName = { siren -> get<CompanyRegistrySource>().bySiren(siren)?.name },
-                wasSeen = { discoveryState.wasSeen(it, 365) },
+                wasSeen = { discoveryState.wasSeen(it, DiscoverySource.DEFAULT_RECHECK_DAYS) },
                 markSeen = { key, kept, reason -> discoveryState.markSeen(key, kept, reason) },
                 maxMonths = discovery.decpRenewalMonths,
                 clock = clock,
@@ -191,7 +191,7 @@ fun sourcesModule(config: BloomConfig): Module = module {
             PressSource(http).takeIf { PressSource.KEY in enabled },
             GitHubSource(
                 http, discovery.githubToken,
-                wasSeen = { discoveryState.wasSeen(it, 90) },
+                wasSeen = { discoveryState.wasSeen(it, GitHubSource.RECHECK_AFTER_DAYS) },
                 markSeen = { key, kept, reason -> discoveryState.markSeen(key, kept, reason) },
                 clock = clock,
             ).takeIf { GitHubSource.KEY in enabled },

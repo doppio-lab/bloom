@@ -11,8 +11,11 @@ import kotlinx.serialization.json.Json
 
 val sourcesJson = Json { ignoreUnknownKeys = true; isLenient = true }
 
+/** A public source that has not answered after this long is skipped for the run. */
+const val REQUEST_TIMEOUT_MILLIS = 20_000L
+
 fun defaultHttpClient(): HttpClient = HttpClient(CIO) {
     install(ContentNegotiation) { json(sourcesJson) }
-    install(HttpTimeout) { requestTimeoutMillis = 20_000 }
+    install(HttpTimeout) { requestTimeoutMillis = REQUEST_TIMEOUT_MILLIS }
     defaultRequest { header("User-Agent", "DoppioBloom/0.1 (+https://doppio-lab.com)") }
 }

@@ -35,27 +35,27 @@ class GitHubSource(
     private val token: String?,
     private val wasSeen: suspend (String) -> Boolean,
     private val markSeen: suspend (String, Boolean, String) -> Unit,
-    private val maxLookups: Int = 25,
+    private val maxLookups: Int = MAX_LOOKUPS,
     clock: Clock = Clock.systemDefaultZone(),
 ) : DiscoverySource {
     override val key = KEY
     override val label = "GitHub"
-    override val recheckAfterDays: Long = 90
-    private val limiter = RateLimiter(Duration.ofSeconds(7), clock)
+    override val recheckAfterDays: Long = RECHECK_AFTER_DAYS
+    private val limiter = RateLimiter(MIN_INTERVAL, clock)
     private val france = Regex("(?i)france|paris|lyon|nantes|bordeaux|toulouse|lille|marseille|rennes|montpellier|grenoble|strasbourg")
 
     private suspend fun api(path: String, query: String? = null): JsonObject = limiter.run {
         val res = http.get("https://api.github.com$path") {
             header("Accept", "application/vnd.github+json")
             token?.let { header("Authorization", "Bearer $it") }
-            query?.let { parameter("q", it); parameter("sort", "updated"); parameter("per_page", 100) }
+            query?.let { parameter("q", it); parameter("sort", "updated"); parameter("per_page", PAGE_SIZE) }
         }
         if (!res.status.isSuccess()) error("GitHub HTTP ${res.status.value} sur $path")
         sourcesJson.parseToJsonElement(res.bodyAsText()).jsonObject
     }
 
     override suspend fun leads(now: Instant): List<Lead> {
-        val since = now.atZone(ZoneOffset.UTC).toLocalDate().minusDays(60)
+        val since = now.atZone(ZoneOffset.UTC).toLocalDate().minusDays(PUSHED_WITHIN_DAYS)
         val repos = listOf("kotlin-multiplatform", "compose-multiplatform")
             .flatMap { topic -> GitHub.organisationRepos(api("/search/repositories", "topic:$topic pushed:>$since")) }
             .distinctBy { it.first }
@@ -79,12 +79,12 @@ class GitHubSource(
                 build = { accountId, at ->
                     val f = fact(
                         accountId, FactKind.CODE_REPOSITORY,
-                        "${org.name ?: org.login} : dépôt public Kotlin Multiplatform mis à jour ces 60 derniers jours",
+                        "${org.name ?: org.login} : dépôt public Kotlin Multiplatform mis à jour ces $PUSHED_WITHIN_DAYS derniers jours",
                         repoUrl,
                         excerpt = org.url,
                         at = at,
                     )
-                    SourceResult(listOf(f), listOf(Signal(accountId, SignalType.KMP_ADOPTION, 0.8, at.toString(), listOf(f.id))))
+                    SourceResult(listOf(f), listOf(Signal(accountId, SignalType.KMP_ADOPTION, STRENGTH, at.toString(), listOf(f.id))))
                 },
             )
         }
@@ -93,5 +93,23 @@ class GitHubSource(
 
     companion object {
         const val KEY = "github"
+
+        /** An organisation not worth a second look for a quarter. */
+        const val RECHECK_AFTER_DAYS = 90L
+
+        /** Lookups per run: without a token the API allows 60 calls per hour. */
+        const val MAX_LOOKUPS = 25
+
+        /** Repositories pushed within this many days count as active Kotlin Multiplatform work. */
+        const val PUSHED_WITHIN_DAYS = 60L
+
+        /** Search results per call, the maximum GitHub allows. */
+        private const val PAGE_SIZE = 100
+
+        /** Public code is a softer signal than a hire or a tender. */
+        const val STRENGTH = 0.8
+
+        /** 10 searches per minute without a token, so one call every 6 seconds, with a margin. */
+        private val MIN_INTERVAL: Duration = Duration.ofSeconds(7)
     }
 }

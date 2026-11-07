@@ -6,6 +6,7 @@ import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Sector
@@ -128,7 +129,7 @@ class ExposedAccountRepository(private val clock: Clock = Clock.systemDefaultZon
 
     override suspend fun accountsToComplete(minScore: Int, limit: Int): List<AccountRow> {
         val withContact = dbQuery { ContactsTable.selectAll().map { it[ContactsTable.accountId] }.toSet() }
-        return accountsByScore(500).filter { it.score >= minScore && it.account.id !in withContact }.take(limit)
+        return accountsByScore(Limits.ALL_ACCOUNTS).filter { it.score >= minScore && it.account.id !in withContact }.take(limit)
     }
 
     private fun UpdateBuilder<*>.fill(a: Account) {

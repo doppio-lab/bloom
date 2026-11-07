@@ -4,6 +4,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import lab.doppio.bloom.core.model.AccountId
+import lab.doppio.bloom.core.model.Retention
 import lab.doppio.bloom.core.port.OfficerRepository
 import lab.doppio.bloom.core.port.OfficerRow
 import lab.doppio.bloom.data.persistence.account.AccountsTable
@@ -41,7 +42,7 @@ class ExposedOfficerRepository(private val clock: Clock = Clock.systemDefaultZon
     }
 
     override suspend fun purgeStaleOfficers(now: Instant?): Int = dbQuery {
-        val limit = (now ?: clock.instant()).minus(3 * 365L, ChronoUnit.DAYS)
+        val limit = (now ?: clock.instant()).minus(Retention.CONTACT_DAYS, ChronoUnit.DAYS)
         OfficersTable.deleteWhere { OfficersTable.fetchedAt.less(limit) }
     }
 }

@@ -7,6 +7,7 @@ import lab.doppio.bloom.core.discovery.BoardProvider
 import lab.doppio.bloom.core.discovery.BoardRef
 import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.model.Demand
+import lab.doppio.bloom.core.model.Retention
 import lab.doppio.bloom.core.port.DiscoveryStateRepository
 import lab.doppio.bloom.data.persistence.dbQuery
 import lab.doppio.bloom.data.persistence.decodeList
@@ -53,7 +54,7 @@ class ExposedDiscoveryStateRepository(private val clock: Clock = Clock.systemDef
     }
 
     override suspend fun purgeOldDemands(now: Instant?): Int = dbQuery {
-        val limit = (now ?: clock.instant()).minus(90, ChronoUnit.DAYS)
+        val limit = (now ?: clock.instant()).minus(Retention.DEMAND_DAYS, ChronoUnit.DAYS)
         DemandsTable.deleteWhere { DemandsTable.createdAt.less(limit) }
     }
 

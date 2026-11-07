@@ -7,6 +7,7 @@ import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.ContactId
 import lab.doppio.bloom.core.model.Persona
+import lab.doppio.bloom.core.model.Retention
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.data.persistence.dbQuery
 import org.jetbrains.exposed.sql.ResultRow
@@ -57,7 +58,7 @@ class ExposedContactRepository(private val clock: Clock = Clock.systemDefaultZon
     }
 
     override suspend fun purgeStaleContacts(now: Instant?): Int = dbQuery {
-        val limit = (now ?: clock.instant()).minus(3 * 365L, ChronoUnit.DAYS)
+        val limit = (now ?: clock.instant()).minus(Retention.CONTACT_DAYS, ChronoUnit.DAYS)
         ContactsTable.deleteWhere {
             (ContactsTable.createdAt.less(limit)) and (ContactsTable.lastInboundAt.isNull() or ContactsTable.lastInboundAt.less(limit))
         }

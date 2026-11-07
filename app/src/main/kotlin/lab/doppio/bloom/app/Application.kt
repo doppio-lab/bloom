@@ -54,6 +54,9 @@ private val log = org.slf4j.LoggerFactory.getLogger("bloom")
 private const val ADMIN_AUTH = "admin"
 private const val ADMIN_USER = "doppio"
 
+/** Admin API requests allowed per minute: a dashboard session never gets close, a script gone wrong does. */
+private const val ADMIN_REQUESTS_PER_MINUTE = 600
+
 fun main() {
     // Fail before touching the database when a secret, DRY_RUN or any other setting is unusable
     val dotEnv = DotEnv.find(Path.of(""))
@@ -118,7 +121,7 @@ fun Application.module() {
         }
     }
     // One shared budget for the dashboard: behind a proxy every request comes from the same address
-    install(RateLimit) { register(RateLimitName(ADMIN_AUTH)) { rateLimiter(limit = 600, refillPeriod = 1.minutes) } }
+    install(RateLimit) { register(RateLimitName(ADMIN_AUTH)) { rateLimiter(limit = ADMIN_REQUESTS_PER_MINUTE, refillPeriod = 1.minutes) } }
     val unsubscribe = get<UnsubscribeRoutes>()
     val api = get<ApiRoutes>()
     val discovery = get<DiscoveryRoutes>()

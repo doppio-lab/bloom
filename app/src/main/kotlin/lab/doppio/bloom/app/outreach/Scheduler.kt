@@ -33,6 +33,11 @@ class Scheduler(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    private companion object {
+        /** A standby instance asks for the loops' lock again after this long. */
+        const val LOCK_RETRY_SECONDS = 30L
+    }
+
     /** Long jobs (discovery, research, coach) run here so they never hold up each other or the loops. */
     private var jobs: CoroutineScope? = null
 
@@ -44,8 +49,8 @@ class Scheduler(
         scope.launch {
             // Une seule instance fait tourner les boucles : sinon chaque email partirait deux fois
             while (!runCatching { instanceLock.tryHold() }.getOrDefault(false)) {
-                log.warn("Une autre instance de Bloom tient les boucles de fond : nouvel essai dans 30 s")
-                delay(30_000)
+                log.warn("Une autre instance de Bloom tient les boucles de fond : nouvel essai dans $LOCK_RETRY_SECONDS s")
+                delay(LOCK_RETRY_SECONDS * 1_000)
             }
             leader = true
             // Avant toute boucle : un brouillon resté SENDING date d'avant le redémarrage

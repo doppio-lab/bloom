@@ -6,6 +6,7 @@ import java.time.temporal.ChronoUnit
 import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.Draft
 import lab.doppio.bloom.core.model.DraftStatus
+import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.port.DraftRepository
 import lab.doppio.bloom.data.persistence.dbQuery
 import lab.doppio.bloom.data.persistence.decodeList
@@ -114,9 +115,9 @@ class ExposedDraftRepository(private val clock: Clock = Clock.systemDefaultZone(
         DraftsTable.update({ (DraftsTable.id eq id) and (DraftsTable.status eq DraftStatus.SENDING.name) }) {
             it[status] = next.name
             it[sendAttempts] = attempts
-            it[lastError] = error.take(500)
+            it[lastError] = error.take(Limits.ERROR_TEXT_CHARS)
             it[messageId] = null
-            it[nextAttemptAt] = if (next == DraftStatus.APPROVED) at.plus(15L * attempts, ChronoUnit.MINUTES) else null
+            it[nextAttemptAt] = if (next == DraftStatus.APPROVED) at.plus(DraftRepository.RETRY_STEP_MINUTES * attempts, ChronoUnit.MINUTES) else null
         }
         next
     }

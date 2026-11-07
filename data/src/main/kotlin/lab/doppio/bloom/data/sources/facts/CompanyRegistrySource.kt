@@ -22,7 +22,14 @@ import java.time.Duration
 
 /** Annuaire des entreprises (API Recherche d'entreprises, data.gouv, sans clé). */
 class CompanyRegistrySource(private val http: HttpClient, private val clock: Clock = Clock.systemDefaultZone()) : CompanyRegistryFacts {
-    private val limiter = RateLimiter(Duration.ofMillis(200), clock)
+    private val limiter = RateLimiter(MIN_INTERVAL, clock)
+
+    private companion object {
+        val MIN_INTERVAL: Duration = Duration.ofMillis(200)
+
+        /** Candidates read per query: enough to tell two companies with the same name apart. */
+        const val RESULTS_PER_QUERY = 5
+    }
 
     data class Company(val siren: String, val name: String, val headcountRange: String?, val naf: String?, val createdOn: String?)
 
@@ -30,7 +37,7 @@ class CompanyRegistrySource(private val http: HttpClient, private val clock: Clo
         val res = limiter.run {
             http.get("https://recherche-entreprises.api.gouv.fr/search") {
                 parameter("q", query)
-                parameter("per_page", 5)
+                parameter("per_page", RESULTS_PER_QUERY)
             }.body<JsonObject>()
         }
         return res["results"]?.jsonArray.orEmpty().map { it.jsonObject }
