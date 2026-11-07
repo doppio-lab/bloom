@@ -48,7 +48,7 @@ L'UI et l'UX de Bloom sont conçues dans le projet Claude Design
 [Bloom](https://claude.ai/design/p/4aa99dff-b97a-4abb-a24f-a32b2d73243e), sur le design system Thermos (thème
 clair ou sombre). Le code suit la maquette, jamais l'inverse : tout changement de mise en page, de composant, de texte
 d'interface ou de token commence dans ce projet, puis est reporté dans
-`app/src/main/resources/static/index.html`. Les règles détaillées sont dans `CLAUDE.md`.
+`app/src/main/resources/static/index.html`. Les règles détaillées sont dans `AGENTS.md`.
 
 ## Lancer le serveur en local
 

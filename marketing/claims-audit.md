@@ -13,7 +13,7 @@ What improved since the last audit: sending is idempotent and tested against Pos
 ## Scope and sources
 
 - **Claims taken from:** [positioning.md](positioning.md) (updated 2026-10-15: pillars, 30 hooks, three templates), `README.md`, and the interface copy of `app/src/main/resources/static/index.html` (views À faire and Méthode). There is no landing page and no store listing yet.
-- **Repo areas read:** `CLAUDE.md`, `README.md`; `core` (guard, scoring, sequences, models), `data` (repository, discovery, migrations V1 to V9, tests), `agents` (research, writer, replies and coach, LLM clients), `app` (routes, orchestrator, mail, application, dashboard). Commits read: `8e4546f..15980e4` (10 commits).
+- **Repo areas read:** `../AGENTS.md`, `README.md`; `core` (guard, scoring, sequences, models), `data` (repository, discovery, migrations V1 to V9, tests), `agents` (research, writer, replies and coach, LLM clients), `app` (routes, orchestrator, mail, application, dashboard). Commits read: `8e4546f..15980e4` (10 commits).
 - **Not reachable:** a real mailbox, so replies, bounces and SMTP sending were checked on reading and in PostgreSQL tests only, never against a live server; the legal texts cited in the README (C20) were not opened; `.env` was not read.
 
 ## Map of what the user sees
