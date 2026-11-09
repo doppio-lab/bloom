@@ -89,6 +89,13 @@ class CompanyRegistrySourceTest {
         val source = source(registry)
         assertEquals("100 à 199", source.headcountLabel("22"))
         assertEquals("inconnu", source.headcountLabel("99"))
+        assertEquals(
+            listOf(
+                "0 salarié", "1 ou 2", "3 à 5", "6 à 9", "10 à 19", "20 à 49", "50 à 99", "100 à 199", "200 à 249", "250 à 499",
+                "500 à 999", "1 000 à 1 999", "2 000 à 4 999", "5 000 à 9 999", "10 000 et plus",
+            ),
+            listOf("00", "01", "02", "03", "11", "12", "21", "22", "31", "32", "41", "42", "51", "52", "53").map(source::headcountLabel),
+        )
         assertEquals(500, source.headcountLowerBound("41"))
         assertEquals(10_000, source.headcountLowerBound("53"))
         assertNull(source.headcountLowerBound(null))

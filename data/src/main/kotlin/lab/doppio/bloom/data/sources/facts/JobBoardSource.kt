@@ -15,6 +15,7 @@ import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
+import lab.doppio.bloom.data.sources.FactTemplates
 import lab.doppio.bloom.data.sources.http.RateLimiter
 import lab.doppio.bloom.data.sources.http.sourcesJson
 import java.time.Clock
@@ -43,7 +44,7 @@ class JobBoardSource(private val http: HttpClient, private val clock: Clock = Cl
      * domain would be faster but could attach another company's postings to the account, so it is not done.
      */
     suspend fun find(domain: String): BoardRef? {
-        listOf("https://$domain", "https://$domain/careers", "https://$domain/jobs", "https://$domain/recrutement").forEach { page ->
+        (listOf("https://$domain") + CAREERS_PATHS.map { "https://$domain$it" }).forEach { page ->
             fetch(page)?.let { JobBoards.detect(it) }?.let { return it }
         }
         return null
@@ -58,7 +59,7 @@ class JobBoardSource(private val http: HttpClient, private val clock: Clock = Cl
             val age = p.publishedAt?.takeIf { p.dateIsFirstPublication }?.let { Duration.between(it, now).toDays() }
             val f = fact(
                 accountId, FactKind.JOB_POSTING,
-                "Offre d'emploi « ${p.title} »" + (age?.let { " publiée il y a $it jours" } ?: ""),
+                FactTemplates.jobOffer(p.title, age),
                 p.url,
                 excerpt = p.location,
                 at = now,
@@ -80,6 +81,9 @@ class JobBoardSource(private val http: HttpClient, private val clock: Clock = Cl
 
         /** Mobile postings turned into facts per board: enough to describe the need, not to flood the dossier. */
         private const val MAX_POSTINGS = 5
+
+        /** Pages of a company site where a link to its job board is looked for, after the home page. */
+        private val CAREERS_PATHS = listOf("/careers", "/jobs", "/recrutement")
         private val MIN_INTERVAL: Duration = Duration.ofSeconds(1)
     }
 }

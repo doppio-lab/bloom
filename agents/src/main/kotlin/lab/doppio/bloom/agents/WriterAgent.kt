@@ -7,7 +7,6 @@ import ai.koog.prompt.executor.model.executeStructured
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.guard.GuardInput
-import lab.doppio.bloom.core.guard.GuardLimits
 import lab.doppio.bloom.core.guard.MessageGuard
 import lab.doppio.bloom.core.guard.Violation
 import lab.doppio.bloom.core.model.Channel
@@ -44,17 +43,17 @@ class WriterAgent(
 ) : Drafter {
     @Serializable
     @SerialName("OutreachDraft")
-    @LLMDescription("Brouillon de message de prospection")
+    @LLMDescription(OutputTexts.DRAFT)
     data class DraftOutput(
-        @property:LLMDescription("Objet de l'email, ${GuardLimits.SUBJECT_MIN_WORDS} à ${GuardLimits.SUBJECT_MAX_WORDS} mots. Vide pour LinkedIn et téléphone.")
+        @property:LLMDescription(OutputTexts.DRAFT_SUBJECT)
         val subject: String,
-        @property:LLMDescription("Corps du message, avec les marqueurs [F:id] après chaque affirmation sur le prospect")
+        @property:LLMDescription(OutputTexts.DRAFT_BODY)
         val body: String,
-        @property:LLMDescription("Identifiants des faits cités")
+        @property:LLMDescription(OutputTexts.DRAFT_CITED_FACTS)
         val citedFactIds: List<String>,
-        @property:LLMDescription("Clé de la référence client utilisée, ou chaîne vide si aucune")
+        @property:LLMDescription(OutputTexts.DRAFT_REFERENCE)
         val referenceKey: String,
-        @property:LLMDescription("Pourquoi cet angle, en une phrase, pour la personne qui valide")
+        @property:LLMDescription(OutputTexts.DRAFT_RATIONALE)
         val rationale: String,
     )
 
@@ -67,28 +66,7 @@ class WriterAgent(
         val examples = draftRepo.humanEditedExamples(WriterLimits.HUMAN_EXAMPLES)
         val previous = draftRepo.draftsByStatus(DraftStatus.SENT).filter { it.enrollmentId == enrollment.id }
 
-        val context = buildString {
-            appendLine("Destinataire : ${contact.fullName}, ${contact.role} chez ${account.name}. Langue : ${contact.language}.")
-            appendLine("Canal : ${step.channel}. Étape ${step.index + 1} sur ${sequence.steps.size}. Offre : ${sequence.offer.label}.")
-            appendLine("Consigne de l'étape : ${step.intent}")
-            dossier?.let {
-                appendLine("\nDossier :\n${it.summary}\nAngle : ${it.angle}")
-                it.hypotheses.forEach { h -> appendLine("Hypothèse : $h") }
-            }
-            appendLine("\nFaits disponibles (cite-les avec [F:id]) :")
-            facts.forEach { appendLine("[${it.id}] ${it.statement}") }
-            appendLine("\nRéférences autorisées (clé : preuve) :")
-            if (references.isEmpty()) appendLine("aucune, n'en cite pas")
-            references.forEach { appendLine("${it.key} : ${it.client}, ${if (it.detailsPublic) it.proof else "nom seul, sans détail"}") }
-            if (previous.isNotEmpty()) {
-                appendLine("\nMessages déjà envoyés dans ce fil (ne pas répéter) :")
-                previous.forEach { appendLine("- ${it.subject.orEmpty()} : ${MessageGuard.stripCitations(it.body)}") }
-            }
-            if (examples.isNotEmpty()) {
-                appendLine("\nExemples de messages corrigés et validés par l'équipe (imite ce ton) :")
-                examples.forEach { appendLine("---\n${MessageGuard.stripCitations(it.body)}") }
-            }
-        }
+        val context = Prompts.writerContext(contact, account, sequence, step, dossier, facts, references, examples = examples, previous = previous)
 
         var attempt = 0
         var output: DraftOutput
@@ -119,8 +97,7 @@ class WriterAgent(
                     language = contact.language,
                 ),
             )
-            feedback = "\n\nTon brouillon précédent :\n${output.body}\n\nIl a été refusé par le contrôle qualité :\n" +
-                violations.joinToString("\n") { "- $it" } + "\nCorrige uniquement ces points."
+            feedback = Prompts.writerRepair(output.body, violations)
             attempt++
         } while (!MessageGuard.isPublishable(violations) && attempt <= maxRepairs)
 

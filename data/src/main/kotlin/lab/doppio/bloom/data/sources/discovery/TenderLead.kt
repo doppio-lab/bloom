@@ -8,6 +8,7 @@ import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.data.discovery.Lead
 import lab.doppio.bloom.data.discovery.SeenKeys
+import lab.doppio.bloom.data.sources.FactTemplates
 
 /** A tender becomes a lead on its buyer. Shared by BOAMP and TED, which publish the same kind of notice. */
 internal fun tenderLead(t: Tender, prefix: String) = Lead(
@@ -19,7 +20,7 @@ internal fun tenderLead(t: Tender, prefix: String) = Lead(
         val deadline = t.deadline?.minusSeconds(1)?.atZone(paris)?.toLocalDate()?.format(frDate)
         val f = fact(
             accountId, FactKind.PUBLIC_TENDER,
-            "${t.buyer} : appel d'offres publié le ${day(t.publishedOn)}" + (deadline?.let { ", réponse avant le $it" } ?: ""),
+            FactTemplates.publicTender(t.buyer, day(t.publishedOn), deadline),
             t.url,
             excerpt = t.subject,
             at = at,

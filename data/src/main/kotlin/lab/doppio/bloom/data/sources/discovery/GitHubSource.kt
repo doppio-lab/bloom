@@ -15,9 +15,11 @@ import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
+import lab.doppio.bloom.data.discovery.DiscoveryNotes
 import lab.doppio.bloom.data.discovery.DiscoverySource
 import lab.doppio.bloom.data.discovery.Lead
 import lab.doppio.bloom.data.discovery.SeenKeys
+import lab.doppio.bloom.data.sources.FactTemplates
 import lab.doppio.bloom.data.sources.http.RateLimiter
 import lab.doppio.bloom.data.sources.http.sourcesJson
 import java.time.Clock
@@ -45,7 +47,7 @@ class GitHubSource(
     private val france = Regex("(?i)france|paris|lyon|nantes|bordeaux|toulouse|lille|marseille|rennes|montpellier|grenoble|strasbourg")
 
     private suspend fun api(path: String, query: String? = null): JsonObject = limiter.run {
-        val res = http.get("https://api.github.com$path") {
+        val res = http.get("$API_URL$path") {
             header("Accept", "application/vnd.github+json")
             token?.let { header("Authorization", "Bearer $it") }
             query?.let { parameter("q", it); parameter("sort", "updated"); parameter("per_page", PAGE_SIZE) }
@@ -68,7 +70,7 @@ class GitHubSource(
             val org = GitHub.parseOrg(api("/orgs/$login"))
             // Organisations outside France, or without a website to tie them to a company, are remembered and skipped
             if (org == null || org.website == null || org.location?.let { france.containsMatchIn(it) } != true) {
-                markSeen(seenKey, false, "organisation hors France ou sans site")
+                markSeen(seenKey, false, DiscoveryNotes.ORGANISATION_OUT_OF_SCOPE)
                 continue
             }
             leads += Lead(
@@ -79,7 +81,7 @@ class GitHubSource(
                 build = { accountId, at ->
                     val f = fact(
                         accountId, FactKind.CODE_REPOSITORY,
-                        "${org.name ?: org.login} : dépôt public Kotlin Multiplatform mis à jour ces $PUSHED_WITHIN_DAYS derniers jours",
+                        FactTemplates.githubRepository(org.name ?: org.login, PUSHED_WITHIN_DAYS),
                         repoUrl,
                         excerpt = org.url,
                         at = at,
@@ -92,6 +94,8 @@ class GitHubSource(
     }
 
     companion object {
+        private const val API_URL = "https://api.github.com"
+
         const val KEY = "github"
 
         /** An organisation not worth a second look for a quarter. */

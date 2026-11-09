@@ -1,26 +1,15 @@
 package lab.doppio.bloom.app
 
 import io.ktor.http.HttpStatusCode
-import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.Application
 import io.ktor.server.application.ApplicationStopped
 import io.ktor.server.application.install
-import io.ktor.server.auth.Authentication
-import io.ktor.server.auth.UserIdPrincipal
 import io.ktor.server.auth.authenticate
-import io.ktor.server.auth.basic
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.http.content.staticResources
 import io.ktor.server.netty.Netty
-import io.ktor.server.plugins.calllogging.CallLogging
-import io.ktor.server.plugins.calllogging.processingTimeMillis
-import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
-import io.ktor.server.plugins.ratelimit.RateLimit
 import io.ktor.server.plugins.ratelimit.RateLimitName
 import io.ktor.server.plugins.ratelimit.rateLimit
-import io.ktor.server.plugins.statuspages.StatusPages
-import io.ktor.server.request.httpMethod
-import io.ktor.server.request.uri
 import io.ktor.server.response.respond
 import io.ktor.server.response.respondText
 import io.ktor.server.routing.get
@@ -28,18 +17,21 @@ import io.ktor.server.routing.head
 import io.ktor.server.routing.routing
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.runBlocking
-import kotlinx.serialization.json.Json
 import lab.doppio.bloom.agents.Llm
 import lab.doppio.bloom.app.config.BloomConfig
 import lab.doppio.bloom.app.config.DotEnv
 import lab.doppio.bloom.app.di.LOOPS
 import lab.doppio.bloom.app.di.bloomModules
 import lab.doppio.bloom.app.outreach.Scheduler
-import lab.doppio.bloom.app.web.ApiMessages
+import lab.doppio.bloom.app.web.ADMIN_AUTH
 import lab.doppio.bloom.app.web.ApiRoutes
 import lab.doppio.bloom.app.web.CrossSiteGuard
 import lab.doppio.bloom.app.web.DiscoveryRoutes
 import lab.doppio.bloom.app.web.UnsubscribeRoutes
+import lab.doppio.bloom.app.web.installAdminSecurity
+import lab.doppio.bloom.app.web.installCallLogging
+import lab.doppio.bloom.app.web.installJson
+import lab.doppio.bloom.app.web.installStatusPages
 import lab.doppio.bloom.core.port.SequenceRepository
 import lab.doppio.bloom.core.sequence.DefaultSequences
 import lab.doppio.bloom.data.persistence.Db
@@ -47,16 +39,8 @@ import org.koin.ktor.ext.get
 import org.koin.ktor.plugin.Koin
 import org.koin.logger.slf4jLogger
 import java.nio.file.Path
-import kotlin.time.Duration.Companion.minutes
 
 private val log = org.slf4j.LoggerFactory.getLogger("bloom")
-
-/** Name of the Basic auth provider and of its rate limit, and the only user it accepts. */
-private const val ADMIN_AUTH = "admin"
-private const val ADMIN_USER = "doppio"
-
-/** Admin API requests allowed per minute: a dashboard session never gets close, a script gone wrong does. */
-private const val ADMIN_REQUESTS_PER_MINUTE = 600
 
 fun main() {
     // Fail before touching the database when a secret, DRY_RUN or any other setting is unusable
@@ -89,40 +73,15 @@ fun Application.bloom(config: BloomConfig) {
     module()
 }
 
-private val unsubscribeToken = Regex("^/u/[^/?]+")
-
-/** Unsubscribe tokens identify a contact: they never reach the logs. */
-internal fun maskedUri(uri: String) = uri.replace(unsubscribeToken, "/u/***")
-
 /**
  * Plugins and routes. Expects Koin to be installed with the modules of [lab.doppio.bloom.app.di], so the same
  * code runs in production and in tests that replace the ports with fakes.
  */
 fun Application.module() {
-    install(CallLogging) {
-        format { call -> "${call.response.status()}: ${call.request.httpMethod.value} - ${maskedUri(call.request.uri)} in ${call.processingTimeMillis()}ms" }
-    }
-    install(ContentNegotiation) { json(Json { encodeDefaults = true; ignoreUnknownKeys = true }) }
-    install(StatusPages) {
-        exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }
-        exception<Throwable> { call, e ->
-            this@module.environment.log.error("Erreur", e)
-            call.respond(HttpStatusCode.InternalServerError, mapOf("error" to ApiMessages.INTERNAL_ERROR))
-        }
-    }
-    val adminPassword = get<BloomConfig>().server.adminPassword.toByteArray()
-    install(Authentication) {
-        basic(ADMIN_AUTH) {
-            realm = "Doppio Bloom"
-            validate {
-                // Constant-time compare: the response time says nothing about how much of the password matched
-                val ok = java.security.MessageDigest.isEqual(it.password.toByteArray(), adminPassword)
-                if (it.name == ADMIN_USER && ok) UserIdPrincipal(it.name) else null
-            }
-        }
-    }
-    // One shared budget for the dashboard: behind a proxy every request comes from the same address
-    install(RateLimit) { register(RateLimitName(ADMIN_AUTH)) { rateLimiter(limit = ADMIN_REQUESTS_PER_MINUTE, refillPeriod = 1.minutes) } }
+    installCallLogging()
+    installJson()
+    installStatusPages()
+    installAdminSecurity(get<BloomConfig>().server.adminPassword.toByteArray())
     val unsubscribe = get<UnsubscribeRoutes>()
     val api = get<ApiRoutes>()
     val discovery = get<DiscoveryRoutes>()

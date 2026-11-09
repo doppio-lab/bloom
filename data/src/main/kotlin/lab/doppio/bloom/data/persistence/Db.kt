@@ -4,7 +4,6 @@ import com.zaxxer.hikari.HikariConfig
 import com.zaxxer.hikari.HikariDataSource
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import lab.doppio.bloom.core.port.InstanceLock
 import org.flywaydb.core.Flyway
 import org.jetbrains.exposed.sql.Database
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -62,11 +61,6 @@ object Db {
         dataSource?.close()
         dataSource = null
     }
-}
-
-/** [InstanceLock] backed by the Postgres advisory lock held by [Db]. */
-class PostgresInstanceLock : InstanceLock {
-    override fun tryHold(): Boolean = Db.tryHoldSingleInstanceLock()
 }
 
 /** Les accès JDBC sont bloquants : on les isole sur Dispatchers.IO. */

@@ -28,7 +28,9 @@ import kotlinx.serialization.json.put
  * On ne garde qu'un email qualifié « nominative@pro » : pas d'adresse générique, pas d'adresse perso.
  */
 class DropcontactSource(private val http: HttpClient, private val apiKey: String) : EmailFinder {
-    private val base = "https://api.dropcontact.com/v1"
+    private companion object {
+        const val BASE_URL = "https://api.dropcontact.com/v1"
+    }
 
     override suspend fun findEmail(fullName: String, company: String, website: String?): EmailFinder.Found? {
         val body = buildJsonObject {
@@ -43,7 +45,7 @@ class DropcontactSource(private val http: HttpClient, private val apiKey: String
             put("language", "fr")
         }
         val submit = sourcesJson.parseToJsonElement(
-            http.post("$base/enrich/all") {
+            http.post("$BASE_URL/enrich/all") {
                 header("X-Access-Token", apiKey)
                 contentType(ContentType.Application.Json)
                 setBody(body.toString())
@@ -55,7 +57,7 @@ class DropcontactSource(private val http: HttpClient, private val apiKey: String
         repeat(8) {
             delay(20_000)
             val res = sourcesJson.parseToJsonElement(
-                http.get("$base/enrich/all/$requestId") { header("X-Access-Token", apiKey) }.bodyAsText(),
+                http.get("$BASE_URL/enrich/all/$requestId") { header("X-Access-Token", apiKey) }.bodyAsText(),
             ).jsonObject
             if (res["success"]?.jsonPrimitive?.booleanOrNull == true) {
                 val contact = res["data"]?.jsonArray?.firstOrNull()?.jsonObject ?: return null

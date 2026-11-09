@@ -59,7 +59,7 @@ Rules for any change that touches layout, components, interface copy or visual t
 4. Tokens come from the Thermos design system (copied into `thermos/` of the Bloom design project). Do not add a color, font or radius in Bloom.
 5. Accepted differences are listed under "Known differences" in the design project's `README.md`. Anything else that differs is a bug in the code.
 
-Not designed yet, so the code is the only reference for now: `docs/pipeline.html`, the unsubscribe page in `Routes.kt`. Design them in the project before reworking them.
+Not designed yet, so the code is the only reference for now: the unsubscribe page in `app/.../web/UnsubscribeRoutes.kt`. Design it in the project before reworking it.
 
 ## Product claims
 

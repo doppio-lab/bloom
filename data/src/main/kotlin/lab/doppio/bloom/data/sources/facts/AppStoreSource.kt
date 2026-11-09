@@ -23,6 +23,7 @@ import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.core.port.AppStoreFacts
+import lab.doppio.bloom.data.sources.FactTemplates
 import lab.doppio.bloom.data.sources.http.RateLimiter
 import lab.doppio.bloom.data.sources.http.label
 import lab.doppio.bloom.data.sources.http.sourcesJson
@@ -43,6 +44,18 @@ class AppStoreSource(
     private val limiter = RateLimiter(MIN_INTERVAL, clock)
 
     companion object {
+        private const val ITUNES = "https://itunes.apple.com"
+        private const val SEARCH_URL = "$ITUNES/search"
+
+        private fun lookupUrl(appId: Long, country: String) = "$ITUNES/lookup?id=$appId&country=$country"
+
+        private fun chartUrl(country: String, chart: String, limit: Int, genreId: Int) =
+            "$ITUNES/$country/rss/$chart/limit=$limit/genre=$genreId/json"
+
+        /** The customer reviews RSS feed of an app on a storefront, most recent first. */
+        internal fun reviewsUrl(country: String, appId: Long, page: Int) =
+            "$ITUNES/$country/rss/customerreviews/page=$page/id=$appId/sortBy=mostRecent/json"
+
         /** Apple tolerates about 20 calls per minute on its Search and Lookup APIs: one every 3 seconds. */
         private val MIN_INTERVAL: Duration = Duration.ofSeconds(3)
 
@@ -86,6 +99,12 @@ class AppStoreSource(
         /** Apps read per chart: the most the RSS feed returns. */
         const val CHART_SIZE = 200
 
+        /** Review themes kept as facts per read, the most cited first. */
+        const val MAX_ISSUES = 4
+
+        private val PARIS: ZoneId = ZoneId.of("Europe/Paris")
+        private val DAY: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
+
         /** Candidate apps returned by a search by company name. */
         const val SEARCH_RESULTS = 5
     }
@@ -94,7 +113,7 @@ class AppStoreSource(
         val facts = mutableListOf<Fact>()
         val signals = mutableListOf<Signal>()
 
-        val lookupUrl = "https://itunes.apple.com/lookup?id=$appId&country=$country"
+        val lookupUrl = lookupUrl(appId, country)
         val lookup = limiter.run { sourcesJson.parseToJsonElement(http.get(lookupUrl).bodyAsText()).jsonObject }
         val app = lookup["results"]?.jsonArray?.firstOrNull()?.jsonObject ?: return SourceResult(emptyList(), emptyList())
         val name = app["trackName"].str() ?: "l'app"
@@ -109,11 +128,11 @@ class AppStoreSource(
         )
 
         if (avg != null && count != null) {
-            facts += fact(accountId, FactKind.APP_METADATA, "$name : note moyenne App Store ${"%.1f".format(avg).replace('.', ',')} sur $count notes ($country)", storeUrl, at = now)
+            facts += fact(accountId, FactKind.APP_METADATA, FactTemplates.appRating(name, avg, count, country), storeUrl, at = now)
         }
         if (releaseDate != null) {
             val days = Duration.between(releaseDate, now).toDays()
-            val f = fact(accountId, FactKind.APP_METADATA, "$name : dernière version $version publiée il y a $days jours", storeUrl, at = now)
+            val f = fact(accountId, FactKind.APP_METADATA, FactTemplates.appLastRelease(name, version, days), storeUrl, at = now)
             facts += f
             ReleaseRules.stallStrength(days)?.let {
                 signals += Signal(accountId, SignalType.RELEASE_STALL, it, now.toString(), listOf(f.id))
@@ -122,14 +141,14 @@ class AppStoreSource(
 
         val reviews = recentReviews(appId)
         val recent = reviews.filter { r -> r.updated?.let { Duration.between(it, now).toDays() <= REVIEW_WINDOW_DAYS } ?: false }
-        val rssUrl = "https://itunes.apple.com/$country/rss/customerreviews/page=1/id=$appId/sortBy=mostRecent/json"
+        val rssUrl = reviewsUrl(country, appId, 1)
 
         if (recent.size >= MIN_REVIEWS_FOR_RATING && avg != null) {
             val recentAvg = recent.map { it.rating }.average()
             val drop = avg - recentAvg
             val f = fact(
                 accountId, FactKind.APP_REVIEW,
-                "$name : moyenne des ${recent.size} avis des $REVIEW_WINDOW_DAYS derniers jours ${"%.1f".format(recentAvg).replace('.', ',')}, contre ${"%.1f".format(avg).replace('.', ',')} en moyenne globale",
+                FactTemplates.appRecentRating(name, recent.size, REVIEW_WINDOW_DAYS, recentAvg, avg),
                 rssUrl,
                 at = now,
             )
@@ -143,8 +162,7 @@ class AppStoreSource(
             val versions = complaints.mapNotNull { it.version }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key
             val f = fact(
                 accountId, FactKind.APP_REVIEW,
-                "$name : ${complaints.size} avis sur ${recent.size} des $REVIEW_WINDOW_DAYS derniers jours signalent un problème technique" +
-                    (versions?.let { " (version la plus citée : $it)" } ?: ""),
+                FactTemplates.appComplaints(name, complaints.size, recent.size, REVIEW_WINDOW_DAYS, versions),
                 rssUrl,
                 at = now,
                 excerpt = complaints.take(COMPLAINT_EXAMPLES).joinToString(" | ") { "${it.rating}/5 « ${it.title} » ${it.content.take(COMPLAINT_EXCERPT_CHARS)}" },
@@ -185,17 +203,11 @@ class AppStoreSource(
             )
         }.distinctBy { it.id }
 
-    private companion object {
-        const val MAX_ISSUES = 4
-        val PARIS: ZoneId = ZoneId.of("Europe/Paris")
-        val DAY: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
-    }
-
     data class ChartApp(val appId: Long, val name: String, val artist: String, val genreId: Int?)
 
     /** Classement d'un genre sur le storefront (gratuites par défaut, ou « topgrossingapplications »). Flux public sans clé. */
     suspend fun topChart(genreId: Int, limit: Int = CHART_SIZE, chart: String = "topfreeapplications"): List<ChartApp> {
-        val url = "https://itunes.apple.com/$country/rss/$chart/limit=$limit/genre=$genreId/json"
+        val url = chartUrl(country, chart, limit, genreId)
         val feed = runCatching { limiter.run { sourcesJson.parseToJsonElement(http.get(url).bodyAsText()).jsonObject } }
             .getOrNull()?.get("feed")?.jsonObject ?: return emptyList()
         val entries = when (val e = feed["entry"]) {
@@ -219,7 +231,7 @@ class AppStoreSource(
         val res = runCatching {
             limiter.run {
                 sourcesJson.parseToJsonElement(
-                    http.get("https://itunes.apple.com/search") {
+                    http.get(SEARCH_URL) {
                         parameter("term", company)
                         parameter("entity", "software")
                         parameter("country", country)
@@ -242,7 +254,7 @@ class AppStoreSource(
     /** Le flux RSS plafonne à 10 pages de 50 avis par storefront ; 2 pages suffisent pour 90 jours. */
     suspend fun recentReviews(appId: Long, pages: Int = 2): List<AppReview> = buildList {
         for (page in 1..pages) {
-            val url = "https://itunes.apple.com/$country/rss/customerreviews/page=$page/id=$appId/sortBy=mostRecent/json"
+            val url = reviewsUrl(country, appId, page)
             val feed = runCatching { limiter.run { sourcesJson.parseToJsonElement(http.get(url).bodyAsText()).jsonObject } }.getOrNull()?.get("feed")?.jsonObject ?: break
             val entries = when (val e = feed["entry"]) {
                 is JsonArray -> e.map { it.jsonObject }

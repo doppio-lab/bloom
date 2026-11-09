@@ -14,12 +14,14 @@ import lab.doppio.bloom.core.discovery.CodeurProject
 class CodeurSource(private val http: HttpClient, private val minBudgetEur: Int = DEFAULT_MIN_BUDGET_EUR) {
     /** The plain feed only: the site's robots.txt disallows query strings, so the filter runs here. */
     suspend fun mobileProjects(): List<CodeurProject> {
-        val res = http.get("https://www.codeur.com/projects.rss")
+        val res = http.get(FEED_URL)
         if (!res.status.isSuccess()) error("Codeur HTTP ${res.status.value}")
         return Codeur.parseFeed(res.bodyAsText()).filter { Codeur.isMobileProject(it, minBudgetEur) }
     }
 
     companion object {
+        private const val FEED_URL = "https://www.codeur.com/projects.rss"
+
         const val KEY = "codeur"
 
         /** Lower bound of the displayed budget range, in euros, to keep a project. */

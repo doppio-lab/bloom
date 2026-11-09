@@ -3,6 +3,78 @@ package lab.doppio.bloom.core.model
 import lab.doppio.bloom.core.discovery.ReviewRules
 import java.security.MessageDigest
 import java.time.Instant
+import kotlinx.serialization.Serializable
+
+/** Catégories de signaux d'intention. Chacune a sa demi-vie (voir scoring). */
+@Serializable
+enum class SignalType {
+    /** Note App Store en baisse sur 90 jours. */
+    RATING_DROP,
+    /** Avis récents qui parlent de crash, lenteur, bug, connexion. */
+    QUALITY_COMPLAINTS,
+    /** Pas de mise à jour depuis longtemps : app à l'abandon ou équipe partie. */
+    RELEASE_STALL,
+    /** Offre d'emploi iOS / Android / mobile ouverte. */
+    HIRING_MOBILE,
+    /** Offre d'emploi qui mentionne Kotlin Multiplatform ou Compose Multiplatform. */
+    HIRING_KMP,
+    /** Offre d'emploi ouverte depuis plus de 45 jours : le recrutement coince. */
+    HIRING_STUCK,
+    /** Levée de fonds ou augmentation de capital. */
+    FUNDING,
+    /** Nouveau dirigeant tech ou produit. */
+    NEW_TECH_LEADER,
+    /** Annonce d'un nouveau produit mobile ou d'une refonte. */
+    PRODUCT_LAUNCH,
+    /** L'équipe construit avec des LLM (offres d'emploi, blog). */
+    AI_ADOPTION,
+    /** Interaction avec le contenu LinkedIn de Doppio (saisie manuelle). */
+    CONTENT_ENGAGEMENT,
+    /** Recommandation ou lien chaud (saisie manuelle). */
+    REFERRAL,
+    /** Open public tender that asks for a mobile app (BOAMP). */
+    PUBLIC_TENDER,
+    /** The organisation maintains Kotlin Multiplatform code in public (GitHub). */
+    KMP_ADOPTION,
+    /** A public mobile app contract ends within a year: the buyer will tender again (DECP). */
+    CONTRACT_RENEWAL,
+}
+
+@Serializable
+data class Signal(
+    val accountId: AccountId,
+    val type: SignalType,
+    /** 0.0 à 1.0, calculé par la source (ex. ampleur de la baisse de note). */
+    val strength: Double,
+    val observedAt: String,
+    val factIds: List<FactId>,
+)
+
+@Serializable
+enum class FactKind {
+    APP_METADATA, APP_REVIEW,
+    /** One theme of the recent low-rated reviews (crashes, login...), with review quotes as excerpt. */
+    APP_REVIEW_ISSUE,
+    /** One recent low-rated review, quoted: rating, date and title in the statement, the text as excerpt. */
+    APP_REVIEW_QUOTE,
+    JOB_POSTING, COMPANY_REGISTRY, WEB_PAGE, MANUAL, LEGAL_NOTICE, PUBLIC_TENDER, PUBLIC_CONTRACT, PRESS, CODE_REPOSITORY,
+}
+
+/**
+ * Un fait vérifiable, toujours accompagné de sa source.
+ * L'id est stable (hash de la source + énoncé) pour être cité par les agents sous la forme [F:id].
+ */
+@Serializable
+data class Fact(
+    val id: FactId,
+    val accountId: AccountId,
+    val kind: FactKind,
+    val statement: String,
+    val sourceUrl: String,
+    val retrievedAt: String,
+    /** Extrait brut (avis client, ligne d'offre d'emploi) pour relecture humaine. */
+    val excerpt: String? = null,
+)
 
 /** Stable short ids: the same statement from the same URL always gets the same fact id. */
 object FactIds {

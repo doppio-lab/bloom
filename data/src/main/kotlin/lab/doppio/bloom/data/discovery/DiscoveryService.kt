@@ -2,7 +2,6 @@ package lab.doppio.bloom.data.discovery
 
 import java.time.Clock
 import java.time.Instant
-import java.time.temporal.ChronoUnit
 import kotlinx.serialization.json.JsonObject
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.Exclusions
@@ -10,21 +9,16 @@ import lab.doppio.bloom.core.discovery.SectorMapping
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.AccountDiscoveredPayload
 import lab.doppio.bloom.core.model.AppMeta
-import lab.doppio.bloom.core.model.Demand
 import lab.doppio.bloom.core.model.DiscoveryReport
 import lab.doppio.bloom.core.model.EventType
-import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Sector
-import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.Discovery
 import lab.doppio.bloom.core.port.DiscoveryStateRepository
 import lab.doppio.bloom.core.port.EventRepository
 import lab.doppio.bloom.core.port.FactRepository
 import lab.doppio.bloom.core.port.OfficerRepository
-import lab.doppio.bloom.core.port.OfficerRow
-import lab.doppio.bloom.core.scoring.Scoring
 import lab.doppio.bloom.data.sources.discovery.CodeurSource
 import lab.doppio.bloom.data.sources.facts.AppStoreSource
 import lab.doppio.bloom.data.sources.facts.CompanyRegistrySource
@@ -61,48 +55,46 @@ class DiscoveryService(
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : Discovery {
     private val log = LoggerFactory.getLogger(javaClass)
+    private val ingest = AccountIngest(accountRepo, eventRepo, factRepo, registry)
+    private val officerRefresher = OfficerRefresher(officerRepo, registry, config)
+    private val jobBoardRefresher = JobBoardRefresher(accountRepo, discoveryState, ingest, config)
+    private val demandPoller = CodeurDemandPoller(codeur, discoveryState)
 
     /** Names never prospected: the configured ones plus the blacklist kept in the dashboard, read at each run. */
     @Volatile private var blocked: Set<String> = config.extraExclusions
-
-    private companion object {
-        const val JOBS_LABEL = "offres d'emploi"
-        const val CHARTS_LABEL = "classement App Store"
-        const val DEMANDS_LABEL = "Codeur"
-    }
 
     override suspend fun run(): DiscoveryReport = run(clock.instant())
 
     suspend fun run(now: Instant): DiscoveryReport {
         blocked = config.extraExclusions + runCatching { accountRepo.blockedNames() }.getOrDefault(emptySet())
         // Before the sources, for the accounts already known; again at the end, for the ones this run creates
-        runCatching { refreshOfficers() }.onFailure { log.warn("Lecture des dirigeants en échec", it) }
+        runCatching { officerRefresher.refresh() }.onFailure { log.warn("Lecture des dirigeants en échec", it) }
         val ft = jobs
         val a = if (ft != null) runCatching { fromJobs(ft, now) }.getOrElse {
-            log.warn("Découverte par les offres d'emploi en échec", it); DiscoveryReport(notes = listOf("offres d'emploi : ${it.message}"))
-        } else DiscoveryReport(notes = listOf("offres d'emploi désactivées : FT_CLIENT_ID absent"))
+            log.warn("Découverte par les offres d'emploi en échec", it); DiscoveryReport(notes = listOf(DiscoveryNotes.jobsFailed(it.message)))
+        } else DiscoveryReport(notes = listOf(DiscoveryNotes.JOBS_DISABLED))
         val b = runCatching { fromCharts(now) }.getOrElse {
-            log.warn("Découverte par l'App Store en échec", it); DiscoveryReport(notes = listOf("App Store : ${it.message}"))
+            log.warn("Découverte par l'App Store en échec", it); DiscoveryReport(notes = listOf(DiscoveryNotes.chartsFailed(it.message)))
         }
-        var report = a.copy(bySource = if (ft != null) mapOf(JOBS_LABEL to a.newAccounts) else emptyMap()) +
-            b.copy(bySource = mapOf(CHARTS_LABEL to b.newAccounts))
+        var report = a.copy(bySource = if (ft != null) mapOf(DiscoveryNotes.JOBS_LABEL to a.newAccounts) else emptyMap()) +
+            b.copy(bySource = mapOf(DiscoveryNotes.CHARTS_LABEL to b.newAccounts))
         // One failing source never stops the others: it leaves a note and the run goes on
         for (source in sources) {
             report += runCatching { fromSource(source, now) }.getOrElse {
-                log.warn("Découverte ${source.key} en échec", it); DiscoveryReport(notes = listOf("${source.label} : ${it.message}"))
+                log.warn("Découverte ${source.key} en échec", it); DiscoveryReport(notes = listOf(DiscoveryNotes.sourceFailed(source.label, it.message)))
             }
         }
         if (codeur != null) {
-            report += runCatching { DiscoveryReport(bySource = mapOf(DEMANDS_LABEL to pollDemands())) }.getOrElse {
-                log.warn("Lecture de Codeur en échec", it); DiscoveryReport(notes = listOf("$DEMANDS_LABEL : ${it.message}"))
+            report += runCatching { DiscoveryReport(bySource = mapOf(DiscoveryNotes.DEMANDS_LABEL to demandPoller.poll())) }.getOrElse {
+                log.warn("Lecture de Codeur en échec", it); DiscoveryReport(notes = listOf(DiscoveryNotes.demandsFailed(it.message)))
             }
         }
         jobBoards?.let { boards ->
-            report += runCatching { refreshJobBoards(boards, now) }.getOrElse {
-                log.warn("Lecture des pages carrières en échec", it); DiscoveryReport(notes = listOf("pages carrières : ${it.message}"))
+            report += runCatching { jobBoardRefresher.refresh(boards, now) }.getOrElse {
+                log.warn("Lecture des pages carrières en échec", it); DiscoveryReport(notes = listOf(DiscoveryNotes.jobBoardsFailed(it.message)))
             }
         }
-        runCatching { refreshOfficers() }.onFailure { log.warn("Lecture des dirigeants en échec", it) }
+        runCatching { officerRefresher.refresh() }.onFailure { log.warn("Lecture des dirigeants en échec", it) }
         eventRepo.logEvent(EventType.DISCOVERY_RUN, payload = kotlinx.serialization.json.Json.encodeToString(DiscoveryReport.serializer(), report))
         return report
     }
@@ -143,8 +135,6 @@ class DiscoveryService(
         return DiscoveryReport(created, refreshed, excluded, offersRead = offers.size)
     }
 
-    private enum class Outcome { Created, Refreshed, Excluded, Skipped }
-
     private suspend fun handleHiringCompany(ft: FranceTravailSource, name: String, offers: List<JsonObject>, now: Instant): Outcome {
         Exclusions.reason(name, extra = blocked)?.let { return Outcome.Excluded }
 
@@ -154,7 +144,7 @@ class DiscoveryService(
         val app: AppMeta? = appStore.searchByCompany(name).firstOrNull { a -> a.sellerName?.let { CompanyNames.sameCompany(it, name) } == true }
         val domain = CompanyNames.domainOf(ft.companyUrl(offers.first())) ?: CompanyNames.domainOf(app?.sellerUrl)
 
-        val (accountId, isNew) = accountRepo.mergeDiscovered(
+        val isNew = ingest.mergeAndPersist(
             Account(
                 name = name,
                 domain = domain,
@@ -163,15 +153,10 @@ class DiscoveryService(
                 market = Market.FR,
                 headcount = registry.headcountLowerBound(company?.headcountRange),
                 iosAppId = app?.appId,
-                source = JOBS_LABEL,
+                source = DiscoveryNotes.JOBS_LABEL,
             ),
-        )
-        val result = ft.factsFromOffers(accountId, offers, now)
-        persist(accountId, result, now)
-        if (isNew) {
-            company?.siren?.let { factRepo.saveFacts(registry.facts(accountId, it)) }
-            eventRepo.logEvent(EventType.ACCOUNT_DISCOVERED, accountId, payload = AccountDiscoveredPayload("jobs", offers = offers.size).toJson())
-        }
+            company?.siren, AccountDiscoveredPayload("jobs", offers = offers.size), now,
+        ) { accountId -> ft.factsFromOffers(accountId, offers, now) }
         return if (isNew) Outcome.Created else Outcome.Refreshed
     }
 
@@ -192,15 +177,15 @@ class DiscoveryService(
             if (byName != null) { discoveryState.markSeen(key, false, byName); excluded++; continue }
             // On ne garde que les éditeurs immatriculés en France : le classement français contient aussi Netflix ou Uber.
             val company = registry.matches(app.artist).firstOrNull()
-            if (company == null) { discoveryState.markSeen(key, false, "éditeur non trouvé dans l'annuaire français"); continue }
+            if (company == null) { discoveryState.markSeen(key, false, DiscoveryNotes.PUBLISHER_NOT_IN_REGISTRY); continue }
             val byRegistry = Exclusions.reason(company.name, company.naf, blocked)
             if (byRegistry != null) { discoveryState.markSeen(key, false, byRegistry); excluded++; continue }
 
             val analysis = runCatching { appStore.analyze(0, app.appId, now) }.getOrNull()
             if (analysis == null || analysis.signals.isEmpty()) {
-                discoveryState.markSeen(key, false, "aucun signal de difficulté"); continue
+                discoveryState.markSeen(key, false, DiscoveryNotes.NO_DIFFICULTY_SIGNAL); continue
             }
-            val (accountId, isNew) = accountRepo.mergeDiscovered(
+            val isNew = ingest.mergeAndPersist(
                 Account(
                     name = app.artist,
                     domain = CompanyNames.domainOf(analysis.app?.sellerUrl),
@@ -209,19 +194,17 @@ class DiscoveryService(
                     market = Market.FR,
                     headcount = registry.headcountLowerBound(company.headcountRange),
                     iosAppId = app.appId,
-                    source = CHARTS_LABEL,
+                    source = DiscoveryNotes.CHARTS_LABEL,
                 ),
-            )
-            persist(accountId, analysis.copy(
-                facts = analysis.facts.map { it.copy(accountId = accountId) },
-                signals = analysis.signals.map { it.copy(accountId = accountId) },
-            ), now)
-            if (isNew) {
-                factRepo.saveFacts(registry.facts(accountId, company.siren))
-                eventRepo.logEvent(EventType.ACCOUNT_DISCOVERED, accountId, payload = AccountDiscoveredPayload("appstore", appId = app.appId).toJson())
-                created++
-            } else refreshed++
-            discoveryState.markSeen(key, true, "signaux : ${analysis.signals.joinToString { it.type.name }}")
+                company.siren, AccountDiscoveredPayload("appstore", appId = app.appId), now,
+            ) { accountId ->
+                analysis.copy(
+                    facts = analysis.facts.map { it.copy(accountId = accountId) },
+                    signals = analysis.signals.map { it.copy(accountId = accountId) },
+                )
+            }
+            if (isNew) created++ else refreshed++
+            discoveryState.markSeen(key, true, DiscoveryNotes.signalsFound(analysis.signals.joinToString { it.type.name }))
         }
         return DiscoveryReport(created, refreshed, excluded, appsChecked = checked)
     }
@@ -250,29 +233,29 @@ class DiscoveryService(
         val company = if (lead.siren != null) registry.bySiren(lead.siren) else {
             val matches = registry.matches(lead.name)
             if (lead.requireUniqueMatch && matches.size > 1) {
-                discoveryState.markSeen(key, false, "plusieurs entreprises portent ce nom"); return Outcome.Skipped
+                discoveryState.markSeen(key, false, DiscoveryNotes.AMBIGUOUS_NAME); return Outcome.Skipped
             }
             matches.firstOrNull()
         }
         if (company == null && lead.requireRegistry) {
-            discoveryState.markSeen(key, false, "non trouvé dans l'annuaire français"); return Outcome.Skipped
+            discoveryState.markSeen(key, false, DiscoveryNotes.NOT_IN_REGISTRY); return Outcome.Skipped
         }
         if (company != null) Exclusions.reason(company.name, company.naf, blocked)?.let {
             discoveryState.markSeen(key, false, it); return Outcome.Excluded
         }
         val headcount = registry.headcountLowerBound(company?.headcountRange)
         if (lead.minHeadcount != null && (headcount ?: 0) < lead.minHeadcount) {
-            discoveryState.markSeen(key, false, "effectif inférieur à ${lead.minHeadcount}"); return Outcome.Skipped
+            discoveryState.markSeen(key, false, DiscoveryNotes.belowMinHeadcount(lead.minHeadcount)); return Outcome.Skipped
         }
         var sector = SectorMapping.fromNaf(company?.naf)
         var app: AppMeta? = null
         if (lead.requireSectorOrApp && sector == Sector.OTHER) {
             app = appStore.searchByCompany(lead.name).firstOrNull { a -> a.sellerName?.let { CompanyNames.sameCompany(it, lead.name) } == true }
-            if (app == null) { discoveryState.markSeen(key, false, "ni secteur couvert ni app sur l'App Store"); return Outcome.Skipped }
+            if (app == null) { discoveryState.markSeen(key, false, DiscoveryNotes.NO_SECTOR_NOR_APP); return Outcome.Skipped }
             sector = SectorMapping.fromGenre(app.genreId)
         }
 
-        val (accountId, isNew) = accountRepo.mergeDiscovered(
+        val isNew = ingest.mergeAndPersist(
             Account(
                 name = lead.name,
                 domain = lead.domain ?: CompanyNames.domainOf(app?.sellerUrl),
@@ -283,72 +266,14 @@ class DiscoveryService(
                 iosAppId = app?.appId,
                 source = source.label,
             ),
-        )
-        persist(accountId, lead.build(accountId, now), now)
-        if (isNew) {
-            company?.siren?.let { factRepo.saveFacts(registry.facts(accountId, it)) }
-            eventRepo.logEvent(EventType.ACCOUNT_DISCOVERED, accountId, payload = AccountDiscoveredPayload(source.key).toJson())
-        }
+            company?.siren, AccountDiscoveredPayload(source.key), now,
+        ) { accountId -> lead.build(accountId, now) }
         discoveryState.markSeen(key, true, source.key)
         return if (isNew) Outcome.Created else Outcome.Refreshed
     }
 
-    // --- Demandes publiées (Codeur) -----------------------------------------------------------------
+    override suspend fun pollDemands(): Int = demandPoller.poll()
 
-    /**
-     * Reads the Codeur feed and keeps the new mobile projects. The feed only holds the latest projects,
-     * so this is also called between two nightly runs. Returns how many were new.
-     */
-    override suspend fun pollDemands(): Int {
-        val source = codeur ?: return 0
-        return source.mobileProjects().count { p ->
-            discoveryState.saveDemand(Demand(SeenKeys.codeur(p.id), DEMANDS_LABEL, p.title, p.url, p.budget, p.categories, p.publishedAt?.toString()))
-        }
-    }
-
-    // --- Pages carrières des comptes connus ---------------------------------------------------------
-
-    /** Finds the hosted job board of known accounts (once a month) and reads their mobile postings (every run). */
-    private suspend fun refreshJobBoards(boards: JobBoardSource, now: Instant): DiscoveryReport {
-        val stale = now.minus(JobBoardSource.REFRESH_AFTER_DAYS, ChronoUnit.DAYS)
-        var lookups = 0; var read = 0; var withMobile = 0
-        for (row in accountRepo.accountsByScore(Limits.ALL_ACCOUNTS)) {
-            val domain = row.account.domain ?: continue
-            val id = row.account.id
-            val known = discoveryState.jobBoard(id)
-            val ref = if (known == null || known.second.isBefore(stale)) {
-                if (lookups++ >= config.jobBoardLookupsPerRun) continue
-                boards.find(domain).also { discoveryState.saveJobBoard(id, it) }
-            } else known.first
-            if (ref == null) continue
-            read++
-            val result = boards.result(id, boards.postings(ref), now)
-            if (result.facts.isNotEmpty()) { persist(id, result, now); withMobile++ }
-        }
-        return DiscoveryReport(refreshedAccounts = withMobile, notes = listOf("pages carrières : $read lues, $withMobile avec une offre mobile"))
-    }
-
-    // --- Dirigeants (carnet de contacts) --------------------------------------------------------------
-
-    /**
-     * Reads the legal officers of the accounts that have a SIREN and were never looked up. They feed the
-     * contact book as suggestions: nobody is written to before a person picks them.
-     */
-    suspend fun refreshOfficers(): Int {
-        var read = 0
-        for ((accountId, siren) in officerRepo.accountsWithoutOfficers(config.officerLookupsPerRun)) {
-            val officers = runCatching { registry.officers(siren) }.getOrNull() ?: continue
-            officerRepo.saveOfficers(accountId, officers.map { OfficerRow(it.fullName, it.role, registry.pageUrl(siren)) })
-            read++
-        }
-        return read
-    }
-
-    /** Enregistre faits et signaux, puis recalcule le score tout de suite (sans LLM). */
-    private suspend fun persist(accountId: Long, result: SourceResult, now: Instant) {
-        factRepo.saveFacts(result.facts)
-        factRepo.saveSignals(result.signals)
-        val account = accountRepo.account(accountId) ?: return
-        accountRepo.saveScore(Scoring.score(account, factRepo.signalsOf(accountId), now, factRepo.factsOf(accountId)))
-    }
+    /** Reads the legal officers of the accounts that have a SIREN and were never looked up. */
+    suspend fun refreshOfficers(): Int = officerRefresher.refresh()
 }

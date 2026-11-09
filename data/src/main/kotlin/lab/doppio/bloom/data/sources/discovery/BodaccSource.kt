@@ -10,6 +10,7 @@ import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.data.discovery.DiscoverySource
 import lab.doppio.bloom.data.discovery.Lead
 import lab.doppio.bloom.data.discovery.SeenKeys
+import lab.doppio.bloom.data.sources.FactTemplates
 import lab.doppio.bloom.data.sources.http.RateLimiter
 import java.time.Clock
 import java.time.Duration
@@ -48,7 +49,7 @@ class BodaccSource(
                     // The notice gives the capital after the change, never the amount raised: the fact says exactly that
                     val f = fact(
                         accountId, FactKind.LEGAL_NOTICE,
-                        "${n.name} : augmentation de capital publiée au BODACC le ${day(n.publishedOn)}, capital porté à ${euros(n.capitalEur ?: 0)}",
+                        FactTemplates.capitalIncrease(n.name, day(n.publishedOn), euros(n.capitalEur ?: 0)),
                         n.url,
                         excerpt = n.description,
                         at = at,

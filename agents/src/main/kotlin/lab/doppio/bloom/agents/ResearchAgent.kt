@@ -3,11 +3,8 @@ package lab.doppio.bloom.agents
 import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
-import ai.koog.agents.core.tools.annotations.Tool
-import ai.koog.agents.core.tools.reflect.ToolSet
 import ai.koog.prompt.dsl.prompt
 import ai.koog.prompt.executor.model.executeStructured
-import java.time.Clock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.model.Account
@@ -15,13 +12,10 @@ import lab.doppio.bloom.core.model.AccountResearchedPayload
 import lab.doppio.bloom.core.model.Dossier
 import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Fact
-import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Signal
-import lab.doppio.bloom.core.model.SignalType
-import lab.doppio.bloom.core.model.fact
-import lab.doppio.bloom.core.model.latestPerTopic
 import lab.doppio.bloom.core.guard.MessageGuard
+import lab.doppio.bloom.core.model.latestPerTopic
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.AppStoreFacts
 import lab.doppio.bloom.core.port.PlayStoreFacts
@@ -34,6 +28,7 @@ import lab.doppio.bloom.core.port.WebPages
 import lab.doppio.bloom.core.scoring.ScoreBreakdown
 import lab.doppio.bloom.core.scoring.Scoring
 import org.slf4j.LoggerFactory
+import java.time.Clock
 
 /**
  * Agent de recherche, en trois temps :
@@ -101,10 +96,7 @@ class ResearchAgent(
                     installFeatures = tokens.feature,
                 )
                 tracker.trackAgent(AgentName.RESEARCH_EXPLORE, account.id, llm.research, tokens) {
-                    agent.run(
-                        "Entreprise : ${account.name}, site https://$domain. " +
-                            "Commence par la page d'accueil, puis cherche une page carrières et un blog tech.",
-                    )
+                    agent.run(Prompts.researchTask(account.name, domain))
                 }
             }.onFailure { log.warn("Exploration du site échouée pour ${account.name}", it) }
             factRepo.saveFacts(siteTools.recorded)
@@ -123,38 +115,36 @@ class ResearchAgent(
 
     @Serializable
     @SerialName("AccountDossier")
-    @LLMDescription("Dossier de prospection d'un compte")
+    @LLMDescription(OutputTexts.DOSSIER)
     data class DossierOutput(
-        @property:LLMDescription("Résumé factuel, ${ResearchLimits.SUMMARY_MAX_SENTENCES} phrases maximum")
+        @property:LLMDescription(OutputTexts.DOSSIER_SUMMARY)
         val summary: String,
-        @property:LLMDescription("${ResearchLimits.HYPOTHESES_MIN} à ${ResearchLimits.HYPOTHESES_MAX} hypothèses de besoin, chacune avec les identifiants des faits qui l'appuient")
+        @property:LLMDescription(OutputTexts.DOSSIER_HYPOTHESES)
         val hypotheses: List<Hypothesis>,
-        @property:LLMDescription("Angle d'approche en une phrase, centré sur le problème du prospect")
+        @property:LLMDescription(OutputTexts.DOSSIER_ANGLE)
         val angle: String,
-        @property:LLMDescription("Offre Doppio recommandée : $OFFER_LIST ou NONE")
+        @property:LLMDescription(OutputTexts.DOSSIER_OFFER)
         val offer: String,
-        @property:LLMDescription("Raisons de ne pas contacter ce compte, liste vide s'il n'y en a pas")
+        @property:LLMDescription(OutputTexts.DOSSIER_DISQUALIFIERS)
         val disqualifiers: List<String>,
     )
 
     @Serializable
     @SerialName("Hypothesis")
     data class Hypothesis(
-        @property:LLMDescription("L'hypothèse, formulée prudemment")
+        @property:LLMDescription(OutputTexts.HYPOTHESIS_STATEMENT)
         val statement: String,
-        @property:LLMDescription("Identifiants des faits qui l'appuient")
+        @property:LLMDescription(OutputTexts.HYPOTHESIS_FACT_IDS)
         val factIds: List<String>,
     )
 
     private suspend fun synthesize(account: Account, facts: List<Fact>) {
         val known = facts.associateBy { it.id }
-        // The read date is given so the model can tell a fresh fact from an old one
-        val factList = facts.joinToString("\n") { "[${it.id}] (${it.kind}, lu le ${it.retrievedAt.take(10)}) ${it.statement}" + (it.excerpt?.let { e -> "\n    extrait : ${e.take(ResearchLimits.SYNTHESIS_EXCERPT_CHARS)}" } ?: "") }
         val output = tracker.track(AgentName.RESEARCH_SYNTHESIS, account.id, llm.research) {
             val r = llm.executor.executeStructured<DossierOutput>(
                 prompt = prompt("dossier-${account.id}") {
                     system(Prompts.synthesis)
-                    user("Compte : ${account.name} (${account.domain ?: "site inconnu"}), secteur ${account.sector}, marché ${account.market}.\nFaits :\n$factList")
+                    user(Prompts.synthesisInput(account, facts))
                 },
                 model = llm.research,
             ).getOrThrow()
@@ -170,7 +160,7 @@ class ResearchAgent(
         factRepo.saveDossier(
             Dossier(
                 accountId = account.id,
-                summary = summary + (if (output.disqualifiers.isNotEmpty()) "\nÀ ne pas contacter si : " + output.disqualifiers.joinToString("; ") else ""),
+                summary = OutputTexts.disqualifiedSummary(summary, output.disqualifiers),
                 hypotheses = hypotheses,
                 angle = angle,
                 offer = offer ?: Offer.DISCOVERY,
@@ -178,91 +168,5 @@ class ResearchAgent(
             ),
         )
         if (offer == null) eventRepo.logEvent(EventType.DOSSIER_NO_FIT, accountId = account.id)
-    }
-}
-
-private val numberToken = Regex("\\d+")
-
-/** Numbers written in [text] that no fact states. The dossier feeds the writer, so a made-up figure must not enter it. */
-internal fun ungroundedNumbers(text: String, grounding: String): Set<String> {
-    val known = numberToken.findAll(grounding).map { it.value }.toSet()
-    return numberToken.findAll(text).map { it.value }.filter { it !in known }.toSet()
-}
-
-/** Drops the sentences that carry a number no fact states. */
-internal fun withoutUngroundedSentences(summary: String, grounding: String): String =
-    summary.split(Regex("(?<=[.!?])\\s+")).filter { ungroundedNumbers(it, grounding).isEmpty() }.joinToString(" ")
-
-/**
- * Les hypothèses qui citent des faits inexistants sont écartées : pas d'hypothèse sans preuve.
- * Les identifiants retenus deviennent des marqueurs [F:id].
- */
-internal fun provenHypotheses(hypotheses: List<ResearchAgent.Hypothesis>, knownFactIds: Set<String>): List<String> =
-    hypotheses
-        .filter { h -> h.factIds.isNotEmpty() && h.factIds.all { it in knownFactIds } }
-        .map { h -> "${h.statement} " + h.factIds.joinToString(" ") { "[F:$it]" } }
-
-/**
- * Outils exposés à l'agent d'exploration. L'agent lit des pages et propose des citations ;
- * le code vérifie qu'elles existent mot pour mot avant d'en faire des faits.
- */
-@LLMDescription("Outils pour lire le site public d'une entreprise et enregistrer des citations vérifiées")
-class SiteResearchTools(private val accountId: Long, private val domain: String, private val web: WebPages, private val clock: Clock = Clock.systemDefaultZone()) : ToolSet {
-    private val pages = mutableMapOf<String, String>()
-    val recorded = mutableListOf<Fact>()
-    val signals = mutableListOf<Signal>()
-    private val categories = setOf("STACK", "MOBILE_PROJECT", "HIRING", "AI_USAGE", "APP_ISSUE")
-
-    /** Curly quotes and non-breaking spaces differ between the page and what the model types back: compare without them. */
-    private fun plain(text: String) = text
-        .replace('\u2019', '\'').replace('\u2018', '\'').replace('\u201C', '"').replace('\u201D', '"')
-        .replace('\u00A0', ' ').replace('\u202F', ' ')
-        .replace(Regex("\\s+"), " ")
-
-    internal val sameSite = Regex("^https?://([a-z0-9-]+\\.)*${Regex.escape(domain)}(/.*)?$", RegexOption.IGNORE_CASE)
-
-    @Tool
-    @LLMDescription("Lit une page du site de l'entreprise et renvoie son texte visible (tronqué) et ses liens internes")
-    suspend fun readPage(
-        @LLMDescription("URL complète, sur le domaine de l'entreprise uniquement")
-        url: String,
-    ): String {
-        if (!sameSite.matches(url)) return "Refusé : seules les pages de $domain sont autorisées."
-        if (pages.size >= ResearchLimits.MAX_PAGES && url !in pages) return "Limite de ${ResearchLimits.MAX_PAGES} pages atteinte. Termine ton analyse."
-        val (_, text) = web.read(accountId, url) ?: return "Page illisible : $url"
-        pages[url] = text
-        return text.take(ResearchLimits.PAGE_CHARS)
-    }
-
-    @Tool
-    @LLMDescription("Enregistre une citation exacte d'une page déjà lue, comme fait sourcé. Refusée si la citation n'est pas trouvée mot pour mot.")
-    fun recordQuote(
-        @LLMDescription("URL de la page déjà lue avec readPage")
-        url: String,
-        @LLMDescription("Citation exacte, copiée de la page, ${ResearchLimits.QUOTE_MAX_CHARS} caractères maximum")
-        quote: String,
-        @LLMDescription("Ce que la citation établit, en une phrase neutre")
-        meaning: String,
-        @LLMDescription("Catégorie : STACK, MOBILE_PROJECT, HIRING, AI_USAGE, APP_ISSUE. Une citation hors de ces catégories n'a pas d'intérêt, ne l'enregistre pas.")
-        category: String,
-    ): String {
-        val page = pages[url] ?: return "Refusé : lis d'abord la page avec readPage."
-        val normalized = quote.trim().replace(Regex("\\s+"), " ")
-        if (normalized.length !in ResearchLimits.QUOTE_MIN_CHARS..ResearchLimits.QUOTE_MAX_CHARS) {
-            return "Refusé : la citation doit faire entre ${ResearchLimits.QUOTE_MIN_CHARS} et ${ResearchLimits.QUOTE_MAX_CHARS} caractères."
-        }
-        if (!plain(page).contains(plain(normalized), ignoreCase = true)) {
-            return "Refusé : citation introuvable mot pour mot sur la page. Copie le texte exact."
-        }
-        val cat = category.uppercase()
-        if (cat !in categories) return "Refusé : catégorie inconnue. Choisis parmi ${categories.joinToString(", ")}, ou n'enregistre rien."
-        val f = fact(accountId, FactKind.WEB_PAGE, "$meaning (« $normalized »)", url, excerpt = normalized, at = clock.instant())
-        recorded += f
-        when (cat) {
-            "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, ResearchLimits.AI_USAGE_STRENGTH, clock.instant().toString(), listOf(f.id))
-            "MOBILE_PROJECT" -> signals += Signal(accountId, SignalType.PRODUCT_LAUNCH, ResearchLimits.MOBILE_PROJECT_STRENGTH, clock.instant().toString(), listOf(f.id))
-            "APP_ISSUE" -> signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, ResearchLimits.APP_ISSUE_STRENGTH, clock.instant().toString(), listOf(f.id))
-        }
-        return "Enregistré sous l'identifiant ${f.id}."
     }
 }

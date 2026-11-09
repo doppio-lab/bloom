@@ -8,6 +8,7 @@ import io.ktor.client.plugins.defaultRequest
 import io.ktor.client.request.header
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
+import lab.doppio.bloom.core.Brand
 
 val sourcesJson = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -17,5 +18,5 @@ const val REQUEST_TIMEOUT_MILLIS = 20_000L
 fun defaultHttpClient(requestTimeoutMillis: Long = REQUEST_TIMEOUT_MILLIS): HttpClient = HttpClient(CIO) {
     install(ContentNegotiation) { json(sourcesJson) }
     install(HttpTimeout) { this.requestTimeoutMillis = requestTimeoutMillis }
-    defaultRequest { header("User-Agent", "DoppioBloom/0.1 (+https://doppio-lab.com)") }
+    defaultRequest { header("User-Agent", Brand.USER_AGENT) }
 }

@@ -110,30 +110,30 @@ object Scoring {
     fun fit(account: Account, reasons: MutableList<String>, facts: List<Fact> = emptyList()): Int {
         var fit = 0
         fun add(points: Int, reason: String) {
-            fit += points; reasons += "+$points $reason"
+            fit += points; reasons += ScoreReasons.fit(points, reason)
         }
         if (account.iosAppId != null || account.androidPackage != null) {
-            add(FitRules.MOBILE_APP, "app mobile en production")
+            add(FitRules.MOBILE_APP, ScoreReasons.MOBILE_APP)
         }
         if (account.iosAppId != null && account.androidPackage != null) {
-            add(FitRules.BOTH_STORES, "présent sur les deux stores (terrain KMP)")
+            add(FitRules.BOTH_STORES, ScoreReasons.BOTH_STORES)
         }
         when (account.headcount) {
             null -> {}
             in 0..FitRules.MICRO_MAX_HEADCOUNT ->
-                add(FitRules.MICRO_POINTS, "moins de ${FitRules.MICRO_MAX_HEADCOUNT + 1} personnes (budget incertain)")
+                add(FitRules.MICRO_POINTS, ScoreReasons.micro)
             in FitRules.MICRO_MAX_HEADCOUNT + 1..FitRules.SMALL_MAX_HEADCOUNT ->
-                add(FitRules.SMALL_POINTS, "${FitRules.MICRO_MAX_HEADCOUNT + 1} à ${FitRules.SMALL_MAX_HEADCOUNT} personnes")
+                add(FitRules.SMALL_POINTS, ScoreReasons.small)
             in FitRules.SMALL_MAX_HEADCOUNT + 1..FitRules.MID_MAX_HEADCOUNT ->
-                add(FitRules.MID_POINTS, "${FitRules.SMALL_MAX_HEADCOUNT + 1} à ${FitRules.MID_MAX_HEADCOUNT} personnes (cœur de cible)")
-            else -> add(FitRules.LARGE_POINTS, "${FitRules.MID_MAX_HEADCOUNT + 1}+ personnes (cycle long, achats)")
+                add(FitRules.MID_POINTS, ScoreReasons.mid)
+            else -> add(FitRules.LARGE_POINTS, ScoreReasons.large)
         }
         if (hasDirectReference(account, facts)) {
-            add(FitRules.CORE_SECTOR, "secteur où Doppio a une référence directe")
+            add(FitRules.CORE_SECTOR, ScoreReasons.CORE_SECTOR)
         }
         when (account.market) {
-            Market.FR -> add(FitRules.MARKET_FR, "marché France")
-            Market.EU, Market.UK -> add(FitRules.MARKET_EUROPE, "marché Europe")
+            Market.FR -> add(FitRules.MARKET_FR, ScoreReasons.MARKET_FR)
+            Market.EU, Market.UK -> add(FitRules.MARKET_EUROPE, ScoreReasons.MARKET_EUROPE)
             else -> {}
         }
         fit = fit.coerceAtMost(FitRules.CAP)
@@ -141,7 +141,7 @@ object Scoring {
         facts.firstOrNull(HiringRules::isCrossPlatformEvidence)?.let { evidence ->
             val taken = minOf(CROSS_PLATFORM_PENALTY, fit)
             fit -= taken
-            reasons += "-$taken stack cross-platform (Flutter ou React Native) : Doppio fait du natif et du KMP [F:${evidence.id}]"
+            reasons += ScoreReasons.crossPlatform(taken, evidence.id)
         }
         return fit
     }
@@ -173,11 +173,11 @@ object Scoring {
         val intentRaw = bestByType.values.sum()
         val intent = intentRaw.coerceAtMost(INTENT_CAP).roundToInt()
         bestByType.entries.sortedByDescending { it.value }.forEach { (type, v) ->
-            reasons += "+${v.roundToInt()} signal ${type.name.lowercase()}"
+            reasons += ScoreReasons.signal(v.roundToInt(), type)
         }
 
         val warm = if (account.warmPath != null) WARM_PATH_POINTS else 0
-        if (warm > 0) reasons += "+$WARM_PATH_POINTS lien chaud : ${account.warmPath}"
+        if (warm > 0) reasons += ScoreReasons.warmPath(WARM_PATH_POINTS, account.warmPath)
 
         val recommended = bestByType.maxByOrNull { it.value }?.key?.let { offerBySignal[it] }
 

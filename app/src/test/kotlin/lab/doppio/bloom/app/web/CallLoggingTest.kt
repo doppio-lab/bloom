@@ -5,7 +5,6 @@ import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import io.ktor.client.request.get
 import io.ktor.client.request.post
-import lab.doppio.bloom.app.maskedUri
 import lab.doppio.bloom.app.routeTest
 import org.slf4j.LoggerFactory
 import kotlin.test.Test

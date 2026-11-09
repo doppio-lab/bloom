@@ -14,16 +14,14 @@ import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.data.discovery.DiscoverySource
 import lab.doppio.bloom.data.discovery.Lead
 import lab.doppio.bloom.data.discovery.SeenKeys
+import lab.doppio.bloom.data.sources.FactTemplates
 import java.time.Duration
 import java.time.Instant
 
 /** Presse : titres qui annoncent une levée de fonds (flux RSS publics). Seuls le titre et le lien sont repris. */
 class PressSource(
     private val http: HttpClient,
-    private val feeds: List<String> = listOf(
-        "https://www.frenchweb.fr/feed", "https://www.maddyness.com/feed/", "https://www.journaldunet.com/rss/",
-        "https://www.usine-digitale.fr/rss", "https://siecledigital.fr/feed/",
-    ),
+    private val feeds: List<String> = DEFAULT_FEEDS,
     private val maxAgeDays: Long = MAX_AGE_DAYS,
 ) : DiscoverySource {
     override val key = KEY
@@ -55,7 +53,7 @@ class PressSource(
                         val published = item.publishedAt ?: at
                         val f = fact(
                             accountId, FactKind.PRESS,
-                            "${round.company} : levée de ${round.amount} annoncée le ${published.atZone(paris).toLocalDate().format(frDate)}",
+                            FactTemplates.fundingRound(round.company, round.amount, published.atZone(paris).toLocalDate().format(frDate)),
                             item.link,
                             excerpt = item.title,
                             at = at,
@@ -68,6 +66,12 @@ class PressSource(
 
     companion object {
         const val KEY = "press"
+
+        /** French tech and startup news feeds read by default. */
+        val DEFAULT_FEEDS = listOf(
+            "https://www.frenchweb.fr/feed", "https://www.maddyness.com/feed/", "https://www.journaldunet.com/rss/",
+            "https://www.usine-digitale.fr/rss", "https://siecledigital.fr/feed/",
+        )
 
         /** A funding headline older than two weeks is no longer news. */
         const val MAX_AGE_DAYS = 14L

@@ -3,6 +3,7 @@ package lab.doppio.bloom.core.usecase
 import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.model.Deal
 import lab.doppio.bloom.core.model.DealStage
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.DealRepository
@@ -40,7 +41,7 @@ class BookMeeting(
                 stage = DealStage.MEETING, amountEur = 0, sourceSignal = factRepo.dominantSignal(accountId), expectedClose = null,
             )
             dealRepo.upsertDeal(deal)
-            eventRepo.logEvent("MEETING_BOOKED", accountId)
+            eventRepo.logEvent(EventType.MEETING_BOOKED, accountId)
             Result.Booked
         }
         replyId?.let { replyRepo.markReplyHandled(it) }

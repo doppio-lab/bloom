@@ -42,7 +42,7 @@ class ImportAccounts(
         rows.forEachIndexed { i, r ->
             val line = i + 2
             val name = r["name"].orEmpty()
-            if (name.isBlank()) { errors += "ligne $line : nom manquant"; return@forEachIndexed }
+            if (name.isBlank()) { errors += UseCaseMessages.importMissingName(line); return@forEachIndexed }
             runCatching {
                 val existed = !knownSlugs.add(CompanyNames.normalize(name))
                 val account = Account(
@@ -63,20 +63,20 @@ class ImportAccounts(
                 if (contactName.isNotBlank()) {
                     val email = r["contact_email"]?.trim()?.takeIf { it.contains('@') }
                     if (email != null && replyRepo.isSuppressed(email)) {
-                        errors += "ligne $line : $email s'est opposé à la prospection, contact ignoré"
+                        errors += UseCaseMessages.importContactOptedOut(line, email)
                     } else {
                         contactRepo.addContact(
                             Contact(
-                                accountId = id, fullName = contactName, role = r["contact_role"].orEmpty().ifBlank { "inconnu" },
+                                accountId = id, fullName = contactName, role = r["contact_role"].orEmpty().ifBlank { UseCaseMessages.UNKNOWN_ROLE },
                                 persona = Targeting.personaFromRole(r["contact_role"].orEmpty()), email = email,
                                 linkedinUrl = r["contact_linkedin"]?.takeIf { it.startsWith("https://") },
-                                dataSource = "import de la liste Doppio",
+                                dataSource = UseCaseMessages.SOURCE_IMPORTED_LIST,
                             ),
                         )
                         contacts++
                     }
                 }
-            }.onFailure { errors += "ligne $line : ${it.message}" }
+            }.onFailure { errors += UseCaseMessages.importRowFailed(line, it.message) }
         }
         eventRepo.logEvent(EventType.IMPORT, payload = ImportPayload(created, updated, contacts).toJson())
         return ImportReport(created, updated, contacts, errors)

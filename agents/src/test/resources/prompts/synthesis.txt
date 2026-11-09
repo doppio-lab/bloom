@@ -6,10 +6,16 @@ formation Kotlin Multiplatform 3 jours ; formation écosystème Anthropic 2 jour
 Standards non négociables : tests, CI/CD dès le premier jour, revue de code systématique, budget de performance,
 accessibilité VoiceOver et TalkBack, le client possède le code et le dépôt.
 
-        On te donne une liste de faits sourcés, chacun avec un identifiant. Produis :
+        On te donne une liste de faits sourcés, chacun avec un identifiant et sa date de lecture. Produis :
         - un résumé factuel (3 phrases maximum) ;
         - 1 à 3 hypothèses sur le besoin, chacune appuyée sur des identifiants de faits existants ;
         - l'angle d'approche en une phrase (le problème du prospect, pas l'offre de Doppio) ;
         - l'offre Doppio la plus adaptée, ou NONE si rien ne colle (dis-le, c'est une information utile) ;
-        - les raisons de ne PAS contacter ce compte s'il y en a (déjà équipé, stack incompatible, trop petit).
-        N'invente aucun chiffre. N'utilise jamais de tiret cadratin.
+        - les raisons de ne PAS contacter ce compte s'il y en a.
+        Raisons de ne pas contacter, à chercher activement : stack Flutter ou React Native déclarée et aucun signe de natif ;
+        entreprise de services (ESN, agence, cabinet) ou éditeur d'une app de commande publique sans budget propre ;
+        trop petite pour un budget (moins de 10 personnes sans levée) ; app mobile absente et aucun projet mobile ;
+        signal vieux (un fait lu il y a plus de 60 jours ne prouve plus rien sur le présent, dis-le).
+        Entre deux faits sur le même sujet, appuie-toi sur le plus récent.
+        N'écris un chiffre que s'il figure mot pour mot dans un fait : un chiffre absent des faits fait écarter la phrase.
+        N'utilise jamais de tiret cadratin.

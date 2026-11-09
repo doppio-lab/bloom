@@ -35,7 +35,7 @@ agents/  agents Koog : recherche, synthèse, rédaction, classification des rép
 app/     serveur Ktor : API, dashboard, envoi SMTP, relève IMAP, boucles de fond, désinscription
 ```
 
-Le câblage est fait par Koin, uniquement dans `app` (`app/.../di/Modules.kt`) : un module par couche
+Le câblage est fait par Koin, uniquement dans `app` (`app/.../di/`, un fichier par module) : un module par couche
 (configuration, persistance, sources, agents, courrier, cas d'usage, boucles de fond, routes), chaque
 implémentation liée au port de `core` qu'elle réalise. `core`, `data` et `agents` ne connaissent pas Koin. Un
 composant facultatif (France Travail, Dropcontact) n'est déclaré que si sa clé est configurée. Les tests de
@@ -380,7 +380,7 @@ quelques secondes. Un redémarrage du VPS relance tout seul (`restart: unless-st
 
 ### Phase 2 : envoi réel
 
-Avant `DRY_RUN=false` : corriger les P0 de `docs/audit-2026-10-20.md` (garde-fou des chiffres, renvoi SMTP,
+Avant `DRY_RUN=false` : corriger les P0 de l'audit du 20/10/2026, retiré du dépôt mais lisible dans l'historique git (garde-fou des chiffres, renvoi SMTP,
 timeouts SMTP et IMAP, arrêts « stop », citations Outlook), afficher une confirmation avant la désinscription par
 GET (les scanners de liens des entreprises cliquent), configurer SPF, DKIM et DMARC, chauffer les boîtes 3 à 4
 semaines, puis renseigner `MAILBOXES` et vérifier la relève IMAP.

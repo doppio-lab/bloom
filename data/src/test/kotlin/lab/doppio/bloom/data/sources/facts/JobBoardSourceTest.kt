@@ -54,6 +54,10 @@ class JobBoardSourceTest {
         val result = source.result(7, postings, now)
         assertEquals(1, result.facts.size)
         assertTrue(result.facts.single().statement.startsWith("Offre d'emploi « "))
+        assertEquals("Offre d'emploi « Staff Mobile Engineer - React Native (x/f/m) » publiée il y a 340 jours", result.facts.single().statement)
+        // Without a first-publication date no age is stated
+        val undated = postings.map { it.copy(publishedAt = null) }
+        assertEquals("Offre d'emploi « Staff Mobile Engineer - React Native (x/f/m) »", source.result(7, undated, now).facts.single().statement)
         assertEquals(now.toString(), result.facts.single().retrievedAt)
         assertTrue(SignalType.HIRING_MOBILE in result.signals.map { it.type })
     }

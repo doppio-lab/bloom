@@ -57,7 +57,7 @@ class ProcessReplies(
         val contact = if (mail.isBounce) enrolled else contactRepo.contactByEmail(mail.from) ?: enrolled
         val accountId = contact?.accountId
         val result = if (mail.isBounce) {
-            ReplyClassification(ReplyIntent.BOUNCE, 1.0, null, null, "Rebond : adresse invalide", null)
+            ReplyClassification(ReplyIntent.BOUNCE, 1.0, null, null, UseCaseMessages.BOUNCE_SUMMARY, null)
         } else {
             classifier.classify(mail.subject, mail.body, accountId)
         }
@@ -65,8 +65,8 @@ class ProcessReplies(
         // Arrêt de toutes les séquences du contact, quelle que soit l'intention
         contact?.let { stop(it.id, SequenceEngine.onReply(result.intent)) }
         when (result.intent) {
-            ReplyIntent.UNSUBSCRIBE -> replyRepo.suppress(mail.from, "réponse : ${result.summary}")
-            ReplyIntent.BOUNCE -> contact?.email?.let { replyRepo.suppress(it, "rebond") }
+            ReplyIntent.UNSUBSCRIBE -> replyRepo.suppress(mail.from, UseCaseMessages.suppressedByReply(result.summary))
+            ReplyIntent.BOUNCE -> contact?.email?.let { replyRepo.suppress(it, UseCaseMessages.SUPPRESSED_BOUNCE) }
             else -> {}
         }
         if (!mail.isBounce) contact?.let { contactRepo.markInbound(it.id) }

@@ -42,15 +42,6 @@ import lab.doppio.bloom.core.sequence.SequenceEngine
     val nextSendAt: String? = null,
 )
 
-private val signalLabels = mapOf(
-    SignalType.REFERRAL to "Lien chaud", SignalType.HIRING_STUCK to "Recrutement bloqué", SignalType.QUALITY_COMPLAINTS to "Plaintes qualité (avis)",
-    SignalType.RATING_DROP to "Note en baisse", SignalType.HIRING_KMP to "Recrutement KMP", SignalType.NEW_TECH_LEADER to "Nouveau dirigeant tech",
-    SignalType.FUNDING to "Levée de fonds", SignalType.HIRING_MOBILE to "Recrutement mobile", SignalType.PRODUCT_LAUNCH to "Lancement produit",
-    SignalType.RELEASE_STALL to "App sans mise à jour", SignalType.CONTENT_ENGAGEMENT to "Interaction LinkedIn", SignalType.AI_ADOPTION to "Équipe LLM",
-    SignalType.PUBLIC_TENDER to "Marché public", SignalType.KMP_ADOPTION to "Code KMP public",
-    SignalType.CONTRACT_RENEWAL to "Marché à renouveler",
-)
-
 /** The numbers of the dashboard: funnel, queues, pipeline, agent usage, activity and conversion per signal. */
 class GetOverview(
     private val eventRepo: EventRepository,
@@ -115,7 +106,7 @@ class GetOverview(
         val sent = events.filter { it.first == EventType.EMAIL_SENT }.mapNotNull { it.second }.toSet()
         val positive = events.filter { it.first == EventType.REPLY_POSITIVE }.mapNotNull { it.second }.toSet()
         return sent.groupBy { factRepo.dominantSignal(it) }
-            .map { (type, ids) -> SignalRow(signalLabels[type] ?: "Sans signal", ids.size, ids.count { it in positive }) }
+            .map { (type, ids) -> SignalRow(OverviewLabels.signal(type), ids.size, ids.count { it in positive }) }
             .sortedByDescending { it.sent }
     }
 

@@ -125,7 +125,7 @@ class ExposedDraftRepository(private val clock: Clock = Clock.systemDefaultZone(
     override suspend fun reconcileInterruptedSends(): Int = dbQuery {
         DraftsTable.update({ DraftsTable.status eq DraftStatus.SENDING.name }) {
             it[status] = DraftStatus.FAILED.name
-            it[lastError] = "Interrompu pendant l'envoi : vérifier la boîte d'envoi avant de relancer"
+            it[lastError] = DraftMessages.INTERRUPTED_SEND
         }
     }
 

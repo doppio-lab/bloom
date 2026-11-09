@@ -15,6 +15,7 @@ import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.core.port.CompanyRegistryFacts
+import lab.doppio.bloom.data.sources.FactTemplates
 import lab.doppio.bloom.data.sources.http.RateLimiter
 import lab.doppio.bloom.data.sources.http.str
 import java.time.Clock
@@ -25,6 +26,9 @@ class CompanyRegistrySource(private val http: HttpClient, private val clock: Clo
     private val limiter = RateLimiter(MIN_INTERVAL, clock)
 
     private companion object {
+        const val SEARCH_URL = "https://recherche-entreprises.api.gouv.fr/search"
+        const val COMPANY_PAGE_URL = "https://annuaire-entreprises.data.gouv.fr/entreprise"
+
         val MIN_INTERVAL: Duration = Duration.ofMillis(200)
 
         /** Candidates read per query: enough to tell two companies with the same name apart. */
@@ -35,7 +39,7 @@ class CompanyRegistrySource(private val http: HttpClient, private val clock: Clo
 
     private suspend fun records(query: String): List<JsonObject> {
         val res = limiter.run {
-            http.get("https://recherche-entreprises.api.gouv.fr/search") {
+            http.get(SEARCH_URL) {
                 parameter("q", query)
                 parameter("per_page", RESULTS_PER_QUERY)
             }.body<JsonObject>()
@@ -69,7 +73,7 @@ class CompanyRegistrySource(private val http: HttpClient, private val clock: Clo
     suspend fun officers(siren: String): List<Officer> =
         records(siren).firstOrNull { it["siren"].str() == siren }?.let { Registry.officers(it) }.orEmpty()
 
-    fun pageUrl(siren: String): String = "https://annuaire-entreprises.data.gouv.fr/entreprise/$siren"
+    fun pageUrl(siren: String): String = "$COMPANY_PAGE_URL/$siren"
 
     /** Exact lookup: the search endpoint accepts a SIREN as query. */
     suspend fun bySiren(siren: String): Company? = search(siren).firstOrNull { it.siren == siren }
@@ -79,19 +83,14 @@ class CompanyRegistrySource(private val http: HttpClient, private val clock: Clo
         val url = pageUrl(siren)
         val at = clock.instant()
         return listOfNotNull(
-            company.headcountRange?.let { fact(accountId, FactKind.COMPANY_REGISTRY, "${company.name} : tranche d'effectif INSEE $it (${headcountLabel(it)})", url, at = at) },
-            company.naf?.let { fact(accountId, FactKind.COMPANY_REGISTRY, "${company.name} : code NAF $it", url, at = at) },
-            company.createdOn?.let { fact(accountId, FactKind.COMPANY_REGISTRY, "${company.name} : créée le $it", url, at = at) },
+            company.headcountRange?.let { fact(accountId, FactKind.COMPANY_REGISTRY, FactTemplates.registryHeadcount(company.name, it, headcountLabel(it)), url, at = at) },
+            company.naf?.let { fact(accountId, FactKind.COMPANY_REGISTRY, FactTemplates.registryNaf(company.name, it), url, at = at) },
+            company.createdOn?.let { fact(accountId, FactKind.COMPANY_REGISTRY, FactTemplates.registryCreated(company.name, it), url, at = at) },
         )
     }
 
     /** Codes de tranche d'effectif INSEE vers libellé et estimation basse, pour le scoring. */
-    fun headcountLabel(code: String): String = when (code) {
-        "00" -> "0 salarié"; "01" -> "1 ou 2"; "02" -> "3 à 5"; "03" -> "6 à 9"; "11" -> "10 à 19"
-        "12" -> "20 à 49"; "21" -> "50 à 99"; "22" -> "100 à 199"; "31" -> "200 à 249"; "32" -> "250 à 499"
-        "41" -> "500 à 999"; "42" -> "1 000 à 1 999"; "51" -> "2 000 à 4 999"; "52" -> "5 000 à 9 999"; "53" -> "10 000 et plus"
-        else -> "inconnu"
-    }
+    fun headcountLabel(code: String): String = FactTemplates.headcountBand(code)
 
     fun headcountLowerBound(code: String?): Int? = when (code) {
         "00" -> 0; "01" -> 1; "02" -> 3; "03" -> 6; "11" -> 10; "12" -> 20; "21" -> 50; "22" -> 100

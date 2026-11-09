@@ -5,6 +5,7 @@ import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.Deal
 import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.Dossier
+import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.port.AccountRow
 import kotlin.test.Test
@@ -25,7 +26,7 @@ class BookMeetingTest {
         assertEquals(DealStage.MEETING, deal.stage)
         assertEquals(Offer.REGIE, deal.offer)
         assertEquals(0L, deal.amountEur)
-        assertEquals(listOf("MEETING_BOOKED"), events.types)
+        assertEquals(listOf(EventType.MEETING_BOOKED), events.types)
         assertEquals(listOf(7L), replies.handled)
     }
 

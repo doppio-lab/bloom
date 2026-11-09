@@ -7,9 +7,11 @@ import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
+import lab.doppio.bloom.data.discovery.DiscoveryNotes
 import lab.doppio.bloom.data.discovery.DiscoverySource
 import lab.doppio.bloom.data.discovery.Lead
 import lab.doppio.bloom.data.discovery.SeenKeys
+import lab.doppio.bloom.data.sources.FactTemplates
 import lab.doppio.bloom.data.sources.http.RateLimiter
 import java.time.Clock
 import java.time.Duration
@@ -53,8 +55,8 @@ class DecpSource(
             val seenKey = SeenKeys.of(KEY, "${c.buyerSiret}:${c.id}")
             if (wasSeen(seenKey)) continue
             val name = buyerName(c.buyerSiren)
-            if (name == null) { markSeen(seenKey, false, "acheteur absent de l'annuaire français"); continue }
-            val url = "https://data.economie.gouv.fr/explore/dataset/$dataset/table/?q=${c.id}"
+            if (name == null) { markSeen(seenKey, false, DiscoveryNotes.BUYER_NOT_IN_REGISTRY); continue }
+            val url = "$EXPLORE_PAGE_URL/$dataset/table/?q=${c.id}"
             leads += Lead(
                 name = name,
                 seenKey = seenKey,
@@ -64,8 +66,7 @@ class DecpSource(
                 build = { accountId, at ->
                     val f = fact(
                         accountId, FactKind.PUBLIC_CONTRACT,
-                        "$name : marché d'application mobile notifié le ${c.notifiedOn.format(frDate)} pour ${c.durationMonths} mois, échéance le ${c.endsOn.format(frDate)}" +
-                            (c.amountEur?.takeIf { it > 0 }?.let { ", montant ${euros(it)}" } ?: ""),
+                        FactTemplates.publicContract(name, c.notifiedOn.format(frDate), c.durationMonths, c.endsOn.format(frDate), c.amountEur?.takeIf { it > 0 }?.let { euros(it) }),
                         url,
                         excerpt = c.subject,
                         at = at,
@@ -87,6 +88,7 @@ class DecpSource(
         /** Pages of [OPEN_DATA_PAGE_SIZE] contracts read per dataset and per run. */
         const val MAX_PAGES = 3
         private val MIN_INTERVAL: Duration = Duration.ofMillis(500)
+        private const val EXPLORE_PAGE_URL = "https://data.economie.gouv.fr/explore/dataset"
         private const val BASE = "https://data.economie.gouv.fr/api/explore/v2.1/catalog/datasets"
         private val DATASETS = listOf("decp-2022-marches-valides", "decp-v3-marches-valides")
     }

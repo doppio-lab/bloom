@@ -1,6 +1,7 @@
 package lab.doppio.bloom.core.references
 
 import kotlinx.serialization.Serializable
+import lab.doppio.bloom.core.Brand
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Sector
 
@@ -30,7 +31,7 @@ object ReferenceLibrary {
             key = "routine",
             client = "Routine",
             proof = "apps iOS et Android natives sur un cœur OCaml, synchronisation CRDT et fonctionnement hors ligne complet, 100 000+ professionnels",
-            caseStudyUrl = "https://doppio-lab.com/case-studies/routine",
+            caseStudyUrl = Brand.caseStudyUrl("routine"),
             relevantFor = setOf(Sector.PRODUCTIVITY_SAAS, Sector.PRIVACY),
             relevantOffers = setOf(Offer.FORFAIT, Offer.DISCOVERY),
         ),
@@ -38,7 +39,7 @@ object ReferenceLibrary {
             key = "quelproduit",
             client = "UFC Que Choisir (QuelProduit)",
             proof = "370 000+ produits notés, 4,7/5 sur l'App Store avec plus de 6 600 notes",
-            caseStudyUrl = "https://doppio-lab.com/case-studies/quelproduit",
+            caseStudyUrl = Brand.caseStudyUrl("quelproduit"),
             relevantFor = setOf(Sector.CONSUMER_ASSOCIATION, Sector.RETAIL, Sector.HEALTH),
             relevantOffers = setOf(Offer.FORFAIT),
         ),
@@ -46,7 +47,7 @@ object ReferenceLibrary {
             key = "rythme",
             client = "Cogepart (Rythme)",
             proof = "70 000 produits commandés par scan de code-barres, livrés par un réseau de 5 000 chauffeurs",
-            caseStudyUrl = "https://doppio-lab.com/case-studies/rythme",
+            caseStudyUrl = Brand.caseStudyUrl("rythme"),
             relevantFor = setOf(Sector.LOGISTICS, Sector.RETAIL, Sector.MOBILITY_TRANSPORT),
             relevantOffers = setOf(Offer.FORFAIT),
         ),
@@ -54,7 +55,7 @@ object ReferenceLibrary {
             key = "decathlon",
             client = "Decathlon",
             proof = "suivi GPS 24/7 et mode vol du vélo électrique LD 940E, en Bluetooth direct avec l'app",
-            caseStudyUrl = "https://doppio-lab.com/case-studies/decathlon",
+            caseStudyUrl = Brand.caseStudyUrl("decathlon"),
             relevantFor = setOf(Sector.RETAIL, Sector.IOT_HARDWARE, Sector.MOBILITY_TRANSPORT),
             relevantOffers = setOf(Offer.FORFAIT, Offer.REGIE),
         ),
@@ -62,7 +63,7 @@ object ReferenceLibrary {
             key = "musicwork",
             client = "Music Work",
             proof = "15 ans de catalogue migrés sans coupure, lecteur Compose Multiplatform cité en vitrine officielle par JetBrains",
-            caseStudyUrl = "https://doppio-lab.com/case-studies/music-work",
+            caseStudyUrl = Brand.caseStudyUrl("music-work"),
             relevantFor = setOf(Sector.MUSIC_MEDIA, Sector.GAMING),
             relevantOffers = setOf(Offer.TRAINING_KMP, Offer.DISCOVERY, Offer.FORFAIT),
         ),
@@ -70,7 +71,7 @@ object ReferenceLibrary {
             key = "playguide",
             client = "PlayGuide",
             proof = "app Android native réécrite, 55 000 aires de jeux dans quatre pays",
-            caseStudyUrl = "https://doppio-lab.com/case-studies/playguide",
+            caseStudyUrl = Brand.caseStudyUrl("playguide"),
             relevantFor = setOf(Sector.DATING_SOCIAL, Sector.CONSUMER_ASSOCIATION, Sector.OTHER),
             relevantOffers = setOf(Offer.DISCOVERY, Offer.FORFAIT),
         ),

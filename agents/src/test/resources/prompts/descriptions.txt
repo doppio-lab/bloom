@@ -1,0 +1,36 @@
+SiteResearchTools: Outils pour lire le site public d'une entreprise et enregistrer des citations vérifiées
+SiteResearchTools.readPage: Lit une page du site de l'entreprise et renvoie son texte visible (tronqué) et ses liens internes
+SiteResearchTools.readPage(url): URL complète, sur le domaine de l'entreprise uniquement
+SiteResearchTools.recordQuote: Enregistre une citation exacte d'une page déjà lue, comme fait sourcé. Refusée si la citation n'est pas trouvée mot pour mot.
+SiteResearchTools.recordQuote(url): URL de la page déjà lue avec readPage
+SiteResearchTools.recordQuote(quote): Citation exacte, copiée de la page, 300 caractères maximum
+SiteResearchTools.recordQuote(meaning): Ce que la citation établit, en une phrase neutre
+SiteResearchTools.recordQuote(category): Catégorie : STACK, MOBILE_PROJECT, HIRING, AI_USAGE, APP_ISSUE. Une citation hors de ces catégories n'a pas d'intérêt, ne l'enregistre pas.
+MetricsTools: Lecture des métriques de prospection de Doppio
+MetricsTools.agentCosts: Coût et fiabilité des agents sur 7 jours
+MetricsTools.countEvents: Compte les événements d'un type sur les N derniers jours. Types : EMAIL_SENT, REPLY_RECEIVED, REPLY_POSITIVE, MEETING_BOOKED, UNSUBSCRIBED, BOUNCED, DRAFT_APPROVED, DRAFT_REJECTED, LINKEDIN_TASK_DONE
+MetricsTools.countEvents(type): Type d'événement
+MetricsTools.countEvents(days): Nombre de jours
+MetricsTools.pipeline: Pipeline commercial : affaires par étape et par offre, avec montants
+MetricsTools.replyRateBySignal: Taux de réponse positive par type de signal à l'origine du contact, sur 90 jours
+MetricsTools.topAccounts: Liste les 15 comptes les mieux classés avec score, offre recommandée et raisons
+DraftOutput: Brouillon de message de prospection
+DraftOutput.body: Corps du message, avec les marqueurs [F:id] après chaque affirmation sur le prospect
+DraftOutput.citedFactIds: Identifiants des faits cités
+DraftOutput.rationale: Pourquoi cet angle, en une phrase, pour la personne qui valide
+DraftOutput.referenceKey: Clé de la référence client utilisée, ou chaîne vide si aucune
+DraftOutput.subject: Objet de l'email, 2 à 6 mots. Vide pour LinkedIn et téléphone.
+DossierOutput: Dossier de prospection d'un compte
+DossierOutput.angle: Angle d'approche en une phrase, centré sur le problème du prospect
+DossierOutput.disqualifiers: Raisons de ne pas contacter ce compte, liste vide s'il n'y en a pas
+DossierOutput.hypotheses: 1 à 3 hypothèses de besoin, chacune avec les identifiants des faits qui l'appuient
+DossierOutput.offer: Offre Doppio recommandée : DISCOVERY, FORFAIT, REGIE, TRAINING_KMP, TRAINING_ANTHROPIC ou NONE
+DossierOutput.summary: Résumé factuel, 3 phrases maximum
+Hypothesis.factIds: Identifiants des faits qui l'appuient
+Hypothesis.statement: L'hypothèse, formulée prudemment
+Classification.confidence: Confiance entre 0 et 1
+Classification.followUpOn: Date de recontact ou de retour au format AAAA-MM-JJ, ou chaîne vide
+Classification.intent: Intention : INTERESTED, MEETING_REQUEST, NOT_NOW, WRONG_PERSON, REFERRAL, NOT_INTERESTED, UNSUBSCRIBE, OUT_OF_OFFICE, BOUNCE, OTHER
+Classification.referral: Personne recommandée (nom et rôle) si REFERRAL ou WRONG_PERSON, sinon chaîne vide
+Classification.suggestedReply: Proposition de réponse courte si une réponse humaine est attendue, sinon chaîne vide
+Classification.summary: Résumé factuel en une phrase

@@ -1,6 +1,7 @@
 package lab.doppio.bloom.core.guard
 
 import kotlinx.serialization.Serializable
+import lab.doppio.bloom.core.Brand
 import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.Offer
@@ -80,30 +81,30 @@ object MessageGuard {
 
         // 1. Typographie et ton
         if ('—' in lower || " – " in lower) {
-            v += Violation("tiret-cadratin", Severity.BLOCK, "remplacer par une virgule, un point ou des parenthèses")
+            v += Violation("tiret-cadratin", Severity.BLOCK, GuardMessages.EM_DASH)
         }
-        if (emojiRegex.containsMatchIn(lower)) v += Violation("emoji", Severity.BLOCK, "aucun emoji en prospection")
+        if (emojiRegex.containsMatchIn(lower)) v += Violation("emoji", Severity.BLOCK, GuardMessages.EMOJI)
         val banned = if (input.language == "en") bannedEn else bannedFr
-        banned.filter { it in lower }.forEach { v += Violation("vocabulaire", Severity.BLOCK, "expression interdite : « $it »") }
-        if (plain.count { it == '!' } > 0) v += Violation("exclamation", Severity.WARN, "ton trop vendeur")
+        banned.filter { it in lower }.forEach { v += Violation("vocabulaire", Severity.BLOCK, GuardMessages.bannedPhrase(it)) }
+        if (plain.count { it == '!' } > 0) v += Violation("exclamation", Severity.WARN, GuardMessages.EXCLAMATION)
 
         // 2. Longueur par canal et par étape
         val words = plain.split(Regex("\\s+")).count { it.isNotBlank() }
         when (input.channel) {
             Channel.EMAIL -> {
                 val max = if (input.stepIndex == 0) GuardLimits.FIRST_EMAIL_WORDS else GuardLimits.FOLLOW_UP_WORDS
-                if (words > max) v += Violation("longueur", Severity.BLOCK, "$words mots, maximum $max pour cette étape")
+                if (words > max) v += Violation("longueur", Severity.BLOCK, GuardMessages.emailTooLong(words, max))
                 val subjectWords = input.subject?.split(" ")?.count { it.isNotBlank() } ?: 0
-                if (input.subject.isNullOrBlank()) v += Violation("objet", Severity.BLOCK, "objet manquant")
+                if (input.subject.isNullOrBlank()) v += Violation("objet", Severity.BLOCK, GuardMessages.SUBJECT_MISSING)
                 if (subjectWords > GuardLimits.SUBJECT_WARN_ABOVE) {
-                    v += Violation("objet", Severity.WARN, "objet de $subjectWords mots, viser ${GuardLimits.SUBJECT_MIN_WORDS} à ${GuardLimits.SUBJECT_MAX_WORDS}")
+                    v += Violation("objet", Severity.WARN, GuardMessages.subjectTooLong(subjectWords, GuardLimits.SUBJECT_MIN_WORDS, GuardLimits.SUBJECT_MAX_WORDS))
                 }
                 if (input.subject?.trim()?.lowercase()?.startsWith("re:") == true) {
-                    v += Violation("objet", Severity.BLOCK, "faux « Re: » interdit")
+                    v += Violation("objet", Severity.BLOCK, GuardMessages.FAKE_REPLY_PREFIX)
                 }
             }
             Channel.LINKEDIN -> if (plain.length > GuardLimits.LINKEDIN_CHARS) {
-                v += Violation("longueur", Severity.BLOCK, "${plain.length} caractères, maximum ${GuardLimits.LINKEDIN_CHARS} pour une note LinkedIn")
+                v += Violation("longueur", Severity.BLOCK, GuardMessages.linkedinTooLong(plain.length, GuardLimits.LINKEDIN_CHARS))
             }
             Channel.PHONE -> {}
         }
@@ -113,10 +114,10 @@ object MessageGuard {
         val markers = citationRegex.findAll(input.body).map { it.groupValues[1] }.toSet()
         val cited = markers + input.citedFactIds
         cited.filter { it !in factsById }.forEach {
-            v += Violation("fait-inconnu", Severity.BLOCK, "la citation F:$it ne correspond à aucun fait du dossier")
+            v += Violation("fait-inconnu", Severity.BLOCK, GuardMessages.unknownCitation(it))
         }
         if (input.stepIndex == 0 && input.channel == Channel.EMAIL && markers.isEmpty()) {
-            v += Violation("sans-preuve", Severity.BLOCK, "le premier email doit s'appuyer sur au moins un fait sourcé")
+            v += Violation("sans-preuve", Severity.BLOCK, GuardMessages.NO_EVIDENCE)
         }
 
         // 4. Chiffres inventés : tout nombre doit figurer dans un fait cité ou dans la preuve de la référence
@@ -134,14 +135,14 @@ object MessageGuard {
             numberWordRegex.findAll(plain.lowercase()).map { numberWords.getValue(it.value) }
         written.distinct()
             .filter { it !in GuardLimits.ALWAYS_ALLOWED_NUMBERS && it !in knownNumbers }
-            .forEach { v += Violation("chiffre-non-sourcé", Severity.BLOCK, "« $it » n'apparaît dans aucun fait cité") }
+            .forEach { v += Violation("chiffre-non-sourcé", Severity.BLOCK, GuardMessages.unsourcedNumber(it)) }
 
         // 5. Références clients : seulement celles qui ont une raison d'être citées
         if (reference == null && input.referenceKey != null) {
-            v += Violation("référence", Severity.BLOCK, "référence inconnue : ${input.referenceKey}")
+            v += Violation("référence", Severity.BLOCK, GuardMessages.unknownReference(input.referenceKey))
         }
         if (reference != null && !ReferenceLibrary.isAllowed(reference.key, input.sector, input.offer)) {
-            v += Violation("référence", Severity.BLOCK, "${reference.client} n'est pas pertinent pour ce secteur et cette offre")
+            v += Violation("référence", Severity.BLOCK, GuardMessages.irrelevantReference(reference.client))
         }
         ReferenceLibrary.all
             .filter { it.key != input.referenceKey }
@@ -149,26 +150,26 @@ object MessageGuard {
             .forEach {
                 // "Routine" est aussi un mot courant : on alerte sans bloquer.
                 val severity = if (it.key in ambiguousNames) Severity.WARN else Severity.BLOCK
-                v += Violation("référence", severity, "${it.client} est cité sans être déclaré comme référence")
+                v += Violation("référence", severity, GuardMessages.undeclaredReference(it.client))
             }
         if (reference != null && !reference.detailsPublic && reference.proof.lowercase() in lower) {
-            v += Violation("référence", Severity.WARN, "${reference.client} : vérifier que le détail est citable")
+            v += Violation("référence", Severity.WARN, GuardMessages.uncitableReferenceDetail(reference.client))
         }
 
         // 6. Délivrabilité
         if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(plain)) {
-            v += Violation("lien", Severity.BLOCK, "pas de lien dans le premier email (délivrabilité)")
+            v += Violation("lien", Severity.BLOCK, GuardMessages.NO_LINK_IN_FIRST_EMAIL)
         }
-        urlRegex.findAll(plain).map { it.value }.filterNot { "doppio-lab.com" in it }.forEach {
-            v += Violation("lien", Severity.BLOCK, "lien externe non autorisé : $it")
+        urlRegex.findAll(plain).map { it.value }.filterNot { Brand.DOMAIN in it }.forEach {
+            v += Violation("lien", Severity.BLOCK, GuardMessages.externalLink(it))
         }
 
         // 7. Un message, une question
         if (input.channel == Channel.EMAIL && plain.count { it == '?' } == 0) {
-            v += Violation("appel-à-l'action", Severity.WARN, "aucune question : terminer par une demande simple")
+            v += Violation("appel-à-l'action", Severity.WARN, GuardMessages.NO_QUESTION)
         }
         if (plain.count { it == '?' } > GuardLimits.MAX_QUESTIONS) {
-            v += Violation("appel-à-l'action", Severity.WARN, "trop de questions, en garder une")
+            v += Violation("appel-à-l'action", Severity.WARN, GuardMessages.TOO_MANY_QUESTIONS)
         }
         return v
     }

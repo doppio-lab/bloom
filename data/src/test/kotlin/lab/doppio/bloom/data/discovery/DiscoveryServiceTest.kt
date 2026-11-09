@@ -26,6 +26,7 @@ import lab.doppio.bloom.data.sources.discovery.CodeurSource
 import lab.doppio.bloom.data.sources.facts.AppStoreSource
 import lab.doppio.bloom.data.sources.facts.CompanyRegistrySource
 import lab.doppio.bloom.data.sources.facts.FranceTravailSource
+import lab.doppio.bloom.data.sources.facts.JobBoardSource
 import lab.doppio.bloom.data.sources.fixture
 import lab.doppio.bloom.data.sources.json
 import lab.doppio.bloom.data.sources.xml
@@ -90,12 +91,15 @@ class DiscoveryServiceTest {
         config: DiscoveryConfig = DiscoveryConfig(chartGenres = emptyList()),
         jobs: Boolean = false,
         codeur: Boolean = false,
+        jobBoards: Boolean = false,
+        client: io.ktor.client.HttpClient = http.client,
     ) = DiscoveryService(
         accountRepo = accounts, discoveryState = state, eventRepo = events, factRepo = facts, officerRepo = FakeOfficerRepository(),
-        appStore = AppStoreSource(http.client, clock = clock), registry = CompanyRegistrySource(http.client, clock),
-        jobs = if (jobs) FranceTravailSource(http.client, "id", "secret", clock) else null,
+        appStore = AppStoreSource(client, clock = clock), registry = CompanyRegistrySource(client, clock),
+        jobs = if (jobs) FranceTravailSource(client, "id", "secret", clock) else null,
         config = config, sources = sources,
-        codeur = if (codeur) CodeurSource(http.client, minBudgetEur = 0) else null,
+        codeur = if (codeur) CodeurSource(client, minBudgetEur = 0) else null,
+        jobBoards = if (jobBoards) JobBoardSource(client, clock) else null,
         clock = clock,
     )
 
@@ -180,5 +184,35 @@ class DiscoveryServiceTest {
     fun `pollDemands counts the new Codeur projects, and nothing without the source`() = runTest {
         assertEquals(4, service(codeur = true).pollDemands())
         assertEquals(0, service(codeur = false).pollDemands())
+    }
+
+    @Test
+    fun `the reasons a lead is dropped are kept as written`() = runTest {
+        service(sources = listOf(StubSource(listOf(swileLead().copy(minHeadcount = 1000))))).run()
+        assertEquals(Triple("stub:1", false, "effectif inférieur à 1000"), state.marked.single())
+
+        state.marked.clear()
+        val unknown = swileLead(name = "Inconnue SA", requireRegistry = false).copy(requireSectorOrApp = true)
+        service(sources = listOf(StubSource(listOf(unknown)))).run()
+        assertEquals(Triple("stub:1", false, "ni secteur couvert ni app sur l'App Store"), state.marked.single())
+    }
+
+    @Test
+    fun `the job board pass leaves its count as a note`() = runTest {
+        val report = service(jobBoards = true).run()
+        assertTrue("pages carrières : 0 lues, 0 avec une offre mobile" in report.notes, report.notes.toString())
+    }
+
+    @Test
+    fun `a failing Codeur feed leaves its own note`() = runTest {
+        val failing = MockHttp { request ->
+            when {
+                request.url.encodedPath.endsWith("access_token") -> json("""{"access_token":"tok","expires_in":1500}""")
+                request.url.host == "itunes.apple.com" -> json("""{"results":[]}""")
+                else -> json("""{}""", io.ktor.http.HttpStatusCode.InternalServerError)
+            }
+        }
+        val report = service(codeur = true, client = failing.client).run()
+        assertTrue("Codeur : Codeur HTTP 500" in report.notes, report.notes.toString())
     }
 }

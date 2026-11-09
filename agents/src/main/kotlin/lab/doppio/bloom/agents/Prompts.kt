@@ -1,7 +1,18 @@
 package lab.doppio.bloom.agents
 
 import lab.doppio.bloom.core.guard.GuardLimits
+import lab.doppio.bloom.core.guard.MessageGuard
+import lab.doppio.bloom.core.guard.Violation
+import lab.doppio.bloom.core.model.Account
+import lab.doppio.bloom.core.model.Contact
+import lab.doppio.bloom.core.model.Dossier
+import lab.doppio.bloom.core.model.Draft
+import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.ReplyIntent
+import lab.doppio.bloom.core.model.Sequence
+import lab.doppio.bloom.core.model.SequenceStep
+import lab.doppio.bloom.core.references.Reference
+import java.time.LocalDate
 
 // Annotation texts need compile-time constants, so these lists are written out. A test pins each one
 // to the enum it lists, so adding a value without updating them fails the build.
@@ -125,4 +136,57 @@ object Prompts {
         3. Trois actions précises pour la semaine (comptes à appeler, séquence à modifier, signal à surveiller).
         Pas de tiret cadratin, pas d'emoji, pas de généralités. Si les volumes sont trop faibles pour conclure, dis-le.
     """.trimIndent()
+
+    // --- User messages: what each agent sends after its system prompt ----------------------------------
+
+    /** The writer's brief: recipient, step, dossier, facts it may cite, references it may use, what was already said. */
+    fun writerContext(
+        contact: Contact, account: Account, sequence: Sequence, step: SequenceStep, dossier: Dossier?,
+        facts: List<Fact>, references: List<Reference>, previous: List<Draft>, examples: List<Draft>,
+    ): String = buildString {
+        appendLine("Destinataire : ${contact.fullName}, ${contact.role} chez ${account.name}. Langue : ${contact.language}.")
+        appendLine("Canal : ${step.channel}. Étape ${step.index + 1} sur ${sequence.steps.size}. Offre : ${sequence.offer.label}.")
+        appendLine("Consigne de l'étape : ${step.intent}")
+        dossier?.let {
+            appendLine("\nDossier :\n${it.summary}\nAngle : ${it.angle}")
+            it.hypotheses.forEach { h -> appendLine("Hypothèse : $h") }
+        }
+        appendLine("\nFaits disponibles (cite-les avec [F:id]) :")
+        facts.forEach { appendLine("[${it.id}] ${it.statement}") }
+        appendLine("\nRéférences autorisées (clé : preuve) :")
+        if (references.isEmpty()) appendLine("aucune, n'en cite pas")
+        references.forEach { appendLine("${it.key} : ${it.client}, ${if (it.detailsPublic) it.proof else "nom seul, sans détail"}") }
+        if (previous.isNotEmpty()) {
+            appendLine("\nMessages déjà envoyés dans ce fil (ne pas répéter) :")
+            previous.forEach { appendLine("- ${it.subject.orEmpty()} : ${MessageGuard.stripCitations(it.body)}") }
+        }
+        if (examples.isNotEmpty()) {
+            appendLine("\nExemples de messages corrigés et validés par l'équipe (imite ce ton) :")
+            examples.forEach { appendLine("---\n${MessageGuard.stripCitations(it.body)}") }
+        }
+    }
+
+    /** Appended to the brief when the guard refused the previous attempt. */
+    fun writerRepair(previousBody: String, violations: List<Violation>): String =
+        "\n\nTon brouillon précédent :\n$previousBody\n\nIl a été refusé par le contrôle qualité :\n" +
+            violations.joinToString("\n") { "- $it" } + "\nCorrige uniquement ces points."
+
+    fun researchTask(companyName: String, domain: String): String =
+        "Entreprise : $companyName, site https://$domain. " +
+            "Commence par la page d'accueil, puis cherche une page carrières et un blog tech."
+
+    fun synthesisInput(account: Account, facts: List<Fact>): String {
+        // The read date is given so the model can tell a fresh fact from an old one
+        val factList = facts.joinToString("\n") {
+            "[${it.id}] (${it.kind}, lu le ${it.retrievedAt.take(10)}) ${it.statement}" + (it.excerpt?.let { e -> "\n    extrait : ${e.take(ResearchLimits.SYNTHESIS_EXCERPT_CHARS)}" } ?: "")
+        }
+        return "Compte : ${account.name} (${account.domain ?: "site inconnu"}), secteur ${account.sector}, marché ${account.market}.\nFaits :\n$factList"
+    }
+
+    /** The date the classifier needs to resolve "next week", added to its system prompt. */
+    fun replyClassifierSystem(today: LocalDate): String = replyClassifier + "\nDate du jour : $today."
+
+    fun replyInput(subject: String?, trimmedBody: String): String = "Objet : ${subject.orEmpty()}\n\n$trimmedBody"
+
+    fun coachTask(today: LocalDate): String = "Prépare la note du lundi $today."
 }

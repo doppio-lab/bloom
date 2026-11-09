@@ -1,18 +1,15 @@
 package lab.doppio.bloom.app.web
 
 import lab.doppio.bloom.core.model.latestPerTopic
-import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
-import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
-import lab.doppio.bloom.app.outreach.UnsubscribeTokens
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.Deal
 import lab.doppio.bloom.core.model.DealStage
@@ -35,9 +32,7 @@ import lab.doppio.bloom.core.usecase.EnrollContact
 import lab.doppio.bloom.core.usecase.GetBoard
 import lab.doppio.bloom.core.usecase.GetOverview
 import lab.doppio.bloom.core.usecase.ReviewQueue
-import lab.doppio.bloom.core.usecase.UnsubscribeContact
 
-/** Answer to a decision on a draft that is no longer waiting for review (decided elsewhere, blacklisted, sent). */
 /** Window of the overview counters when the request gives none. */
 private const val DEFAULT_OVERVIEW_DAYS = 30
 
@@ -122,10 +117,10 @@ class ApiRoutes(
             when (val result = completeContactEmail(call.parameters["id"]!!.toLong(), req.email)) {
                 CompleteContactEmail.Result.NotFound -> call.respond(HttpStatusCode.NotFound)
                 is CompleteContactEmail.Result.Done -> call.respond(HttpStatusCode.OK, mapOf("message" to when (result.enrollment) {
-                    is EnrollContact.Result.Enrolled -> "Email enregistré, séquence lancée"
-                    EnrollContact.Result.AlreadyEnrolled -> "Email enregistré. Une séquence est déjà en cours."
-                    EnrollContact.Result.NoFit -> "Email enregistré. Le dossier ne trouve aucune offre : lancez la séquence en choisissant l'offre."
-                    EnrollContact.Result.OptedOut -> throw IllegalArgumentException("Cette personne s'est opposée à la prospection")
+                    is EnrollContact.Result.Enrolled -> ApiMessages.EMAIL_SAVED_SEQUENCE_STARTED
+                    EnrollContact.Result.AlreadyEnrolled -> ApiMessages.EMAIL_SAVED_ALREADY_ENROLLED
+                    EnrollContact.Result.NoFit -> ApiMessages.EMAIL_SAVED_NO_FIT
+                    EnrollContact.Result.OptedOut -> throw IllegalArgumentException(ApiMessages.PERSON_OPTED_OUT)
                     EnrollContact.Result.NoSequence -> error("aucune séquence pour cette offre")
                 }))
             }
@@ -137,8 +132,8 @@ class ApiRoutes(
         post("/accounts/{id}/meeting") {
             val req = runCatching { call.receive<MeetingRequest>() }.getOrDefault(MeetingRequest())
             when (bookMeeting(call.parameters["id"]!!.toLong(), req.replyId)) {
-                BookMeeting.Result.Booked -> call.respond(HttpStatusCode.OK, mapOf("status" to "MEETING"))
-                BookMeeting.Result.AlreadyBooked -> call.respond(HttpStatusCode.OK, mapOf("status" to "déjà noté"))
+                BookMeeting.Result.Booked -> call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.MEETING_BOOKED))
+                BookMeeting.Result.AlreadyBooked -> call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.MEETING_ALREADY_BOOKED))
                 BookMeeting.Result.NotFound -> call.respond(HttpStatusCode.NotFound)
             }
         }
@@ -187,34 +182,6 @@ class ApiRoutes(
             val id = dealRepo.upsertDeal(d)
             if (d.stage == DealStage.MEETING) eventRepo.logEvent(EventType.MEETING_BOOKED, d.accountId)
             call.respond(HttpStatusCode.OK, mapOf("id" to id))
-        }
-    }
-}
-
-/** Public unsubscribe endpoints: the link in the email, and the RFC 8058 one-click POST. */
-class UnsubscribeRoutes(private val tokens: UnsubscribeTokens, private val unsubscribeContact: UnsubscribeContact) {
-    fun mount(parent: Route) = parent.unsubscribe()
-
-    private fun Route.unsubscribe() {
-        suspend fun unsubscribe(token: String): Boolean {
-            val contactId = tokens.verify(token) ?: return false
-            unsubscribeContact(contactId)
-            return true
-        }
-
-        // Lien cliqué par une personne : on confirme sans demander de compte ni de motif
-        get("/u/{token}") {
-            val ok = unsubscribe(call.parameters["token"]!!)
-            call.respondText(
-                if (ok) ApiMessages.unsubscribeConfirmation() else ApiMessages.UNSUBSCRIBE_INVALID_LINK,
-                ContentType.Text.Html,
-                if (ok) HttpStatusCode.OK else HttpStatusCode.BadRequest,
-            )
-        }
-        // RFC 8058 : POST en un clic depuis le client mail
-        post("/u/{token}") {
-            val ok = unsubscribe(call.parameters["token"]!!)
-            call.respond(if (ok) HttpStatusCode.OK else HttpStatusCode.BadRequest)
         }
     }
 }

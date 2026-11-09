@@ -28,6 +28,7 @@ import lab.doppio.bloom.core.model.SourceResult
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.core.port.JobOfferFacts
 import lab.doppio.bloom.data.discovery.DiscoverySource
+import lab.doppio.bloom.data.sources.FactTemplates
 import lab.doppio.bloom.data.sources.http.sourcesJson
 import lab.doppio.bloom.data.sources.http.str
 
@@ -42,6 +43,10 @@ class FranceTravailSource(
     private var tokenExpiry: Instant = Instant.EPOCH
 
     companion object {
+        private const val TOKEN_URL = "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire"
+        private const val SEARCH_URL = "https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search"
+        private const val OFFER_PAGE_URL = "https://candidat.francetravail.fr/offres/recherche/detail"
+
         /** Offers are read again after this many days: a posting is stable, and the key is the offer id. */
         const val RECHECK_AFTER_DAYS = DiscoverySource.DEFAULT_RECHECK_DAYS
 
@@ -64,7 +69,7 @@ class FranceTravailSource(
     private suspend fun accessToken(): String {
         token?.takeIf { clock.instant().isBefore(tokenExpiry) }?.let { return it }
         val res = http.submitForm(
-            url = "https://entreprise.francetravail.fr/connexion/oauth2/access_token?realm=%2Fpartenaire",
+            url = TOKEN_URL,
             formParameters = Parameters.build {
                 append("grant_type", "client_credentials")
                 append("client_id", clientId)
@@ -85,7 +90,7 @@ class FranceTravailSource(
      */
     suspend fun search(motsCles: String, publieeDepuis: Int? = null, maxPages: Int = MAX_PAGES): List<JsonObject> = buildList {
         for (page in 0 until maxPages) {
-            val res = http.get("https://api.francetravail.io/partenaire/offresdemploi/v2/offres/search") {
+            val res = http.get(SEARCH_URL) {
                 header("Authorization", "Bearer ${accessToken()}")
                 parameter("motsCles", motsCles)
                 publieeDepuis?.let { parameter("publieeDepuis", it) }
@@ -115,11 +120,11 @@ class FranceTravailSource(
             val description = o["description"].str().orEmpty()
             val created = o["dateCreation"].str()?.let { runCatching { ZonedDateTime.parse(it).toInstant() }.getOrNull() }
             val url = o["origineOffre"]?.jsonObject?.get("urlOrigine").str()
-                ?: "https://candidat.francetravail.fr/offres/recherche/detail/$id"
+                ?: "$OFFER_PAGE_URL/$id"
             val age = created?.let { Duration.between(it, now).toDays() }
             val f = fact(
                 accountId, FactKind.JOB_POSTING,
-                "Offre d'emploi « $title »" + (age?.let { " publiée il y a $it jours" } ?: ""),
+                FactTemplates.jobOffer(title, age),
                 url,
                 excerpt = description.take(EXCERPT_CHARS),
                 at = now,
@@ -131,7 +136,7 @@ class FranceTravailSource(
             if (HiringRules.mentionsKmp(title + description)) signals += Signal(accountId, SignalType.HIRING_KMP, HiringRules.KMP_STRENGTH, observed.toString(), listOf(f.id))
             HiringRules.stuckStrength(age)?.let { signals += Signal(accountId, SignalType.HIRING_STUCK, it, now.toString(), listOf(f.id)) }
             if (HiringRules.indicatesCrossPlatformStack(title + " " + description)) {
-                facts += fact(accountId, FactKind.JOB_POSTING, HiringRules.crossPlatformStatement(title), url, at = now)
+                facts += fact(accountId, FactKind.JOB_POSTING, FactTemplates.crossPlatformStack(title), url, at = now)
             }
         }
         return SourceResult(facts, signals)

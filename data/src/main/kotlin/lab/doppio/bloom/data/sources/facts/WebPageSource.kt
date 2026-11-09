@@ -12,6 +12,7 @@ import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.model.fact
 import lab.doppio.bloom.core.port.WebPages
+import lab.doppio.bloom.data.sources.FactTemplates
 import lab.doppio.bloom.data.sources.http.RateLimiter
 import org.jsoup.Jsoup
 
@@ -33,7 +34,7 @@ class WebPageSource(private val http: HttpClient, private val clock: Clock = Clo
         doc.select("script, style, nav, footer, noscript, svg").remove()
         val title = doc.title().ifBlank { url }
         val text = doc.body().text().orEmpty().take(maxChars)
-        val f = fact(accountId, FactKind.WEB_PAGE, "Page lue : $title", url, excerpt = text.take(Limits.FACT_EXCERPT_CHARS), at = clock.instant())
+        val f = fact(accountId, FactKind.WEB_PAGE, FactTemplates.webPage(title), url, excerpt = text.take(Limits.FACT_EXCERPT_CHARS), at = clock.instant())
         return f to text
     }
 }

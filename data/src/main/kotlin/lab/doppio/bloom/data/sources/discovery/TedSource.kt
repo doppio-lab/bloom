@@ -26,7 +26,7 @@ class TedSource(private val http: HttpClient, private val lookbackDays: Long = L
 
     override suspend fun leads(now: Instant): List<Lead> {
         val since = now.atZone(paris).toLocalDate().minusDays(lookbackDays)
-        val res = http.post("https://api.ted.europa.eu/v3/notices/search") {
+        val res = http.post(SEARCH_URL) {
             contentType(ContentType.Application.Json)
             setBody(buildJsonObject {
                 put("query", Ted.query(since))
@@ -44,6 +44,8 @@ class TedSource(private val http: HttpClient, private val lookbackDays: Long = L
     }
 
     companion object {
+        private const val SEARCH_URL = "https://api.ted.europa.eu/v3/notices/search"
+
         const val KEY = "ted"
 
         /** European notices are published later than the French ones: a wider window. */

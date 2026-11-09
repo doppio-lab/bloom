@@ -32,6 +32,14 @@ internal object ApiMessages {
     const val CONTACT_ADDED_NEEDS_EMAIL = "Contact ajouté. Ajoutez son email pour lancer la séquence."
     const val CONTACT_ADDED_SEARCHING_EMAIL = "Contact ajouté, recherche de l'email en cours"
 
+    // --- Completing a contact's email and booking a meeting (Parcours) ------------------------------
+    const val EMAIL_SAVED_SEQUENCE_STARTED = "Email enregistré, séquence lancée"
+    const val EMAIL_SAVED_ALREADY_ENROLLED = "Email enregistré. Une séquence est déjà en cours."
+    const val EMAIL_SAVED_NO_FIT = "Email enregistré. Le dossier ne trouve aucune offre : lancez la séquence en choisissant l'offre."
+    const val PERSON_OPTED_OUT = "Cette personne s'est opposée à la prospection"
+    const val MEETING_BOOKED = "MEETING"
+    const val MEETING_ALREADY_BOOKED = "déjà noté"
+
     // --- Contact book export ------------------------------------------------------------------------
     const val CSV_FILE_NAME = "carnet-bloom.csv"
     const val CSV_HEADER = "entreprise;nom;role;email;linkedin;statut;source"
