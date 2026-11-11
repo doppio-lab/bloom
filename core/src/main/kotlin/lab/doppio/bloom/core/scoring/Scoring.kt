@@ -1,7 +1,10 @@
 package lab.doppio.bloom.core.scoring
 
 import kotlinx.serialization.Serializable
+import lab.doppio.bloom.core.discovery.HiringRules
 import lab.doppio.bloom.core.model.Account
+import lab.doppio.bloom.core.model.Fact
+import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Market
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Sector
@@ -81,7 +84,21 @@ object Scoring {
         Sector.PRODUCTIVITY_SAAS, Sector.MUSIC_MEDIA, Sector.MOBILITY_TRANSPORT, Sector.PRIVACY,
     )
 
-    fun fit(account: Account, reasons: MutableList<String>): Int {
+    /** Fit points taken off when a sourced fact shows the company builds on Flutter or React Native, which Doppio does not do. */
+    const val CROSS_PLATFORM_PENALTY = 20
+
+    /**
+     * The "sector with a direct reference" bonus. NAF 62 and 63 all map to PRODUCTIVITY_SAAS, which also holds
+     * IT services companies: that sector only counts when the company ships a product of its own, shown by an app.
+     */
+    private fun hasDirectReference(account: Account, facts: List<Fact>): Boolean = when (account.sector) {
+        !in coreSectors -> false
+        Sector.PRODUCTIVITY_SAAS ->
+            account.iosAppId != null || account.androidPackage != null || facts.any { it.kind == FactKind.APP_METADATA }
+        else -> true
+    }
+
+    fun fit(account: Account, reasons: MutableList<String>, facts: List<Fact> = emptyList()): Int {
         var fit = 0
         if (account.iosAppId != null || account.androidPackage != null) {
             fit += 12; reasons += "+12 app mobile en production"
@@ -96,7 +113,7 @@ object Scoring {
             in 50..499 -> { fit += 12; reasons += "+12 50 à 499 personnes (cœur de cible)" }
             else -> { fit += 9; reasons += "+9 500+ personnes (cycle long, achats)" }
         }
-        if (account.sector in coreSectors) {
+        if (hasDirectReference(account, facts)) {
             fit += 8; reasons += "+8 secteur où Doppio a une référence directe"
         }
         when (account.market) {
@@ -104,7 +121,14 @@ object Scoring {
             Market.EU, Market.UK -> { fit += 2; reasons += "+2 marché Europe" }
             else -> {}
         }
-        return fit.coerceAtMost(40)
+        fit = fit.coerceAtMost(40)
+        // Evidence comes from a sourced fact only, never from a guess about the stack
+        facts.firstOrNull(HiringRules::isCrossPlatformEvidence)?.let { evidence ->
+            val taken = minOf(CROSS_PLATFORM_PENALTY, fit)
+            fit -= taken
+            reasons += "-$taken stack cross-platform (Flutter ou React Native) : Doppio fait du natif et du KMP [F:${evidence.id}]"
+        }
+        return fit
     }
 
     fun decay(observedAt: Instant, now: Instant, halfLifeDays: Double): Double {
@@ -112,9 +136,14 @@ object Scoring {
         return exp(-ln(2.0) * ageDays / halfLifeDays)
     }
 
-    fun score(account: Account, signals: List<Signal>, now: Instant): ScoreBreakdown {
+    fun score(
+        account: Account,
+        signals: List<Signal>,
+        now: Instant,
+        facts: List<Fact> = emptyList(),
+    ): ScoreBreakdown {
         val reasons = mutableListOf<String>()
-        val fit = fit(account, reasons)
+        val fit = fit(account, reasons, facts)
 
         // Un seul signal par type compte (le plus fort après amortissement), pour éviter qu'une
         // série de 10 avis négatifs écrase le reste.
@@ -137,6 +166,8 @@ object Scoring {
 
         val recommended = bestByType.maxByOrNull { it.value }?.key?.let { offerBySignal[it] }
 
+        // The researcher's "no fit" verdict comes from a model, so it never enters the score: ResearchBatch and
+        // ContactBook filter those accounts out on their own.
         return ScoreBreakdown(
             accountId = account.id,
             total = fit + intent + warm,

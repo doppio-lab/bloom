@@ -104,11 +104,13 @@ class FranceTravailSource(
                 at = now,
             )
             facts += f
-            signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, now.toString(), listOf(f.id))
-            if (HiringRules.mentionsKmp(title + description)) signals += Signal(accountId, SignalType.HIRING_KMP, 0.9, now.toString(), listOf(f.id))
+            // The need dates from the day the posting went up, not from the day we read it
+            val observed = HiringRules.observedAt(created, now)
+            signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, observed.toString(), listOf(f.id))
+            if (HiringRules.mentionsKmp(title + description)) signals += Signal(accountId, SignalType.HIRING_KMP, 0.9, observed.toString(), listOf(f.id))
             HiringRules.stuckStrength(age)?.let { signals += Signal(accountId, SignalType.HIRING_STUCK, it, now.toString(), listOf(f.id)) }
-            if (HiringRules.mentionsCrossPlatform(title + description)) {
-                facts += fact(accountId, FactKind.JOB_POSTING, "L'offre « $title » mentionne une stack cross-platform (Flutter ou React Native)", url, at = now)
+            if (HiringRules.indicatesCrossPlatformStack(title + " " + description)) {
+                facts += fact(accountId, FactKind.JOB_POSTING, HiringRules.crossPlatformStatement(title), url, at = now)
             }
         }
         return SourceResult(facts, signals)

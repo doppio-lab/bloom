@@ -153,6 +153,8 @@ fun sourcesModule(config: BloomConfig): Module = module {
     val discovery = config.discovery
     single<HttpClient> { defaultHttpClient() } onClose { it?.close() }
     single { AppStoreSource(get(), clock = get()) } bind AppStoreFacts::class
+    // PlayStoreSource (data/sources/facts) is deliberately not bound: Google Play's terms on automated reading
+    // have not been checked. ResearchAgent runs without it.
     single { CompanyRegistrySource(get(), get()) } bind CompanyRegistryFacts::class
     single { WebPageSource(get(), get()) } bind WebPages::class
 

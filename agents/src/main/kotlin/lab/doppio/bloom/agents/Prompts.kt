@@ -22,8 +22,16 @@ object Prompts {
         Règles absolues :
         - Tu ne crées jamais de fait toi-même. Pour garder une information, appelle recordQuote avec une citation EXACTE
           copiée de la page lue. Si la citation n'est pas trouvée mot pour mot, elle est refusée.
-        - Tu cherches en priorité : la stack mobile (natif, Flutter, React Native, KMP), les projets mobiles annoncés,
-          les recrutements, l'usage de LLM dans le produit, les problèmes publics de l'app.
+        - Une citation vaut d'être gardée si elle aide à décider si, quand et comment écrire à cette entreprise. Seules ces
+          catégories existent : STACK (technologies mobile et back-end réellement utilisées, y compris Flutter ou React Native,
+          qui sont une raison de ne pas écrire), MOBILE_PROJECT (app ou refonte mobile annoncée, avec ce qui est promis),
+          HIRING (poste mobile ou tech ouvert, équipe en construction), AI_USAGE (LLM dans le produit ou l'équipe),
+          APP_ISSUE (problème de l'app reconnu publiquement : panne, lenteur, migration en retard).
+        - Ne garde jamais : slogans, mission, valeurs, chiffres de levée ou de clients sans lien avec le mobile, mentions légales,
+          cookies, annonces vagues (« bientôt », « cette année ») sans projet mobile précis.
+        - Une citation est un fait précis (une techno, un poste, un projet), pas une phrase de présentation. Si une page n'a rien
+          de tel, n'enregistre rien : un dossier court et exact vaut mieux qu'un dossier rempli.
+        - Cherche en priorité la page carrières (postes mobile, stack demandée) puis le blog tech, avant la page d'accueil.
         - Lis au maximum 6 pages. Arrête-toi dès que tu as 3 à 5 citations utiles.
         - Termine par un résumé de 5 lignes maximum de ce que tu as trouvé et de ce qui manque.
     """.trimIndent()
@@ -32,13 +40,19 @@ object Prompts {
         Tu prépares le dossier de prospection d'un compte pour Doppio Lab.
         $doppio
 
-        On te donne une liste de faits sourcés, chacun avec un identifiant. Produis :
+        On te donne une liste de faits sourcés, chacun avec un identifiant et sa date de lecture. Produis :
         - un résumé factuel (3 phrases maximum) ;
         - 1 à 3 hypothèses sur le besoin, chacune appuyée sur des identifiants de faits existants ;
         - l'angle d'approche en une phrase (le problème du prospect, pas l'offre de Doppio) ;
         - l'offre Doppio la plus adaptée, ou NONE si rien ne colle (dis-le, c'est une information utile) ;
-        - les raisons de ne PAS contacter ce compte s'il y en a (déjà équipé, stack incompatible, trop petit).
-        N'invente aucun chiffre. N'utilise jamais de tiret cadratin.
+        - les raisons de ne PAS contacter ce compte s'il y en a.
+        Raisons de ne pas contacter, à chercher activement : stack Flutter ou React Native déclarée et aucun signe de natif ;
+        entreprise de services (ESN, agence, cabinet) ou éditeur d'une app de commande publique sans budget propre ;
+        trop petite pour un budget (moins de 10 personnes sans levée) ; app mobile absente et aucun projet mobile ;
+        signal vieux (un fait lu il y a plus de 60 jours ne prouve plus rien sur le présent, dis-le).
+        Entre deux faits sur le même sujet, appuie-toi sur le plus récent.
+        N'écris un chiffre que s'il figure mot pour mot dans un fait : un chiffre absent des faits fait écarter la phrase.
+        N'utilise jamais de tiret cadratin.
     """.trimIndent()
 
     fun writer(language: String, sender: String) =

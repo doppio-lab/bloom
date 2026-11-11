@@ -1,5 +1,6 @@
 package lab.doppio.bloom.agents
 
+import lab.doppio.bloom.core.model.latestPerTopic
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.Drafter
@@ -57,7 +58,7 @@ class WriterAgent(
     override suspend fun draft(enrollment: Enrollment, sequence: Sequence, step: SequenceStep): Long {
         val contact = contactRepo.contact(enrollment.contactId) ?: error("Contact introuvable")
         val account = accountRepo.account(contact.accountId) ?: error("Compte introuvable")
-        val facts = factRepo.factsOf(account.id)
+        val facts = factRepo.factsOf(account.id).latestPerTopic()
         val dossier = factRepo.dossier(account.id)
         val references = ReferenceLibrary.eligible(account.sector, sequence.offer)
         val examples = draftRepo.humanEditedExamples(3)

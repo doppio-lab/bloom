@@ -10,7 +10,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 /**
- * Les comptes au-dessus de 45 sans dossier passent en premier, puis les dossiers de plus de 14 jours.
+ * Les comptes au-dessus de 45 sans dossier (ni dossier "aucune offre ne convient") passent en premier, puis les dossiers de plus de 14 jours.
  * L'agent coûte des tokens : on ne l'utilise que là où le score déterministe dit que ça vaut le coup.
  */
 class ResearchBatch(
@@ -24,8 +24,11 @@ class ResearchBatch(
 
     suspend operator fun invoke() {
         val stale = clock.instant().minus(14, ChronoUnit.DAYS)
-        val rows = accountRepo.accountsByScore(500).filter { it.score >= 45 }
-        val withoutDossier = rows.filter { factRepo.dossier(it.account.id) == null }
+        val dossiers = accountRepo.accountsByScore(500).filter { it.score >= 45 }.associateWith { factRepo.dossier(it.account.id) }
+        // A dossier that found no offer to sell is not researched again until a human asks. The verdict is a filter here,
+        // never a score term: the score stays computed by code alone
+        val rows = dossiers.filterValues { it?.noFit != true }.keys.toList()
+        val withoutDossier = rows.filter { dossiers[it] == null }
         val staleOnes = rows.filter { it !in withoutDossier && (it.refreshedAt == null || Instant.parse(it.refreshedAt) < stale) }
         (withoutDossier + staleOnes).take(budget).forEach { row ->
             runCatching { research.research(row.account.id) }.onFailure {

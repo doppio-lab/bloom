@@ -79,6 +79,21 @@ class GuardTest {
     }
 
     @Test
+    fun `un chiffre contenu dans un autre nombre d'un fait est bloqué`() {
+        // 41 is inside 412 and 12 inside 412: neither is a number a fact states
+        val v = MessageGuard.check(input("Bonjour, 41 clients et 12 avis parlent d'un crash [F:a1]. Un échange ?"))
+        assertEquals(setOf("« 41 »", "« 12 »"), v.filter { it.rule == "chiffre-non-sourcé" }.map { it.detail.substringBefore(" n'") }.toSet())
+    }
+
+    @Test
+    fun `un chiffre écrit en lettres est vérifié comme un chiffre`() {
+        val invented = MessageGuard.check(input("Bonjour, douze avis parlent d'un crash [F:a2]. Un échange ?"))
+        assertTrue(invented.any { it.rule == "chiffre-non-sourcé" }, invented.joinToString())
+        val sourced = MessageGuard.check(input("Bonjour, onze avis parlent d'un crash au paiement [F:a2]. Un échange ?"))
+        assertTrue(sourced.none { it.rule == "chiffre-non-sourcé" }, sourced.joinToString())
+    }
+
+    @Test
     fun `un chiffre inventé est bloqué`() {
         val body = "Bonjour, 40 % de vos utilisateurs subissent des crashs [F:a2]. Un échange ?"
         val v = MessageGuard.check(input(body))
