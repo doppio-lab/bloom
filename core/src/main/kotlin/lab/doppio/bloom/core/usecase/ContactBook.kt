@@ -1,5 +1,6 @@
 package lab.doppio.bloom.core.usecase
 
+import lab.doppio.bloom.core.model.latestPerTopic
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.Targeting
@@ -38,19 +39,25 @@ class ContactBook(
         val contacts = contactRepo.contactsByAccount()
         val officers = officerRepo.officersByAccount()
         val enrolled = sequenceRepo.activeEnrollments().map { it.contactId }.toSet()
-        return accountRepo.accountsByScore(500).filter { it.score >= 45 || it.account.id in contacts }.take(150).map { row ->
+        val entries = mutableListOf<BookEntry>()
+        for (row in accountRepo.accountsByScore(500)) {
+            if (entries.size == 150) break
             val id = row.account.id
-            val offer = factRepo.dossier(id)?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
+            val dossier = factRepo.dossier(id)
+            // An account the researcher found no offer for is left out, unless someone already put a contact on it
+            if (id !in contacts && (row.score < 45 || dossier?.noFit == true)) continue
+            val offer = dossier?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
             val persona = Targeting.personaFor(offer)
             val known = contacts[id].orEmpty()
             val knownNames = known.map { CompanyNames.normalize(it.fullName) }.toSet()
-            BookEntry(
+            entries += BookEntry(
                 accountId = id, name = row.account.name, score = row.score, source = row.account.source, offer = offer, why = persona.why,
                 contacts = known.map { c -> BookContact(c, if (c.id in enrolled) "sequence" else if (c.email != null) "email" else "no-email") },
                 officers = officers[id].orEmpty().filter { CompanyNames.normalize(it.fullName) !in knownNames },
                 searches = persona.roles.map { PeopleSearch(it, Targeting.linkedinSearchUrl(it, row.account.name)) },
             )
         }
+        return entries
     }
 }
 
@@ -73,7 +80,11 @@ class ListToComplete(
                 facts = factRepo.signalsOf(row.account.id)
                     .sortedByDescending { Scoring.rules.getValue(it.type).weight * it.strength }
                     .flatMap { it.factIds }.distinct().withIndex().associate { (rank, id) -> id to rank }
-                    .let { rank -> factRepo.factsOf(row.account.id).sortedBy { rank[it.id] ?: Int.MAX_VALUE }.take(3) },
+                    .let { rank ->
+                        val all = factRepo.factsOf(row.account.id)
+                        val current = all.latestPerTopic().map { it.id }.toSet()
+                        all.filter { it.id in current }.sortedBy { rank[it.id] ?: Int.MAX_VALUE }.take(3)
+                    },
             )
         }
 }

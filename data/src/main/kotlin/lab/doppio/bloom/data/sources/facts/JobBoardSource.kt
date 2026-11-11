@@ -64,8 +64,9 @@ class JobBoardSource(private val http: HttpClient, private val clock: Clock = Cl
                 at = now,
             )
             facts += f
-            signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, now.toString(), listOf(f.id))
-            if (HiringRules.mentionsKmp(p.title)) signals += Signal(accountId, SignalType.HIRING_KMP, 0.9, now.toString(), listOf(f.id))
+            val observed = HiringRules.observedAt(p.publishedAt?.takeIf { p.dateIsFirstPublication }, now)
+            signals += Signal(accountId, SignalType.HIRING_MOBILE, 0.7, observed.toString(), listOf(f.id))
+            if (HiringRules.mentionsKmp(p.title)) signals += Signal(accountId, SignalType.HIRING_KMP, 0.9, observed.toString(), listOf(f.id))
             HiringRules.stuckStrength(age)?.let { signals += Signal(accountId, SignalType.HIRING_STUCK, it, now.toString(), listOf(f.id)) }
         }
         return SourceResult(facts, signals)

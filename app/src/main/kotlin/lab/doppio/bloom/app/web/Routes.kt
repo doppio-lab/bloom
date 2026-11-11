@@ -1,5 +1,6 @@
 package lab.doppio.bloom.app.web
 
+import lab.doppio.bloom.core.model.latestPerTopic
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.request.receive
@@ -81,7 +82,7 @@ class ApiRoutes(
         get("/accounts/{id}") {
             val id = call.parameters["id"]!!.toLong()
             val account = accountRepo.account(id) ?: return@get call.respond(HttpStatusCode.NotFound)
-            call.respond(AccountDetail(account, factRepo.factsOf(id), factRepo.signalsOf(id), factRepo.dossier(id), contactRepo.contactsOf(id)))
+            call.respond(AccountDetail(account, factRepo.factsOf(id).latestPerTopic(), factRepo.signalsOf(id), factRepo.dossier(id), contactRepo.contactsOf(id)))
         }
 
         post("/accounts/{id}/research") {

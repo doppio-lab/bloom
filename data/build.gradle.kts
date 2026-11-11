@@ -25,3 +25,13 @@ dependencies {
     testImplementation(testFixtures(project(":core")))
     testRuntimeOnly(libs.logback)
 }
+
+// Testcontainers needs a Docker socket. OrbStack does not create /var/run/docker.sock, so without this a plain
+// `./gradlew test` fails with "Could not find a valid Docker environment". An explicit DOCKER_HOST always wins.
+tasks.withType<Test>().configureEach {
+    val orbstack = File(System.getProperty("user.home"), ".orbstack/run/docker.sock")
+    if (System.getenv("DOCKER_HOST") == null && !File("/var/run/docker.sock").exists() && orbstack.exists()) {
+        environment("DOCKER_HOST", "unix://${orbstack.path}")
+        environment("TESTCONTAINERS_DOCKER_SOCKET_OVERRIDE", "/var/run/docker.sock")
+    }
+}

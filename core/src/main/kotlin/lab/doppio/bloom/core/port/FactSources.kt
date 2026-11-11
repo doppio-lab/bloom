@@ -10,6 +10,14 @@ interface AppStoreFacts {
     suspend fun analyze(accountId: AccountId, appId: Long, now: Instant): SourceResult
 }
 
+/**
+ * Google Play facts and signals (rating, last update) for a known package, read from the public store listing.
+ * Empty when the page is not recognised: a guess is never returned.
+ */
+interface PlayStoreFacts {
+    suspend fun analyze(accountId: AccountId, packageName: String, now: Instant): SourceResult
+}
+
 /** Open mobile job offers of a given company. */
 interface JobOfferFacts {
     suspend fun mobileJobs(accountId: AccountId, companyName: String, now: Instant): SourceResult

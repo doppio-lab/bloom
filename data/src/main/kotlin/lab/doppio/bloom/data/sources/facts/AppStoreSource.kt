@@ -11,6 +11,8 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import lab.doppio.bloom.core.discovery.ReleaseRules
+import lab.doppio.bloom.core.discovery.ReviewRules
 import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.model.AppMeta
 import lab.doppio.bloom.core.model.Fact
@@ -39,11 +41,6 @@ class AppStoreSource(
 
     data class Review(val rating: Int, val title: String, val content: String, val version: String?, val updated: Instant?)
 
-    private val complaintKeywords = listOf(
-        "crash", "plante", "bug", "beug", "lent", "lente", "freeze", "fige", "se ferme", "ne fonctionne plus",
-        "connexion", "déconnect", "impossible", "batterie", "mise à jour", "écran blanc", "slow", "doesn't work", "login",
-    )
-
     override suspend fun analyze(accountId: AccountId, appId: Long, now: Instant): SourceResult {
         val facts = mutableListOf<Fact>()
         val signals = mutableListOf<Signal>()
@@ -69,8 +66,8 @@ class AppStoreSource(
             val days = Duration.between(releaseDate, now).toDays()
             val f = fact(accountId, FactKind.APP_METADATA, "$name : dernière version $version publiée il y a $days jours", storeUrl, at = now)
             facts += f
-            if (days > 120) {
-                signals += Signal(accountId, SignalType.RELEASE_STALL, ((days - 120) / 240.0).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
+            ReleaseRules.stallStrength(days)?.let {
+                signals += Signal(accountId, SignalType.RELEASE_STALL, it, now.toString(), listOf(f.id))
             }
         }
 
@@ -91,7 +88,7 @@ class AppStoreSource(
             if (drop >= 0.4) signals += Signal(accountId, SignalType.RATING_DROP, (drop / 1.5).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
         }
 
-        val complaints = recent.filter { r -> r.rating <= 2 && complaintKeywords.any { k -> k in (r.title + " " + r.content).lowercase() } }
+        val complaints = recent.filter { r -> ReviewRules.isTechnicalComplaint(r.rating, r.title, r.content) }
         if (recent.size >= 5 && complaints.isNotEmpty()) {
             val share = complaints.size.toDouble() / recent.size
             val versions = complaints.mapNotNull { it.version }.groupingBy { it }.eachCount().maxByOrNull { it.value }?.key

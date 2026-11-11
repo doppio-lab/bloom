@@ -54,7 +54,7 @@ class ImportAccounts(
                 )
                 val id = accountRepo.upsertAccount(account)
                 if (existed) updated++ else created++
-                accountRepo.saveScore(Scoring.score(account.copy(id = id), factRepo.signalsOf(id), clock.instant()))
+                accountRepo.saveScore(Scoring.score(account.copy(id = id), factRepo.signalsOf(id), clock.instant(), factRepo.factsOf(id)))
                 val contactName = r["contact_name"].orEmpty()
                 if (contactName.isNotBlank()) {
                     val email = r["contact_email"]?.trim()?.takeIf { it.contains('@') }

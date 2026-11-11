@@ -346,6 +346,6 @@ class DiscoveryService(
         factRepo.saveFacts(result.facts)
         factRepo.saveSignals(result.signals)
         val account = accountRepo.account(accountId) ?: return
-        accountRepo.saveScore(Scoring.score(account, factRepo.signalsOf(accountId), now))
+        accountRepo.saveScore(Scoring.score(account, factRepo.signalsOf(accountId), now, factRepo.factsOf(accountId)))
     }
 }

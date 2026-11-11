@@ -23,7 +23,10 @@ import lab.doppio.bloom.core.scoring.ScoreBreakdown
 import lab.doppio.bloom.core.scoring.Scoring
 import lab.doppio.bloom.core.model.Dossier
 import lab.doppio.bloom.core.model.fact
+import lab.doppio.bloom.core.model.latestPerTopic
+import lab.doppio.bloom.core.guard.MessageGuard
 import lab.doppio.bloom.core.port.AppStoreFacts
+import lab.doppio.bloom.core.port.PlayStoreFacts
 import lab.doppio.bloom.core.port.CompanyRegistryFacts
 import lab.doppio.bloom.core.port.JobOfferFacts
 import lab.doppio.bloom.core.port.Researcher
@@ -47,6 +50,7 @@ class ResearchAgent(
     private val registry: CompanyRegistryFacts,
     private val jobs: JobOfferFacts?,
     private val web: WebPages,
+    private val playStore: PlayStoreFacts? = null,
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : Researcher {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -61,6 +65,13 @@ class ResearchAgent(
             runCatching { appStore.analyze(account.id, id, clock.instant()) }
                 .onSuccess { facts += it.facts; signals += it.signals }
                 .onFailure { log.warn("App Store indisponible pour ${account.name}", it) }
+        }
+        account.androidPackage?.let { pkg ->
+            playStore?.let { p ->
+                runCatching { p.analyze(account.id, pkg, clock.instant()) }
+                    .onSuccess { facts += it.facts; signals += it.signals }
+                    .onFailure { log.warn("Google Play indisponible pour ${account.name}", it) }
+            }
         }
         account.siren?.let { siren ->
             runCatching { registry.facts(account.id, siren) }.onSuccess { facts += it }.onFailure { log.warn("Annuaire indisponible", it) }
@@ -99,10 +110,10 @@ class ResearchAgent(
         }
 
         // 3. Synthèse
-        val allFacts = factRepo.factsOf(account.id)
+        val allFacts = factRepo.factsOf(account.id).latestPerTopic()
         if (allFacts.isNotEmpty()) synthesize(account, allFacts)
 
-        val score = Scoring.score(account, factRepo.signalsOf(account.id), clock.instant())
+        val score = Scoring.score(account, factRepo.signalsOf(account.id), clock.instant(), factRepo.factsOf(account.id))
         accountRepo.saveScore(score)
         eventRepo.logEvent("ACCOUNT_RESEARCHED", accountId = account.id, payload = """{"score":${score.total}}""")
         return score
@@ -135,7 +146,8 @@ class ResearchAgent(
 
     private suspend fun synthesize(account: Account, facts: List<Fact>) {
         val known = facts.associateBy { it.id }
-        val factList = facts.joinToString("\n") { "[${it.id}] (${it.kind}) ${it.statement}" + (it.excerpt?.let { e -> "\n    extrait : ${e.take(300)}" } ?: "") }
+        // The read date is given so the model can tell a fresh fact from an old one
+        val factList = facts.joinToString("\n") { "[${it.id}] (${it.kind}, lu le ${it.retrievedAt.take(10)}) ${it.statement}" + (it.excerpt?.let { e -> "\n    extrait : ${e.take(300)}" } ?: "") }
         val output = tracker.track("research-synthesis", account.id, llm.research) {
             val r = llm.executor.executeStructured<DossierOutput>(
                 prompt = prompt("dossier-${account.id}") {
@@ -146,14 +158,19 @@ class ResearchAgent(
             ).getOrThrow()
             r.data to r
         }
-        val hypotheses = provenHypotheses(output.hypotheses, known.keys)
+        val grounding = facts.joinToString(" ") { it.statement + " " + it.excerpt.orEmpty() }
+        val hypotheses = provenHypotheses(output.hypotheses.filter { ungroundedNumbers(it.statement, grounding).isEmpty() }, known.keys)
+        val summary = withoutUngroundedSentences(output.summary, grounding)
+        // An angle with a number no fact carries is not kept: the best proven hypothesis stands in for it
+        val angle = output.angle.takeIf { ungroundedNumbers(it, grounding).isEmpty() }
+            ?: hypotheses.firstOrNull()?.let { MessageGuard.stripCitations(it) }.orEmpty()
         val offer = Offer.entries.firstOrNull { it.name == output.offer.uppercase() }
         factRepo.saveDossier(
             Dossier(
                 accountId = account.id,
-                summary = output.summary + (if (output.disqualifiers.isNotEmpty()) "\nÀ ne pas contacter si : " + output.disqualifiers.joinToString("; ") else ""),
+                summary = summary + (if (output.disqualifiers.isNotEmpty()) "\nÀ ne pas contacter si : " + output.disqualifiers.joinToString("; ") else ""),
                 hypotheses = hypotheses,
-                angle = output.angle,
+                angle = angle,
                 offer = offer ?: Offer.DISCOVERY,
                 noFit = offer == null,
             ),
@@ -161,6 +178,18 @@ class ResearchAgent(
         if (offer == null) eventRepo.logEvent("DOSSIER_NO_FIT", accountId = account.id)
     }
 }
+
+private val numberToken = Regex("\\d+")
+
+/** Numbers written in [text] that no fact states. The dossier feeds the writer, so a made-up figure must not enter it. */
+internal fun ungroundedNumbers(text: String, grounding: String): Set<String> {
+    val known = numberToken.findAll(grounding).map { it.value }.toSet()
+    return numberToken.findAll(text).map { it.value }.filter { it !in known }.toSet()
+}
+
+/** Drops the sentences that carry a number no fact states. */
+internal fun withoutUngroundedSentences(summary: String, grounding: String): String =
+    summary.split(Regex("(?<=[.!?])\\s+")).filter { ungroundedNumbers(it, grounding).isEmpty() }.joinToString(" ")
 
 /**
  * Les hypothèses qui citent des faits inexistants sont écartées : pas d'hypothèse sans preuve.
@@ -181,6 +210,13 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
     val recorded = mutableListOf<Fact>()
     val signals = mutableListOf<Signal>()
     private val maxPages = 6
+    private val categories = setOf("STACK", "MOBILE_PROJECT", "HIRING", "AI_USAGE", "APP_ISSUE")
+
+    /** Curly quotes and non-breaking spaces differ between the page and what the model types back: compare without them. */
+    private fun plain(text: String) = text
+        .replace('\u2019', '\'').replace('\u2018', '\'').replace('\u201C', '"').replace('\u201D', '"')
+        .replace('\u00A0', ' ').replace('\u202F', ' ')
+        .replace(Regex("\\s+"), " ")
 
     internal val sameSite = Regex("^https?://([a-z0-9-]+\\.)*${Regex.escape(domain)}(/.*)?$", RegexOption.IGNORE_CASE)
 
@@ -206,18 +242,20 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
         quote: String,
         @LLMDescription("Ce que la citation établit, en une phrase neutre")
         meaning: String,
-        @LLMDescription("Catégorie : STACK, MOBILE_PROJECT, HIRING, AI_USAGE, APP_ISSUE, OTHER")
+        @LLMDescription("Catégorie : STACK, MOBILE_PROJECT, HIRING, AI_USAGE, APP_ISSUE. Une citation hors de ces catégories n'a pas d'intérêt, ne l'enregistre pas.")
         category: String,
     ): String {
         val page = pages[url] ?: return "Refusé : lis d'abord la page avec readPage."
         val normalized = quote.trim().replace(Regex("\\s+"), " ")
         if (normalized.length !in 12..300) return "Refusé : la citation doit faire entre 12 et 300 caractères."
-        if (!page.replace(Regex("\\s+"), " ").contains(normalized, ignoreCase = true)) {
+        if (!plain(page).contains(plain(normalized), ignoreCase = true)) {
             return "Refusé : citation introuvable mot pour mot sur la page. Copie le texte exact."
         }
+        val cat = category.uppercase()
+        if (cat !in categories) return "Refusé : catégorie inconnue. Choisis parmi ${categories.joinToString(", ")}, ou n'enregistre rien."
         val f = fact(accountId, FactKind.WEB_PAGE, "$meaning (« $normalized »)", url, excerpt = normalized, at = clock.instant())
         recorded += f
-        when (category.uppercase()) {
+        when (cat) {
             "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, 0.6, clock.instant().toString(), listOf(f.id))
             "MOBILE_PROJECT" -> signals += Signal(accountId, SignalType.PRODUCT_LAUNCH, 0.6, clock.instant().toString(), listOf(f.id))
             "APP_ISSUE" -> signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, 0.4, clock.instant().toString(), listOf(f.id))

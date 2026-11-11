@@ -57,6 +57,20 @@ object MessageGuard {
 
     /** Nombres toujours autorisés : durées des offres, petits entiers de langage courant. */
     private val alwaysAllowedNumbers = setOf("1", "2", "3", "15", "20", "30")
+    private val digitRun = Regex("""\d+""")
+
+    /**
+     * Numbers written as a single word, checked like digits. Left out on purpose: the words for the always
+     * allowed numbers, "neuf" and "cent" (too often not a count), and compounds such as "quatre-vingt-dix".
+     */
+    private val numberWords = mapOf(
+        "quatre" to "4", "cinq" to "5", "six" to "6", "sept" to "7", "huit" to "8", "dix" to "10", "onze" to "11",
+        "douze" to "12", "treize" to "13", "quatorze" to "14", "seize" to "16", "quarante" to "40",
+        "cinquante" to "50", "soixante" to "60",
+        "four" to "4", "five" to "5", "seven" to "7", "eight" to "8", "nine" to "9", "ten" to "10",
+        "eleven" to "11", "twelve" to "12",
+    )
+    private val numberWordRegex = Regex("""(?<![\p{L}-])(?:${numberWords.keys.joinToString("|")})(?![\p{L}-])""")
 
     fun stripCitations(text: String): String =
         citationRegex.replace(text, "").replace(Regex(" {2,}"), " ").replace(Regex(" +([.,;:!?])"), "$1").trim()
@@ -111,9 +125,15 @@ object MessageGuard {
             cited.mapNotNull { factsById[it] }.forEach { append(it.statement).append(' ').append(it.excerpt.orEmpty()).append(' ') }
             reference?.let { append(it.proof) }
             append(' ').append(input.offer.label)
-        }.normalizeNumbers()
-        numberRegex.findAll(plain).map { it.value.normalizeNumber() }.distinct()
-            .filter { it !in alwaysAllowedNumbers && it !in provenanceText }
+        }
+        // Whole numbers only: "40" is not sourced by a fact that says "1405". A number is known as written
+        // ("5.2" as 52), as each of its digit runs (5 and 2), and without leading zeros (05 as 5).
+        val knownNumbers = (digitRun.findAll(provenanceText.normalizeNumbers()) + digitRun.findAll(provenanceText))
+            .flatMap { sequenceOf(it.value, it.value.trimStart('0')) }.toSet()
+        val written = numberRegex.findAll(plain).map { it.value.normalizeNumber() } +
+            numberWordRegex.findAll(plain.lowercase()).map { numberWords.getValue(it.value) }
+        written.distinct()
+            .filter { it !in alwaysAllowedNumbers && it !in knownNumbers }
             .forEach { v += Violation("chiffre-non-sourcé", Severity.BLOCK, "« $it » n'apparaît dans aucun fait cité") }
 
         // 5. Références clients : seulement celles qui ont une raison d'être citées

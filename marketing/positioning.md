@@ -18,27 +18,28 @@ The angle holds on two conditions. The claim stays inside what `MessageGuard` re
 
 ## What the code says
 
-The angle survives the re-audit of 2026-10-15 at commit 15980e4, in the same narrow form: of 25 claims, 12 are proven, 10 partial, 2 false and 1 unverifiable. The guard has not changed since 2026-10-10, so the promise still says "first email" and "numbers in the body", never "every sentence". The new problem is in the product itself: the Méthode view and the README over-claim, and they must be fixed before any screenshot or public copy points to them.
+The angle survives the refresh of 2026-11-10 (commit c0a5404 plus the uncommitted working tree), in the same narrow form: of 27 claims, 15 are proven, 9 partial, 2 false and 1 unverifiable. The guard has not changed since 2026-10-10, so the promise still says "first email" and "numbers in the body", never "every sentence". The Méthode view and the README no longer over-claim (21 categories and 400 apps, narrow wording of the principle, date shown on every fact). Two claims were added from the README (an approved email cannot go out twice, a reply is never lost).
 
-Read-only audit; `./gradlew build` and its tests run in CI (`.github/workflows/build.yml`). Tests now cover `core` (37) and `data` (12, PostgreSQL). `agents` and `app` have none, and agents, SMTP and IMAP have never run end to end.
+Read-only audit; `./gradlew build` and its tests run in CI (`.github/workflows/build.yml`). Tests on disk: `core` 113, `agents` 30, `data` 113 (PostgreSQL), `app` 48 (routes, Koin graph, project rules); some are uncommitted. Agents, SMTP and IMAP have never run end to end, and the rewritten prompts have never run against a real LLM.
 
 | Building block | What it does | Gap with the positioning |
 | --- | --- | --- |
-| `MessageGuard` (`core/.../guard/MessageGuard.kt`) | Blocks a first email without a cited fact, unknown citations, numbers absent from cited facts in the body, banned phrases, links, emojis, a fake "Re:". 10 blocking rule names in 7 groups | Subject numbers not scanned; the model-written meaning of web facts counts as provenance; follow-ups need no fact. No test for "Re:", links, emojis |
-| Research agent (`agents/.../ResearchAgent.kt`, `recordQuote`) | Keeps a web quote only if found word for word, 6 pages at most | Untested: `agents` has no test |
-| Approval and sending (`Routes.kt`, `Orchestrator.kt`, `Mail.kt`) | Only a `PENDING_REVIEW` draft that passes the guard can be approved (409 otherwise); sending is claimed once and never repeated (tested); Tuesday to Thursday, 8:30 to 11:30, 25 a day by default | The approval gate itself has no test; the cap has no ceiling; follow-ups get a "Re:" prefix |
-| Replies (`Orchestrator.kt`, `processReply`) | A matched reply or a bounce stops the sequence; the reader never loses a message (tested) | A reply from an unknown address stops nothing; out of office pauses forever |
-| Respect (`Mail.kt`, `Repository.kt`, `/u/{token}`) | Plain text, no pixel, one-click unsubscribe, opposition never purged, contacts purged after 3 years | Footer source is generic; no domain opposition can be written; a link scanner can unsubscribe a contact |
-| Dashboard (`app/.../static/index.html`) | Example data only with `?demo=1`; citations open their source | Méthode says "12 catégories, 120 apps par nuit" (code: 21 categories, up to 400 apps); facts show no date, which template B promises |
-| AI (`agents/.../Llm.kt`) | Every AI call follows the configured provider, Ollama included; daily token cap | Default provider in code is Anthropic; Dropcontact and Gmail still receive prospect data when configured |
-| Configuration | Mailboxes, footer, sender, LLM provider by environment variable | 50 occurrences of "doppio" in 14 files: "pour votre équipe" is false |
+| `MessageGuard` (`core/.../guard/MessageGuard.kt`) | Blocks a first email without a cited fact, unknown citations, numbers absent from cited facts in the body, banned phrases, links, emojis, a fake "Re:". 10 blocking rule names in 7 groups | Subject numbers not scanned; numbers are matched as substrings and numbers in words pass; the model-written meaning of web facts counts as provenance; follow-ups need no fact. No test for emojis, length, subject, links, "Re:" |
+| Research agent (`agents/.../ResearchAgent.kt`, `SiteResearchTools.recordQuote`) | Keeps a web quote only if found word for word (case and spaces aside), 6 pages at most; the dossier drops sentences with a number no fact states (uncommitted) | Tested with fake pages; never run against a real LLM or a real site |
+| Approval and sending (`core/.../usecase/DecideDraft.kt`, `SendNextApproved.kt`, `Mail.kt`) | Only a `PENDING_REVIEW` draft that passes the guard can be approved (409 otherwise); sending is claimed once and never repeated; Tuesday to Thursday, 8:30 to 11:30, 25 a day by default. All tested | The cap has no ceiling; follow-ups get a "Re:" prefix; `EmailGateway.send` has no test |
+| Replies (`core/.../usecase/ProcessReplies.kt`) | A matched reply or a bounce stops the sequence; a message is marked read only once processed (tested) | A reply from an unknown address with no thread stops nothing; out of office pauses forever |
+| Respect (`Mail.kt`, `data/.../persistence/reply`, `contact`, `/u/{token}`) | Plain text, no pixel, one-click unsubscribe (tested), opposition never purged, contacts purged after 3 years (tested) | Footer source is generic; no domain opposition can be written; a link scanner can unsubscribe a contact |
+| Dashboard (`app/.../static/index.html`) | Example data only with `?demo=1`; citations open their source; every fact shows its source link and the date it was read | Méthode examples are invented and not labelled; the score numbers wait for the scoring re-check |
+| AI (`agents/.../Llm.kt`) | Every AI call follows the configured provider, Ollama included; daily token cap (opt-in) | Default provider in code is Anthropic; Dropcontact and Gmail still receive prospect data when configured |
+| Configuration | Mailboxes, footer, sender, LLM provider by environment variable | 55 occurrences of "doppio" in 16 files of `src/main`: "pour votre équipe" is false |
 
 **Consequence on the plan.**
 
 - Can start now: the landing page (H1, subtitle, CTA) and the hooks marked go in the audit (5, 6, 3, 13, 17, 19, 21, 22, 23, 26 to 29 as reworded, the free hooks of family 2).
-- Fix first, before any screenshot of the Méthode view or any link to the README: prompt 01 (interface copy, fact date on screen). It is small.
+- The fix of the interface copy (prompt 01) is done; what is left is small: label the invented examples of the Méthode view and wait for the scoring re-check before any screenshot of it.
 - Waits for a real run in dry mode: templates A and B, hooks 1, 2, 7, 10, 24 and every "we tested" hook.
 - Waits for a workstream: hook 4 ("Re:", prompt 02), template C slide 3 (per-contact source, prompt 03), any copy for other teams (prompt 04), slide 6 captures (prompt 05).
+- To re-check once the scoring, research batch and cleanup migration land: see "To re-check after the work in progress lands" in [claims-audit.md](claims-audit.md).
 
 The full register, the screenshot inventory and the five Claude Code prompts are in [claims-audit.md](claims-audit.md) and [prompts/](prompts/).
 
@@ -336,3 +337,4 @@ Pages opened on 2026-10-10 unless dated otherwise. Facts seen only in search res
 | 2026-10-10 | claims-proof-audit | "What the code says" section and `proof-audit.md` |
 | 2026-10-15 | app-positioning | Moved to `marketing/`. Angle A confirmed, business model still open. Market refreshed (Clay approval before sending). Diagnosis updated after the dashboard rework. Hooks 3, 13, 21 and 29 reworded per the audit, hook 4 on hold. Template slide 6 matched to the current screens |
 | 2026-10-15 | claims-proof-audit | "What the code says" rewritten after the re-audit at 15980e4: 25 claims, Méthode view over-claim found, prompt 01 added |
+| 2026-11-10 | claims-proof-audit | "What the code says" refreshed after the architecture rework and the working tree of that day: 27 claims, test counts, file names, interface over-claims gone |

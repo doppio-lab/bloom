@@ -55,7 +55,7 @@ class SiteResearchToolsTest {
     @Test
     fun `recordQuote keeps only quotes found word for word`() = runTest {
         tools.readPage("https://acme.fr/")
-        val invented = tools.recordQuote("https://acme.fr/", "Notre équipe mobile compte douze ingénieurs", "Taille", "OTHER")
+        val invented = tools.recordQuote("https://acme.fr/", "Notre équipe mobile compte douze ingénieurs", "Taille", "STACK")
         assertTrue(invented.startsWith("Refusé : citation introuvable"))
         assertTrue(tools.recorded.isEmpty())
 
@@ -83,6 +83,42 @@ class SiteResearchToolsTest {
         tools.recordQuote("https://acme.fr/", "Notre équipe mobile recrute", "Projet mobile", "MOBILE_PROJECT")
         assertEquals(listOf(SignalType.AI_ADOPTION, SignalType.PRODUCT_LAUNCH), tools.signals.map { it.type })
         assertEquals(tools.recorded.map { it.id }, tools.signals.flatMap { it.factIds })
+    }
+}
+
+class QuoteQualityTest {
+    private val web = FakeWebPages(mapOf("https://acme.fr/" to "L\u2019équipe\u00A0mobile passe à Kotlin Multiplatform cette année."))
+    private val tools = SiteResearchTools(accountId = 1, domain = "acme.fr", web = web, clock = fixedClock)
+
+    @Test
+    fun `curly apostrophes and non breaking spaces on the page do not reject a faithful quote`() = runTest {
+        tools.readPage("https://acme.fr/")
+        val answer = tools.recordQuote("https://acme.fr/", "L'équipe mobile passe à Kotlin", "Migration vers KMP", "STACK")
+        assertTrue(answer.startsWith("Enregistré"), answer)
+    }
+
+    @Test
+    fun `a quote outside the known categories is refused instead of becoming noise`() = runTest {
+        tools.readPage("https://acme.fr/")
+        val answer = tools.recordQuote("https://acme.fr/", "passe à Kotlin Multiplatform", "Phrase", "OTHER")
+        assertTrue(answer.startsWith("Refusé : catégorie inconnue"), answer)
+        assertTrue(tools.recorded.isEmpty())
+    }
+}
+
+class UngroundedNumbersTest {
+    private val grounding = "Acme : note moyenne App Store 4,3 sur 1234 notes. Offre « Dev iOS » publiée il y a 12 jours"
+
+    @Test
+    fun `numbers stated by a fact are grounded, others are not`() {
+        assertEquals(emptySet(), ungroundedNumbers("Note de 4,3 sur 1234 avis", grounding))
+        assertEquals(setOf("40"), ungroundedNumbers("Une équipe de 40 personnes", grounding))
+    }
+
+    @Test
+    fun `a summary keeps its grounded sentences and loses the invented ones`() {
+        val summary = "L'app est notée 4,3. L'équipe compte 40 ingénieurs. Un poste iOS est ouvert depuis 12 jours."
+        assertEquals("L'app est notée 4,3. Un poste iOS est ouvert depuis 12 jours.", withoutUngroundedSentences(summary, grounding))
     }
 }
 

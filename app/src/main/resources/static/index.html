@@ -83,7 +83,7 @@ svg.i { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor;
 .brand b { font-size: 16px; font-weight: 600; }
 .brand span { font-size: 12px; color: var(--muted-foreground); }
 .quick { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
-.quick .btn.primary { flex: 1; min-width: 0; justify-content: flex-start; padding: 0 8px; }
+.quick .btn.primary { flex: 1; min-width: 0; justify-content: flex-start; gap: 8px; padding: 0 8px; }
 .nav-label { height: 32px; display: flex; align-items: center; padding: 0 8px; font-size: 12px; font-weight: 500; color: color-mix(in oklch, var(--sidebar-foreground) 70%, transparent); }
 .config { margin-top: auto; display: flex; flex-direction: column; }
 .side-user { display: flex; align-items: center; gap: 8px; height: 48px; padding: 8px; border-radius: var(--radius-md); }
@@ -171,6 +171,7 @@ h2.headline:focus { outline: none; }
 .empty { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 48px 24px; text-align: center; border: 1px dashed var(--border); border-radius: var(--radius-xl); color: var(--muted-foreground); }
 .empty .ico { width: 40px; height: 40px; display: grid; place-items: center; border-radius: var(--radius-lg); background: var(--muted); color: var(--foreground); }
 .empty .ico svg { width: 20px; height: 20px; }
+.empty-text { display: grid; gap: 4px; }
 .empty b { display: block; font-size: 16px; line-height: 24px; font-weight: 600; color: var(--foreground); }
 .skeleton { display: grid; gap: 16px; }
 .skeleton div { border-radius: var(--radius-xl); background: var(--muted); }
@@ -213,7 +214,8 @@ label.lbl { display: grid; gap: 8px; font-size: 14px; font-weight: 500; line-hei
 .kpi-foot b { display: flex; gap: 8px; align-items: center; font-weight: 500; }
 
 /* Chart: two overlapping areas, emails sent and replies */
-.plot { position: relative; height: 250px; }
+.plot { position: relative; height: 250px; margin-left: 32px; }
+.yaxis span { position: absolute; left: -32px; width: 24px; text-align: right; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
 .plot svg.chart { position: absolute; inset: 0; width: 100%; height: 250px; overflow: visible; }
 .plot .grid { fill: none; stroke: var(--border); stroke-width: 1; }
 .plot .line-s { fill: none; stroke: var(--primary); stroke-width: 1; }
@@ -226,7 +228,7 @@ label.lbl { display: grid; gap: 8px; font-size: 14px; font-weight: 500; line-hei
 .tooltip > span { display: flex; align-items: center; gap: 8px; }
 .tooltip > span span:nth-child(2) { flex: 1; color: var(--muted-foreground); }
 .plot-hit { position: absolute; inset: 0; cursor: crosshair; border-radius: var(--radius-md); }
-.ticks { position: relative; height: 16px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
+.ticks { position: relative; height: 16px; margin-left: 32px; font-size: 12px; line-height: 16px; color: var(--muted-foreground); }
 .ticks span { position: absolute; white-space: nowrap; }
 .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12px; color: var(--muted-foreground); }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -236,7 +238,7 @@ label.lbl { display: grid; gap: 8px; font-size: 14px; font-weight: 500; line-hei
 
 /* Score: figure, then the bar split in fit, intent and warm path */
 .score { display: flex; align-items: center; gap: 8px; }
-.score b { width: 2ch; font-family: var(--font-mono); font-weight: 500; }
+.score b { font-family: var(--font-mono); font-weight: 500; }
 .bar { display: flex; width: 88px; height: 6px; border-radius: 9999px; overflow: hidden; background: var(--muted); }
 .bar i { display: block; height: 100%; }
 .bar .fit { background: var(--chart-3); } .bar .int { background: var(--chart-2); } .bar .warm { background: var(--chart-1); }
@@ -253,6 +255,7 @@ th:last-child, td:last-child { padding-right: 12px; }
 tbody tr { border-top: 1px solid var(--border); }
 tbody tr:hover, tbody tr.on { background: color-mix(in oklch, var(--muted) 50%, transparent); }
 tbody tr.on { background: var(--muted); }
+tbody tr.on:hover { background: color-mix(in oklch, var(--muted) 50%, transparent); }
 tbody tr.pick { cursor: pointer; }
 .num { text-align: right; }
 .nowrap { white-space: nowrap; }
@@ -279,10 +282,11 @@ th[aria-sort="ascending"] .sort svg, th[aria-sort="descending"] .sort svg { opac
 kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--muted); font: 500 11px/16px var(--font-mono); color: var(--foreground); }
 .subject { font-size: 16px; line-height: 24px; font-weight: 600; }
 .body { max-width: 680px; white-space: pre-wrap; line-height: 22px; overflow-wrap: anywhere; }
+.ex .body { max-width: none; overflow-wrap: normal; }
+.note-body { padding: 12px 16px; border-radius: var(--radius-lg); background: var(--muted); line-height: 22px; }
 .cite { position: relative; display: inline-block; margin: 0 2px; padding: 0 4px; border: 0; border-radius: var(--radius-sm); background: var(--muted); color: var(--muted-foreground); font: 500 11px/18px var(--font-mono); vertical-align: 1px; cursor: pointer; }
 .cite::after { content: ""; position: absolute; inset: -5px -4px; }
 .sources summary { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; font-weight: 500; }
-.sources[open] summary svg { transform: rotate(180deg); }
 .sources .panel, .sources > .facts { margin-top: 12px; }
 .facts { display: grid; gap: 8px; }
 .fact { display: flex; gap: 8px; align-items: baseline; font-size: 13px; line-height: 18px; }
@@ -304,7 +308,7 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
 /* Prospects */
 .runchips { display: flex; gap: 8px; flex-wrap: wrap; }
 .runchips .badge.zero { opacity: .6; }
-.runchips .badge .mono { color: var(--foreground); font-weight: 400; }
+.runchips .badge .mono { color: var(--foreground); }
 .facets { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
 .facet-line { height: 32px; display: inline-flex; align-items: center; color: var(--muted-foreground); }
 .demand { flex-direction: row; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
@@ -329,13 +333,14 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
 @media (max-width: 480px) { .stage, .bars.signals .stage { grid-template-columns: minmax(0, 1fr) 24px 72px; } .stage .track { grid-column: 1 / -1; grid-row: 2; } }
 .gauges { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 16px; }
 .gauge { gap: 12px; }
-.gauge .row { align-items: baseline; gap: 8px; }
-.gauge b { font-size: 20px; line-height: 28px; font-weight: 600; }
+.gauge .row { flex-wrap: nowrap; align-items: baseline; gap: 8px; }
+.gauge b { white-space: nowrap; font-size: 20px; line-height: 28px; font-weight: 600; }
 .g-track { position: relative; height: 8px; border-radius: 9999px; background: color-mix(in oklch, var(--primary) 20%, transparent); }
 .g-track i { display: block; height: 100%; border-radius: 9999px; }
 .g-track .limit { position: absolute; top: -4px; bottom: -4px; width: 2px; border-radius: 1px; background: var(--foreground); }
 .gauge small { font-size: 12px; line-height: 16px; color: var(--muted-foreground); text-wrap: pretty; }
 .agents { min-width: 720px; }
+.agents th { white-space: normal; }
 .agents td:first-child { font-family: var(--font-mono); font-size: 13px; }
 
 /* Méthode */
@@ -431,11 +436,12 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
           <div class="row" style="align-items:flex-start;gap:16px">
             <div class="card-head"><div class="card-title">Envois et réponses</div><div class="muted" id="chart-sub"></div></div>
             <div class="toggles" id="ranges" role="group" aria-label="Période">
-              <button type="button" data-range="90" aria-pressed="true">3 derniers mois</button><button type="button" data-range="30" aria-pressed="false">30 derniers jours</button><button type="button" data-range="7" aria-pressed="false">7 derniers jours</button>
+              <button type="button" data-range="90" aria-pressed="true">3 mois</button><button type="button" data-range="30" aria-pressed="false">30 jours</button><button type="button" data-range="7" aria-pressed="false">7 jours</button>
             </div>
           </div>
           <div class="stack" style="gap:8px">
             <div class="plot">
+              <div class="yaxis" id="yaxis" aria-hidden="true"></div>
               <svg class="chart" viewBox="0 0 1000 250" preserveAspectRatio="none" role="img" aria-labelledby="chart-sub">
                 <defs>
                   <linearGradient id="fill-s" x1="0" y1="0" x2="0" y2="1"><stop offset="5%" class="stop-s" stop-opacity=".8"/><stop offset="95%" class="stop-s" stop-opacity=".1"/></linearGradient>
@@ -488,7 +494,7 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
         </div>
         <div class="empty" id="all-done" hidden>
           <span class="ico"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></span>
-          <div><b id="done-title"></b>Il manque la personne à qui écrire.</div>
+          <div class="empty-text"><b id="done-title"></b><span>Il manque la personne à qui écrire.</span></div>
           <a class="btn" href="#prospects">Compléter les prospects</a>
         </div>
         <div class="focus" id="focus" hidden>
@@ -746,7 +752,8 @@ const eur = (n) => new Intl.NumberFormat("fr-FR", { style: "currency", currency:
 const plural = (n, one, many) => `${n} ${n > 1 ? many : one}`;
 const signed = (n, d, unit) => (n >= 0 ? "+" : "−") + dec(Math.abs(n), d) + unit;
 const noCites = (text) => String(text ?? "").replace(/\s*\[F:[^\]]+\]/g, "");
-const day = (iso) => new Date(iso).toLocaleDateString("fr-FR");
+// Dates read in Paris time, like the sending window
+const day = (iso) => new Date(iso).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" });
 // Every fact shows the date it was read, after its source link
 const retrieved = (f) => f.retrievedAt ? ` · relevé le ${day(f.retrievedAt)}` : "";
 const todayLong = () => new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" });
@@ -991,13 +998,20 @@ function chartPoints() {
   return a.slice(range === "30" ? -30 : -7).map((d) => ({ sent: d.sent, replies: d.replies, tick: shortDay(d.date), label: fullDay(d.date) }));
 }
 const chartScale = (pts) => {
-  const n = pts.length, max = Math.max(4, Math.max(0, ...pts.map((p) => Math.max(p.sent, p.replies))) * 1.15);
-  return { n, X: (i) => n > 1 ? i / (n - 1) * 1000 : 500, Y: (v) => 250 - v / max * 240 };
+  const n = pts.length, peak = Math.max(0, ...pts.map((p) => Math.max(p.sent, p.replies)));
+  // The three gridlines sit on round values (a few steps per power of ten); the top one is the scale maximum
+  const raw = Math.max(4, peak * 1.1) / 3, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 3, 4, 5, 6, 8, 10].map((k) => k * mag).find((v) => v >= raw), max = step * 3;
+  return { n, step, X: (i) => n > 1 ? i / (n - 1) * 1000 : 500, Y: (v) => 250 - v / max * 240 };
 };
+
+// Fewer date labels on a phone, so they never overlap
+const narrowChart = matchMedia("(max-width: 480px)");
+narrowChart.addEventListener("change", () => { if (state.loaded) renderChart(); });
 
 /** Two overlapping areas with smoothed curves, as in the Thermos area chart. */
 function renderChart() {
-  const pts = chartPoints(), { n, X, Y } = chartScale(pts);
+  const pts = chartPoints(), { n, step: unit, X, Y } = chartScale(pts);
   document.querySelectorAll("#ranges [data-range]").forEach((b) => b.setAttribute("aria-pressed", b.dataset.range === state.range));
   const tS = pts.reduce((s, p) => s + p.sent, 0), tR = pts.reduce((s, p) => s + p.replies, 0);
   $("#chart-sub").textContent = `${plural(tS, "email", "emails")} et ${plural(tR, "réponse", "réponses")} sur les ${state.range === "90" ? "3 derniers mois, par semaine" : state.range === "30" ? "30 derniers jours" : "7 derniers jours"}`;
@@ -1010,9 +1024,10 @@ function renderChart() {
   const s = curve("sent"), r = curve("replies"), close = " L1000 250 L0 250 Z";
   $("#line-s").setAttribute("d", s); $("#area-s").setAttribute("d", n ? s + close : "");
   $("#line-r").setAttribute("d", r); $("#area-r").setAttribute("d", n ? r + close : "");
-  const step = Math.max(1, Math.ceil(n / 6)), ticks = [];
+  const step = Math.max(1, Math.ceil(n / (narrowChart.matches ? 3 : 6))), ticks = [];
   for (let j = 0; j < n; j += step) ticks.push(`<span style="left:${X(j) / 10}%;transform:${j === 0 ? "none" : "translateX(-50%)"}">${esc(pts[j].tick)}</span>`);
   $("#ticks").innerHTML = ticks.join("");
+  $("#yaxis").innerHTML = [3, 2, 1].map((k) => `<span style="top:${Y(unit * k) - 8}px">${num(unit * k)}</span>`).join("");
   hoverChart(null);
 }
 
@@ -1060,7 +1075,7 @@ function renderAccounts() {
       <td class="nowrap">${scoreBar(r)}</td>
       <td>${tierBadge(r.score)}</td>
       <td class="nowrap">${esc(OFFERS[r.recommendedOffer] || "aucune")}</td>
-      <td class="why">${r.reasons.slice(0, 3).map(esc).join(" · ")}</td>
+      <td class="why">${r.reasons.map(esc).join(" · ")}</td>
       <td class="nowrap muted">${r.refreshedAt ? day(r.refreshedAt) : "jamais"}</td></tr>`;
   }).join("");
   const ids = accountsInTier().map((r) => r.account.id), nSel = ids.filter((id) => state.sel.has(id)).length;
@@ -1151,7 +1166,7 @@ function renderTasks() {
     const text = noCites(d.body);
     return `<article class="card" id="t-${d.id}" tabindex="-1" style="gap:12px">
       <div class="row"><span><b style="font-weight:500">${esc(contactName)}</b><span class="muted"> · ${esc(accountName)}</span></span><span class="badge soft">Note · ${text.length}/300</span></div>
-      <div class="panel body" style="max-width:none">${esc(text)}</div>
+      <div class="note-body">${esc(text)}</div>
       <div class="actions"><button class="btn primary" data-act="copy" data-id="${d.id}">${icon("copy")}Copier la note</button>
       ${extLink(linkedinUrl, `${icon("external")}Ouvrir le profil`, "btn")}
       <button class="btn ghost" data-act="done" data-id="${d.id}">Fait</button></div></article>`;
@@ -1187,7 +1202,7 @@ const familyAttr = (source) => SOURCE_FAMILIES[source] ? ` data-family="${SOURCE
 /** Last discovery run: when, what each source brought, and the notes of the sources that are off or failed. */
 function renderRun() {
   const run = state.lastRun;
-  const when = run?.ranAt ? new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }).format(new Date(run.ranAt)).replace(/^./, (c) => c.toUpperCase()) : "";
+  const when = run?.ranAt ? new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(new Date(run.ranAt)).replace(/^./, (c) => c.toUpperCase()) : "";
   $("#run-title").textContent = run?.running ? "Recherche en cours" : "Dernière recherche";
   $("#run-sub").textContent = [when || (run?.running ? "" : "Aucune recherche pour l'instant"), ...(run?.notes || [])].filter(Boolean).join(" · ");
   const chips = Object.entries(run?.bySource || {});
@@ -1277,9 +1292,9 @@ function prospectCard({ row: r, offer, roles, why, searches, facts }) {
     <form class="stack" style="gap:16px">
       <div class="form-grid">
         <label class="lbl" for="fn-${id}">Nom<input type="text" id="fn-${id}" placeholder="Claire Morel" autocomplete="off"></label>
-        <label class="lbl" for="ro-${id}">Rôle<input type="text" id="ro-${id}" list="roles-${id}" value="${esc(roles[0] || "")}" placeholder="${esc(roles[0] || "")}"><datalist id="roles-${id}">${roles.map((x) => `<option value="${esc(x)}">`).join("")}</datalist></label>
+        <label class="lbl" for="ro-${id}">Rôle<input type="text" id="ro-${id}" placeholder="${esc(roles[0] || "")}"></label>
         <label class="lbl" for="em-${id}">Email (optionnel)<input type="text" id="em-${id}" inputmode="email" placeholder="claire@entreprise.fr"></label>
-        <label class="lbl" for="li-${id}">Profil LinkedIn (optionnel)<input type="text" id="li-${id}" inputmode="url" placeholder="https://www.linkedin.com/in/..."></label>
+        <label class="lbl" for="li-${id}">Profil LinkedIn (optionnel)<input type="text" id="li-${id}" inputmode="url" placeholder="https://www.linkedin.com/in/…"></label>
       </div>
       <div class="actions">
         <button class="btn primary" type="submit" data-act="add-contact" data-id="${id}">Ajouter et lancer la séquence</button>
@@ -1360,7 +1375,7 @@ function renderResults() {
       <div class="g-track"><i style="width:${Math.min(100, (v || 0) / scale * 100)}%;background:${bad ? "var(--destructive)" : "var(--primary)"}"></i><span class="limit" style="left:${lim / scale * 100}%"></span></div>
       <small>${note}</small></div>`;
   }).join("");
-  $("#agents").innerHTML = o.agents.map((a) => `<tr><td>${esc(a.agent)}</td><td class="num">${num(a.runs)}</td><td class="num" style="color:var(${a.failures ? "--destructive" : "--muted-foreground"});font-weight:${a.failures ? 500 : 400}">${a.failures}</td><td class="num">${num(a.inputTokens)}</td><td class="num">${num(a.outputTokens)}</td><td class="num">${(a.avgMs / 1000).toFixed(1).replace(".", ",")} s</td></tr>`).join("");
+  $("#agents").innerHTML = (o.agents || []).map((a) => `<tr><td>${esc(a.agent)}</td><td class="num">${num(a.runs)}</td><td class="num" style="color:var(${a.failures ? "--destructive" : "--muted-foreground"});font-weight:${a.failures ? 500 : 400}">${a.failures}</td><td class="num">${num(a.inputTokens)}</td><td class="num">${num(a.outputTokens)}</td><td class="num">${(a.avgMs / 1000).toFixed(1).replace(".", ",")} s</td></tr>`).join("");
 }
 
 /* ---- Méthode: static text, drawn once */
@@ -1369,7 +1384,7 @@ const ACTORS = { auto: ["Automatique", "secondary"], ai: ["Agent IA", ""], you: 
 const STEPS = [
   { title: "Trouver les entreprises", actors: ["auto"], when: "chaque nuit, entre 2 h et 5 h",
     paras: ["Bloom lit des sources publiques, sans IA, puis écarte les ESN, les cabinets de recrutement et les agences."],
-    bullets: ["Les classements App Store France de 21 catégories : jusqu'à 400 apps examinées par nuit. Seules restent celles d'un éditeur français dont les avis se dégradent ou qui n'est plus mise à jour.", "Les offres d'emploi de développeur mobile publiées en France (API France Travail).", "Selon la configuration : annonces légales (BODACC), appels d'offres publics français et européens, marchés publics d'application mobile qui arrivent à échéance dans l'année, organisations GitHub qui publient du code Kotlin Multiplatform.", "Votre propre liste, importée en CSV depuis la vue Prospects."],
+    bullets: ["Les classements App Store France de 21 catégories : jusqu'à 400 apps examinées par nuit. Seules restent celles d'un éditeur français dont les avis se dégradent ou qui n'est plus mise à jour.", "Les offres d'emploi de développeur mobile publiées en France (API France Travail), quand l'accès à cette API est configuré.", "Selon la configuration : annonces légales (BODACC), appels d'offres publics français et européens, marchés publics d'application mobile qui arrivent à échéance dans l'année, organisations GitHub qui publient du code Kotlin Multiplatform.", "Votre propre liste, importée en CSV depuis la vue Prospects."],
     after: ["Chaque entreprise reçoit son SIREN, son effectif, son app et son site quand ils existent, et un premier score."],
     ex: [{ eyebrow: "Vélomoov", text: "Trouvée dans le classement Voyage : éditeur français, note des avis récents en baisse." }] },
   { title: "Collecter les faits", actors: ["auto"],
@@ -1379,7 +1394,7 @@ const STEPS = [
     paras: ["Un agent lit le site, la page carrières et le blog tech, 6 pages au maximum. Une citation n'est gardée que si le code la retrouve mot pour mot dans la page. L'agent rédige ensuite un dossier : résumé, hypothèse sur le besoin, angle d'approche, offre adaptée, et les raisons de ne pas contacter s'il y en a."],
     ex: [{ eyebrow: "Dossier", rows: [["Hypothèse", "Une régression introduite en 5.2 dans le parcours de paiement, que les crash reports ne voient pas parce que l'app ne plante pas vraiment."], ["Offre", "Audit de 2 jours à prix fixe."]] }] },
   { title: "Classer", actors: ["auto"],
-    paras: ["Un score sur 100, calculé sans IA donc toujours explicable : adéquation avec votre cible (40 points), force et fraîcheur des signaux (50), lien chaud (10). Au-dessus de 65, on écrit cette semaine. Entre 45 et 65, on suit. En dessous, on surveille."],
+    paras: ["Un score sur 100, calculé sans IA donc toujours explicable : adéquation avec votre cible (40 points), force et fraîcheur des signaux (50), lien chaud (10). Une stack Flutter ou React Native citée dans une offre d'emploi retire 20 points d'adéquation. À partir de 65, on écrit cette semaine. De 45 à 64, on suit. En dessous, on surveille."],
     ex: [{ eyebrow: "Vélomoov", score: "78", note: "40 d'adéquation (app sur les deux stores, 100 à 199 personnes, secteur couvert), 38 d'intention (plaintes récentes, note en baisse)." }] },
   { title: "Trouver la bonne personne", actors: ["you", "auto"], you: true,
     paras: ["Pour chaque entreprise au-dessus du seuil, la vue Prospects indique qui viser selon l'offre (Head of Mobile pour un audit, Engineering Manager pour de la régie) et propose la recherche LinkedIn toute prête. Vous choisissez la personne, vous saisissez son nom et son rôle. Si Dropcontact est branché, Bloom cherche son email professionnel. La séquence est lancée."],
@@ -1393,7 +1408,7 @@ const STEPS = [
   { title: "Valider", actors: ["you"], you: true,
     paras: ["Rien ne part sans vous. Dans la vue À faire, vous approuvez, vous corrigez ou vous rejetez. Chaque fait garde le lien vers sa source. Quand vous corrigez, le garde-fou revérifie votre version, et vos corrections récentes servent d'exemples de ton pour les messages suivants."] },
   { title: "Envoyer et relancer", actors: ["auto", "youLi"],
-    paras: ["L'email part du mardi au jeudi, entre 8 h 30 et 11 h 30, à raison de 25 envois par jour et par boîte par défaut. La désinscription se fait en un clic. Les étapes LinkedIn restent manuelles : Bloom prépare la note, vous l'envoyez et vous cochez « Fait »."],
+    paras: ["L'email part du mardi au jeudi, entre 8 h 30 et 11 h 30, à raison de 25 envois par jour et par boîte par défaut. La désinscription se fait en un clic. Les étapes LinkedIn restent manuelles : Bloom prépare la note, vous l'envoyez et vous cochez « Fait ». Chaque délai se compte en jours ouvrés à partir de l'étape précédente."],
     ex: [{ eyebrow: "Séquence « App en difficulté »", rows: [["Jour 0", "Email avec le constat et l'offre d'audit"], ["+2 jours ouvrés", "Demande de connexion LinkedIn, sans pitch (vous)"], ["+4 jours ouvrés", "Relance courte : ce qu'un audit comparable a révélé"]] }] },
   { title: "Lire les réponses", actors: ["ai", "auto"],
     paras: ["Toute réponse d'une personne arrête la séquence. Un agent classe la réponse et la résume, puis le code applique la règle qui va avec."],
@@ -1404,7 +1419,7 @@ const STEPS = [
   { title: "Rendez-vous et signature", actors: ["you"], you: true,
     paras: ["Vous faites l'appel avec le dossier sous les yeux. L'objectif du premier appel est de vendre l'audit de 2 jours, pas le projet. L'audit livre un rapport et des correctifs priorisés, puis ouvre le forfait ou la régie. Le pipeline des affaires se lit dans la vue Résultats."] },
   { title: "Apprendre", actors: ["ai"], when: "le lundi, 7 h",
-    paras: ["Le lundi matin, un agent lit les chiffres de la semaine et rédige une note de 200 mots au maximum. Elle est enregistrée dans le journal et n'est pas encore affichée ici."] }
+    paras: ["Le lundi matin, un agent lit les chiffres de la semaine et rédige une note courte : sa consigne lui demande 200 mots au maximum. Elle est enregistrée dans le journal et n'est pas encore affichée ici."] }
 ];
 const RULES = ["Envoyer un message que vous n'avez pas validé.", "Laisser partir un premier email sans fait sourcé, ou un chiffre absent des faits cités dans le corps du message.", "Agir à votre place sur LinkedIn.", "Suivre l'ouverture des emails avec un pixel.", "Réécrire à une adresse inscrite sur la liste d'opposition."];
 

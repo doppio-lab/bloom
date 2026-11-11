@@ -8,6 +8,8 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import lab.doppio.bloom.core.model.Fact
+import lab.doppio.bloom.core.model.FactKind
 import java.time.Instant
 import java.time.LocalDate
 import java.time.OffsetDateTime
@@ -309,14 +311,54 @@ object Registry {
 
 /** Rules shared by every source of job postings (France Travail, hosted job boards). */
 object HiringRules {
-    private val mobileTitle = Regex("(?i)\\b(ios|android|mobile|swift|kotlin|flutter|react native)\\b")
+    // Native mobile stacks are enough on their own. Cross-platform stacks are not: Doppio builds native
+    // (and Kotlin Multiplatform) apps, so a Flutter or React Native opening is not a need it can serve.
+    private val nativeTitle = Regex("(?i)\\b(ios|android|swiftui|kotlin)\\b")
+    // "Swift" is also the bank messaging network and "mobile" also names telecom sales or heavy machinery:
+    // both count only next to a word that says the role builds software.
+    private val ambiguousTitle = Regex("(?i)\\b(swift|mobiles?)\\b")
+    private val developerWord = Regex("(?i)d[ée]velopp|developer|\\bdev\\b|engineer|ing[ée]nieur|architect|\\blead\\b|\\bsoftware\\b|\\bapps?\\b|\\bapplications?\\b")
+    // "Business developer" and "développeur commercial" sell, they do not build
+    private val salesRole = Regex("(?i)business develop|d[ée]veloppeu(r|se) (commercial|d'affaires)|sales|commercial")
     private val kmp = Regex("(?i)(kotlin multiplatform|compose multiplatform|\\bkmp\\b|\\bcmp\\b)")
     private val crossPlatform = Regex("(?i)(flutter|react native)")
 
-    fun isMobile(title: String): Boolean = mobileTitle.containsMatchIn(title)
+    fun isMobile(title: String): Boolean =
+        nativeTitle.containsMatchIn(title) || (ambiguousTitle.containsMatchIn(title) && developerWord.containsMatchIn(title) && !salesRole.containsMatchIn(title))
     fun mentionsKmp(text: String): Boolean = kmp.containsMatchIn(text)
     fun mentionsCrossPlatform(text: String): Boolean = crossPlatform.containsMatchIn(text)
 
+    // "Migration depuis Flutter", "replace React Native": the posting is about leaving the stack, which is good news
+    private val leavingCrossPlatform = Regex("(?i)(migr|replac|remplac|abandon|depuis|from|quitt|sortir de|away from)\\p{L}*[^.]{0,40}(flutter|react native)")
+
+    /** True when the text says the company builds on a cross-platform stack, not when it only quotes one to leave it. */
+    fun indicatesCrossPlatformStack(text: String): Boolean = mentionsCrossPlatform(text) && !leavingCrossPlatform.containsMatchIn(text)
+
+    /** Marker shared by the statement a source writes and the check [isCrossPlatformEvidence] makes on it. */
+    private const val CROSS_PLATFORM_MARK = "stack cross-platform"
+
+    fun crossPlatformStatement(title: String): String = "L'offre « $title » mentionne une $CROSS_PLATFORM_MARK (Flutter ou React Native)"
+
+    /** A sourced fact that states a cross-platform stack: the only evidence scoring accepts for it. */
+    fun isCrossPlatformEvidence(fact: Fact): Boolean = fact.kind == FactKind.JOB_POSTING && CROSS_PLATFORM_MARK in fact.statement
+
+    /** When a hiring signal is dated: the publication day when the source gives it (never in the future), else the read time. */
+    fun observedAt(publishedAt: Instant?, now: Instant): Instant = publishedAt?.takeIf { !it.isAfter(now) } ?: now
+
     /** A posting open for more than 45 days: the hire is stuck. Null below that. */
     fun stuckStrength(ageDays: Long?): Double? = ageDays?.takeIf { it > 45 }?.let { ((it - 45) / 60.0).coerceIn(0.3, 1.0) }
+}
+
+/** Reads app reviews: which low ratings describe a technical problem Doppio could audit. */
+object ReviewRules {
+    // Whole words only: a plain substring test matched "lent" in "excellent" and "bug" in "debug"
+    private val complaint = Regex(
+        "(?<![\\p{L}\\p{N}])(crash\\p{L}*|plante\\p{L}*|bugs?|bugu\\p{L}*|beug\\p{L}*|lent|lente|lents|lentes|lenteur|freeze|fige|figé|" +
+            "se ferme|ne fonctionne plus|ne marche plus|connexion|déconnect\\p{L}*|impossible|batterie|mise à jour|écran blanc|" +
+            "slow|doesn't work|login)(?![\\p{L}\\p{N}])",
+        RegexOption.IGNORE_CASE,
+    )
+
+    fun isTechnicalComplaint(rating: Int, title: String, content: String): Boolean =
+        rating <= 2 && complaint.containsMatchIn("$title $content")
 }

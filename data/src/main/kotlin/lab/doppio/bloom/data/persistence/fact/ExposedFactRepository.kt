@@ -10,6 +10,7 @@ import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
+import lab.doppio.bloom.core.model.isState
 import lab.doppio.bloom.core.port.FactRepository
 import lab.doppio.bloom.core.scoring.Scoring
 import lab.doppio.bloom.data.persistence.dbQuery
@@ -18,6 +19,9 @@ import lab.doppio.bloom.data.persistence.encode
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.greaterEq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
+import org.jetbrains.exposed.sql.deleteWhere
+import org.jetbrains.exposed.sql.update
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.insertIgnore
@@ -32,6 +36,9 @@ class ExposedFactRepository(private val clock: Clock = Clock.systemDefaultZone()
                 it[id] = f.id; it[accountId] = f.accountId; it[kind] = f.kind.name; it[statement] = f.statement
                 it[sourceUrl] = f.sourceUrl; it[excerpt] = f.excerpt; it[retrievedAt] = Instant.parse(f.retrievedAt)
             }
+            // The same fact read again is fresher: keeping the first reading date made a re-read fact age out of factsOf
+            val readAt = Instant.parse(f.retrievedAt)
+            FactsTable.update({ (FactsTable.id eq f.id) and (FactsTable.retrievedAt less readAt) }) { it[retrievedAt] = readAt }
         }
     }
 
@@ -45,6 +52,10 @@ class ExposedFactRepository(private val clock: Clock = Clock.systemDefaultZone()
     }
 
     override suspend fun saveSignals(signals: List<Signal>) = dbQuery {
+        // A state signal read again replaces the earlier readings instead of piling up one row per night
+        signals.filter { it.type.isState }.map { it.accountId to it.type }.distinct().forEach { (account, type) ->
+            SignalsTable.deleteWhere { (accountId eq account) and (SignalsTable.type eq type.name) }
+        }
         signals.forEach { s ->
             SignalsTable.insert {
                 it[accountId] = s.accountId; it[type] = s.type.name; it[strength] = s.strength

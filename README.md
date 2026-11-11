@@ -6,14 +6,14 @@ Kotlin, Koog 1.3, Ktor 3, PostgreSQL. LLM au choix : local avec Ollama (gratuit)
 
 Principe : **on ne contacte que sur preuve**. Chaque message part d'un signal observable (avis App Store qui
 parlent de crash, offre d'emploi iOS ouverte depuis 74 jours, équipe qui recrute sur KMP), le premier email
-s'appuie sur un fait sourcé, chaque chiffre du corps est relié à un fait cité, et un garde-fou déterministe
-bloque tout chiffre inventé, tout jargon et toute référence client hors sujet. Les LLM cherchent et rédigent ; le code score, vérifie et décide.
+s'appuie sur un fait sourcé, et un garde-fou déterministe bloque un chiffre du corps (en chiffres ou en un
+seul mot) qui n'apparaît dans aucun fait cité, une liste fermée d'expressions de jargon et une référence client hors sujet. Les LLM cherchent et rédigent ; le code score, vérifie et décide.
 
 ## Ce que fait l'outil
 
 | Étape | Qui | Comment |
 |---|---|---|
-| Découverte | code | chaque nuit, neuf sources publiques (voir « Sources de découverte ») ; ESN, cabinets et éditeurs étrangers écartés |
+| Découverte | code | chaque nuit, jusqu'à dix sources publiques selon la configuration (voir « Sources de découverte ») ; ESN, cabinets et éditeurs étrangers écartés |
 | Bonne personne | code + humain + Dropcontact | carnet de contacts : dirigeants publiés à l'annuaire des entreprises, recherche LinkedIn préparée selon l'offre, email vérifié trouvé à partir du nom |
 | Collecte de faits | code | App Store (Lookup + avis RSS), France Travail (offres), annuaire des entreprises |
 | Exploration du site | agent Koog outillé | lit 6 pages max, ne garde que des citations vérifiées mot pour mot |
@@ -257,10 +257,11 @@ Garanties :
 ### Commandes utiles
 
 ```bash
-./gradlew build                    # compile tout et lance les tests (Docker requis pour ceux de data)
+./gradlew build                    # compile tout et lance les tests (Docker requis pour ceux de data ; OrbStack détecté tout seul)
 ./gradlew :core:test               # tests du domaine seulement
 ./gradlew :data:test               # tests sur un vrai Postgres (Testcontainers)
-./gradlew :app:test                # routes (testApplication) et graphe Koin, avec des faux en mémoire, sans base
+./gradlew :app:test                # routes (testApplication), graphe Koin et règles du projet (tokens Thermos, claims faux), sans base
+scripts/ui-demo.sh                 # dashboard avec données d'exemple sur http://localhost:8099/?demo=1, sans serveur ni mot de passe
 docker compose logs -f app         # logs du serveur (option A)
 docker compose exec db psql -U bloom bloom   # console SQL
 docker compose down                # arrêter, en gardant les données
@@ -439,9 +440,9 @@ Vélomoov;velomoov.fr;123456789;;MOBILITY_TRANSPORT;120;Recommandé par Julie;Cl
 
 ## Garde-fous de conformité intégrés
 
-- Pied de message : identité de l'expéditeur, source des données (RGPD art. 14), désinscription en un clic.
+- Pied de message : texte légal configurable (`LEGAL_FOOTER_FR`, `LEGAL_FOOTER_EN`), le même pour tous les contacts, et désinscription en un clic. La source des données de chaque contact n'y figure pas.
 - `List-Unsubscribe` + `List-Unsubscribe-Post` (RFC 8058), lien signé HMAC, sans compte ni motif.
-- Liste d'opposition par email et par domaine, jamais purgée ; vérifiée avant chaque brouillon et chaque envoi.
+- Liste d'opposition par email, jamais purgée ; vérifiée avant chaque brouillon et chaque envoi. Un domaine en opposition serait respecté, mais rien n'en inscrit aujourd'hui.
 - Purge mensuelle des contacts sans échange depuis 3 ans (recommandation CNIL).
 - Pas de pixel de suivi d'ouverture, pas de lien dans le premier email, texte brut.
 - Aucune action automatisée sur LinkedIn (CGU, section 8.2).
