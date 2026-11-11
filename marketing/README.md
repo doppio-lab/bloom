@@ -5,7 +5,7 @@ Deliverables produced with the Doppio marketing skills. Each skill updates its o
 | Deliverable | File | Skill | Status | Last update | Next step |
 |---|---|---|---|---|---|
 | Positioning | [positioning.md](positioning.md) | app-positioning | to validate | 2026-10-15 | Validate the document, then re-run `claims-proof-audit`: the audit of 2026-10-10 predates eight commits |
-| Claims proof audit | [claims-audit.md](claims-audit.md) | claims-proof-audit | to validate | 2026-10-15 | Run prompt 01 (interface copy), then re-run the audit |
+| Claims proof audit | [claims-audit.md](claims-audit.md) | claims-proof-audit | to validate | 2026-11-10 | Commit the working tree and re-read the lines marked (uncommitted); owner decision on the Play Store source (C28); fix the "Classer" copy (C24) |
 | Claude Code prompts | [prompts/](prompts/) | claims-proof-audit | to validate | 2026-10-15 | 01 interface copy, 02 proof guard, 03 control and respect, 04 configuration, 05 screenshots |
 | Store and social screenshots | [screenshots/](screenshots/) | app-marketing-screenshots | | | |
 | Promo videos | [videos/](videos/) | app-promo-video | | | |
