@@ -6,3 +6,4 @@ build/
 .kotlin/
 restic.env
 backups/
+.superpowers/
