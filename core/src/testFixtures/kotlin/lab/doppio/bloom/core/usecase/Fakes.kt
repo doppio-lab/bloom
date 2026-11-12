@@ -206,10 +206,12 @@ class FakeJobRunRepository : JobRunRepository {
 }
 
 class FakeFactRepository(var dossier: Dossier? = null) : FactRepository {
+    var facts: List<Fact> = emptyList()
+    var signals: List<Signal> = emptyList()
     override suspend fun saveFacts(facts: List<Fact>) {}
-    override suspend fun factsOf(accountId: AccountId, maxAgeDays: Long): List<Fact> = emptyList()
+    override suspend fun factsOf(accountId: AccountId, maxAgeDays: Long): List<Fact> = facts.filter { it.accountId == accountId }
     override suspend fun saveSignals(signals: List<Signal>) {}
-    override suspend fun signalsOf(accountId: AccountId, maxAgeDays: Long): List<Signal> = emptyList()
+    override suspend fun signalsOf(accountId: AccountId, maxAgeDays: Long): List<Signal> = signals.filter { it.accountId == accountId }
     override suspend fun dominantSignal(accountId: AccountId): SignalType? = null
     override suspend fun saveDossier(d: Dossier) { dossier = d }
     override suspend fun dossier(accountId: AccountId): Dossier? = dossier
@@ -220,7 +222,8 @@ class FakeAccountRepository(var rows: List<AccountRow> = emptyList()) : AccountR
     override suspend fun mergeDiscovered(a: Account): Pair<AccountId, Boolean> = TODO()
     override suspend fun account(id: AccountId): Account? = rows.firstOrNull { it.account.id == id }?.account
     override suspend fun accountsByScore(limit: Int): List<AccountRow> = rows
-    override suspend fun accountsToComplete(minScore: Int, limit: Int): List<AccountRow> = emptyList()
+    var toComplete: List<AccountRow> = emptyList()
+    override suspend fun accountsToComplete(minScore: Int, limit: Int): List<AccountRow> = toComplete
     override suspend fun saveScore(s: ScoreBreakdown) {}
     override suspend fun excludeAccount(id: AccountId, reason: String) {}
     override suspend fun restoreAccount(id: AccountId) {}

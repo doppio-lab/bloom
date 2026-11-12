@@ -65,7 +65,13 @@ class AppStoreSourceTest {
         assertTrue(statements.any { it.startsWith("Mon App : moyenne des 10 avis des 90 derniers jours 2,6, contre 4,6") })
         assertTrue(statements.any { it.contains("6 avis sur 10") && it.contains("(version la plus citée : 3.2)") })
         assertTrue(result.facts.all { it.accountId == 7L && it.retrievedAt == now.toString() })
-        assertEquals(FactKind.APP_REVIEW, result.facts.last().kind)
+        val issue = result.facts.single { it.kind == FactKind.APP_REVIEW_ISSUE }
+        assertEquals("Mon App : 6 avis sur 10 des 90 derniers jours parlent de plantages", issue.statement)
+        // The six complaints are the same review: one quoted fact, dated in Paris time, sourced to the store page
+        val quote = result.facts.single { it.kind == FactKind.APP_REVIEW_QUOTE }
+        assertEquals("Avis App Store 1/5 du 20/10/2026, version 3.2 : « Avis 1 »", quote.statement)
+        assertEquals("l'app plante au démarrage", quote.excerpt)
+        assertEquals("https://apps.apple.com/fr/app/id123?see-all=reviews", quote.sourceUrl)
         assertEquals(
             setOf(SignalType.RELEASE_STALL, SignalType.RATING_DROP, SignalType.QUALITY_COMPLAINTS),
             result.signals.map { it.type }.toSet(),

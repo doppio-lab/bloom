@@ -4,6 +4,7 @@ import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.model.Offer
+import lab.doppio.bloom.core.model.appStoreUrl
 import lab.doppio.bloom.core.model.ReplyIntent
 
 /** One line of the blacklist: an excluded account (accountId set) or a name blocked before any account exists. */
@@ -19,6 +20,8 @@ data class OfficerRow(val fullName: String, val role: String, val sourceUrl: Str
 data class AccountRow(
     val account: Account, val score: Int, val fit: Int, val intent: Int, val warm: Int,
     val recommendedOffer: Offer?, val reasons: List<String>, val refreshedAt: String?,
+    /** App Store page of the account's app, when it has one. */
+    val appStoreUrl: String? = account.appStoreUrl,
 )
 
 @Serializable

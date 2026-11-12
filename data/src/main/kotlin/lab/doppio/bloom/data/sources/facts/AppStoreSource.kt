@@ -15,6 +15,7 @@ import lab.doppio.bloom.core.discovery.ReleaseRules
 import lab.doppio.bloom.core.discovery.ReviewRules
 import lab.doppio.bloom.core.model.AccountId
 import lab.doppio.bloom.core.model.AppMeta
+import lab.doppio.bloom.core.model.AppReview
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Signal
@@ -30,6 +31,8 @@ import java.time.Clock
 import java.time.Duration
 import java.time.Instant
 import java.time.OffsetDateTime
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 /** App Store : métadonnées (Lookup API) et avis récents (flux RSS public). */
 class AppStoreSource(
@@ -38,8 +41,6 @@ class AppStoreSource(
     clock: Clock = Clock.systemDefaultZone(),
 ) : AppStoreFacts {
     private val limiter = RateLimiter(Duration.ofSeconds(3), clock)
-
-    data class Review(val rating: Int, val title: String, val content: String, val version: String?, val updated: Instant?)
 
     override suspend fun analyze(accountId: AccountId, appId: Long, now: Instant): SourceResult {
         val facts = mutableListOf<Fact>()
@@ -101,9 +102,45 @@ class AppStoreSource(
                 excerpt = complaints.take(3).joinToString(" | ") { "${it.rating}/5 « ${it.title} » ${it.content.take(140)}" },
             )
             facts += f
+            facts += issueFacts(accountId, name, complaints, recent.size, rssUrl, now)
             if (share >= 0.15) signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, (share * 2).coerceIn(0.2, 1.0), now.toString(), listOf(f.id))
         }
+        facts += quoteFacts(accountId, appId, recent, now)
         return SourceResult(facts, signals, meta)
+    }
+
+    /** One fact per theme the complaints mention (crashes, login...), most cited first. */
+    private fun issueFacts(accountId: AccountId, name: String, complaints: List<AppReview>, recentCount: Int, sourceUrl: String, now: Instant): List<Fact> =
+        ReviewRules.Theme.entries
+            .map { theme -> theme to complaints.count { theme in ReviewRules.themes(it.title, it.content) } }
+            .filter { (_, count) -> count > 0 }
+            .sortedByDescending { (_, count) -> count }
+            .take(MAX_ISSUES)
+            .map { (theme, count) ->
+                fact(accountId, FactKind.APP_REVIEW_ISSUE, "$name : $count avis sur $recentCount des 90 derniers jours parlent de ${theme.label}", sourceUrl, at = now)
+            }
+
+    /**
+     * The low-rated reviews worth quoting, one fact each, so the person contacted hears their own users' words.
+     * The source is the reviews page of the store, where anyone can read the review.
+     */
+    private fun quoteFacts(accountId: AccountId, appId: Long, recent: List<AppReview>, now: Instant): List<Fact> =
+        ReviewRules.mostTelling(recent).map { r ->
+            val on = r.updated?.let { " du " + DAY.format(it.atZone(PARIS)) }.orEmpty()
+            val version = r.version?.let { ", version $it" }.orEmpty()
+            fact(
+                accountId, FactKind.APP_REVIEW_QUOTE,
+                "Avis App Store ${r.rating}/5$on$version : « ${r.title.trim()} »",
+                "https://apps.apple.com/$country/app/id$appId?see-all=reviews",
+                at = now,
+                excerpt = r.content.trim(),
+            )
+        }.distinctBy { it.id }
+
+    private companion object {
+        const val MAX_ISSUES = 4
+        val PARIS: ZoneId = ZoneId.of("Europe/Paris")
+        val DAY: DateTimeFormatter = DateTimeFormatter.ofPattern("dd/MM/yyyy")
     }
 
     data class ChartApp(val appId: Long, val name: String, val artist: String, val genreId: Int?)
@@ -155,7 +192,7 @@ class AppStoreSource(
     }
 
     /** Le flux RSS plafonne à 10 pages de 50 avis par storefront ; 2 pages suffisent pour 90 jours. */
-    suspend fun recentReviews(appId: Long, pages: Int = 2): List<Review> = buildList {
+    suspend fun recentReviews(appId: Long, pages: Int = 2): List<AppReview> = buildList {
         for (page in 1..pages) {
             val url = "https://itunes.apple.com/$country/rss/customerreviews/page=$page/id=$appId/sortBy=mostRecent/json"
             val feed = runCatching { limiter.run { sourcesJson.parseToJsonElement(http.get(url).bodyAsText()).jsonObject } }.getOrNull()?.get("feed")?.jsonObject ?: break
@@ -168,7 +205,7 @@ class AppStoreSource(
             entries.forEach { e ->
                 val rating = e.label("im:rating")?.toIntOrNull() ?: return@forEach
                 add(
-                    Review(
+                    AppReview(
                         rating = rating,
                         title = e.label("title").orEmpty(),
                         content = e.label("content").orEmpty(),

@@ -2,6 +2,7 @@ package lab.doppio.bloom.core
 
 import lab.doppio.bloom.core.discovery.HiringRules
 import lab.doppio.bloom.core.discovery.ReviewRules
+import lab.doppio.bloom.core.model.AppReview
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.SignalType
@@ -54,6 +55,35 @@ class DataQualityRulesTest {
         assertFalse(ReviewRules.isTechnicalComplaint(1, "Mode debug inutile", ""))
         // A high rating is not a complaint even when the word appears
         assertFalse(ReviewRules.isTechnicalComplaint(5, "Plus aucun bug", "crash réglé"))
+    }
+
+    @Test
+    fun `a review is filed under every theme it names`() {
+        assertEquals(setOf(ReviewRules.Theme.CRASH), ReviewRules.themes("Plante tout le temps", ""))
+        assertEquals(
+            setOf(ReviewRules.Theme.CRASH, ReviewRules.Theme.UPDATE),
+            ReviewRules.themes("Déçu", "Depuis la mise à jour, écran blanc au lancement"),
+        )
+        assertEquals(setOf(ReviewRules.Theme.LOGIN, ReviewRules.Theme.BROKEN), ReviewRules.themes("", "Connexion impossible depuis hier"))
+        assertEquals(emptySet(), ReviewRules.themes("Prix excellent", "Mode debug inutile"))
+        // Read on a real listing: none of these was caught by the first word list
+        assertEquals(setOf(ReviewRules.Theme.BROKEN, ReviewRules.Theme.SYNC), ReviewRules.themes("Synchronisation dysfonctionnelle", "La synchronisation avec Apple Santé ne fonctionne pas"))
+        assertEquals(setOf(ReviewRules.Theme.LOGIN), ReviewRules.themes("Connexion problems", "I keep having problems to connect to my account"))
+        assertEquals(setOf(ReviewRules.Theme.SLOW), ReviewRules.themes("QR code", "Ça charge non stop, le sablier tourne à l'infini"))
+    }
+
+    @Test
+    fun `the reviews worth quoting are the low ratings with a text, technical ones first, then the most recent`() {
+        fun review(rating: Int, title: String, content: String, day: Int) = AppReview(rating, title, content, "3.2", Instant.parse("2026-11-%02dT10:00:00Z".format(day)))
+        val reviews = listOf(
+            review(1, "Trop cher", "L'abonnement a doublé", 9),
+            review(5, "Top", "Plus aucun bug", 8),
+            review(2, "Scan", "Impossible de scanner le QR code", 3),
+            review(1, "Nul", "", 7),
+            review(1, "Compte", "Je dois me reconnecter à chaque fois", 6),
+        )
+        assertEquals(listOf("Compte", "Scan", "Trop cher"), ReviewRules.mostTelling(reviews).map { it.title })
+        assertEquals(listOf("Compte"), ReviewRules.mostTelling(reviews, limit = 1).map { it.title })
     }
 
     private fun fact(id: String, statement: String, at: String, url: String = "https://x/offre/1") =

@@ -54,6 +54,9 @@ data class Account(
     val source: String = "manual",
 )
 
+/** Page of the account's iOS app on the French App Store, the storefront Bloom reads. Null without a known app. */
+val Account.appStoreUrl: String? get() = iosAppId?.let { "https://apps.apple.com/fr/app/id$it" }
+
 @Serializable
 enum class Persona { CTO, HEAD_OF_MOBILE, PRODUCT_LEAD, CEO_FOUNDER, ENGINEERING_MANAGER, OTHER }
 
@@ -117,7 +120,14 @@ data class Signal(
 )
 
 @Serializable
-enum class FactKind { APP_METADATA, APP_REVIEW, JOB_POSTING, COMPANY_REGISTRY, WEB_PAGE, MANUAL, LEGAL_NOTICE, PUBLIC_TENDER, PUBLIC_CONTRACT, PRESS, CODE_REPOSITORY }
+enum class FactKind {
+    APP_METADATA, APP_REVIEW,
+    /** One theme of the recent low-rated reviews (crashes, login...), with review quotes as excerpt. */
+    APP_REVIEW_ISSUE,
+    /** One recent low-rated review, quoted: rating, date and title in the statement, the text as excerpt. */
+    APP_REVIEW_QUOTE,
+    JOB_POSTING, COMPANY_REGISTRY, WEB_PAGE, MANUAL, LEGAL_NOTICE, PUBLIC_TENDER, PUBLIC_CONTRACT, PRESS, CODE_REPOSITORY,
+}
 
 /**
  * Un fait vérifiable, toujours accompagné de sa source.

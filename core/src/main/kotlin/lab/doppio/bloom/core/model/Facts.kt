@@ -1,5 +1,6 @@
 package lab.doppio.bloom.core.model
 
+import lab.doppio.bloom.core.discovery.ReviewRules
 import java.security.MessageDigest
 import java.time.Instant
 
@@ -39,3 +40,24 @@ val SignalType.isState: Boolean
         SignalType.RATING_DROP, SignalType.QUALITY_COMPLAINTS, SignalType.RELEASE_STALL,
         SignalType.HIRING_MOBILE, SignalType.HIRING_KMP, SignalType.HIRING_STUCK,
     )
+
+/** One App Store review as the public feed gives it. */
+data class AppReview(val rating: Int, val title: String, val content: String, val version: String?, val updated: Instant?)
+
+/**
+ * What users report in the latest App Store read: the themes of the complaints, most cited first, then the reviews
+ * quoted in the order [lab.doppio.bloom.core.discovery.ReviewRules.mostTelling] picked them (a technical problem
+ * first, then the most recent). What an older read found and the latest one did not is left out.
+ */
+fun List<Fact>.currentReviewIssues(): List<Fact> {
+    val all = filter { it.kind == FactKind.APP_REVIEW_ISSUE || it.kind == FactKind.APP_REVIEW_QUOTE }
+    val latest = all.maxOfOrNull { Instant.parse(it.retrievedAt) } ?: return emptyList()
+    val (themes, quotes) = all.filter { Instant.parse(it.retrievedAt) == latest }.partition { it.kind == FactKind.APP_REVIEW_ISSUE }
+    val count = Regex("(\\d+) avis sur")
+    val date = Regex("du (\\d{2})/(\\d{2})/(\\d{4})")
+    return themes.sortedByDescending { count.find(it.statement)?.groupValues?.get(1)?.toIntOrNull() ?: 0 } +
+        quotes.sortedWith(
+            compareByDescending<Fact> { ReviewRules.themes(it.statement, it.excerpt.orEmpty()).isNotEmpty() }
+                .thenByDescending { f -> date.find(f.statement)?.destructured?.let { (d, m, y) -> "$y$m$d" }.orEmpty() },
+        )
+}

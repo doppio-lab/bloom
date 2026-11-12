@@ -6,6 +6,8 @@ import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.discovery.Targeting
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.Fact
+import lab.doppio.bloom.core.model.FactKind
+import lab.doppio.bloom.core.model.currentReviewIssues
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.AccountRow
@@ -20,11 +22,14 @@ import lab.doppio.bloom.core.scoring.Scoring
 @Serializable data class ToComplete(
     val row: AccountRow, val offer: Offer, val roles: List<String>, val why: String,
     val searches: List<PeopleSearch>, val facts: List<Fact>,
+    /** What the recent low-rated App Store reviews say: one fact per theme, then the reviews worth quoting. */
+    val issues: List<Fact> = emptyList(),
 )
 @Serializable data class BookContact(val contact: Contact, /** "sequence", "email" (email known, no sequence) or "no-email". */ val status: String)
 @Serializable data class BookEntry(
     val accountId: Long, val name: String, val score: Int, val source: String, val offer: Offer, val why: String,
     val contacts: List<BookContact>, val officers: List<OfficerRow>, val searches: List<PeopleSearch>,
+    val appStoreUrl: String? = null,
 )
 
 /** Accounts above the display threshold, or that already have a contact, with the people known for each. */
@@ -55,6 +60,7 @@ class ContactBook(
                 contacts = known.map { c -> BookContact(c, if (c.id in enrolled) "sequence" else if (c.email != null) "email" else "no-email") },
                 officers = officers[id].orEmpty().filter { CompanyNames.normalize(it.fullName) !in knownNames },
                 searches = persona.roles.map { PeopleSearch(it, Targeting.linkedinSearchUrl(it, row.account.name)) },
+                appStoreUrl = row.appStoreUrl,
             )
         }
         return entries
@@ -68,6 +74,7 @@ class ListToComplete(
 ) {
     suspend operator fun invoke(): List<ToComplete> =
         accountRepo.accountsToComplete().filter { factRepo.dossier(it.account.id)?.noFit != true }.map { row ->
+            val all = factRepo.factsOf(row.account.id)
             val offer = factRepo.dossier(row.account.id)?.offer ?: row.recommendedOffer ?: Offer.DISCOVERY
             val persona = Targeting.personaFor(offer)
             ToComplete(
@@ -81,10 +88,11 @@ class ListToComplete(
                     .sortedByDescending { Scoring.rules.getValue(it.type).weight * it.strength }
                     .flatMap { it.factIds }.distinct().withIndex().associate { (rank, id) -> id to rank }
                     .let { rank ->
-                        val all = factRepo.factsOf(row.account.id)
-                        val current = all.latestPerTopic().map { it.id }.toSet()
+                        // Review themes have their own block (issues): they would only repeat the complaints fact here
+                        val current = all.latestPerTopic().filter { it.kind != FactKind.APP_REVIEW_ISSUE && it.kind != FactKind.APP_REVIEW_QUOTE }.map { it.id }.toSet()
                         all.filter { it.id in current }.sortedBy { rank[it.id] ?: Int.MAX_VALUE }.take(3)
                     },
+                issues = all.currentReviewIssues(),
             )
         }
 }

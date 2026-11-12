@@ -11,22 +11,27 @@
 try { const t = localStorage.getItem("bloom-theme"); document.documentElement.classList.toggle("dark", t ? t === "dark" : matchMedia("(prefers-color-scheme: dark)").matches); } catch (_) {}
 </script>
 <style>
-/* Thermos design system: neutral OKLCH palette, light on :root and dark on .dark. Values come from the
-   thermos/tokens files of the Claude Design project. Colour only comes through charts and semantic states. */
+/* Thermos design system, with the 60-30-10 layer of the Bloom design (helmet of Bloom.dc.html): content (60) white
+   or black with the theme, sidebar (30) always black, accent (10) --accent-brand. Light on :root, dark on .dark.
+   Each token holds the value the design resolves to, so the accent tokens are not repeated in .dark. */
 :root {
-  --background: oklch(1 0 0); --foreground: oklch(0.145 0 0);
-  --card: oklch(1 0 0); --popover: oklch(1 0 0); --popover-foreground: oklch(0.145 0 0);
-  --primary: oklch(0.205 0 0); --primary-foreground: oklch(0.985 0 0);
+  --accent-brand: #1b36fe;
+  --background: #ffffff; --foreground: oklch(0.145 0 0);
+  --card: #ffffff; --popover: #ffffff; --popover-foreground: oklch(0.145 0 0);
+  --primary: var(--accent-brand); --primary-foreground: #ffffff;
   --secondary: oklch(0.97 0 0); --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0); --muted-foreground: oklch(0.556 0 0);
   --accent: oklch(0.97 0 0); --accent-foreground: oklch(0.205 0 0);
   --destructive: oklch(0.577 0.245 27.325); --success: oklch(0.627 0.17 149.2);
-  --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --ring: oklch(0.708 0 0);
-  --chart-1: oklch(0.646 0.222 41.116); --chart-2: oklch(0.6 0.118 184.704); --chart-3: oklch(0.398 0.07 227.392);
+  --border: oklch(0.922 0 0); --input: oklch(0.922 0 0); --ring: var(--accent-brand);
+  --chart-1: var(--accent-brand); --chart-2: oklch(0.708 0 0); --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429); --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.985 0 0); --sidebar-foreground: oklch(0.145 0 0);
-  --sidebar-accent: oklch(0.97 0 0); --sidebar-accent-foreground: oklch(0.205 0 0);
-  --stat-card-gradient: linear-gradient(to top, color-mix(in oklch, var(--primary) 5%, var(--card)), var(--card));
+  --sidebar: #000000; --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.235 0 0); --sidebar-accent-foreground: #ffffff;
+  --sidebar-border: oklch(1 0 0 / 12%);
+  /* Dark values the design forces inside the sidebar, in both themes */
+  --sidebar-surface: oklch(0.17 0 0); --sidebar-muted-foreground: oklch(0.708 0 0); --sidebar-input: oklch(1 0 0 / 16%);
+  --stat-card-gradient: linear-gradient(to top, color-mix(in oklch, var(--accent-brand) 4%, var(--card)), var(--card));
   --font-sans: "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
   --radius: 0.625rem; --radius-sm: calc(var(--radius) - 4px); --radius-md: calc(var(--radius) - 2px);
@@ -36,24 +41,20 @@ try { const t = localStorage.getItem("bloom-theme"); document.documentElement.cl
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
   --ring-focus: 0 0 0 3px color-mix(in oklch, var(--ring) 50%, transparent);
   --sidebar-width: 18rem; --header-height: 3rem;
-  --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fafafa' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23737373' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }
 .dark {
-  --background: oklch(0.145 0 0); --foreground: oklch(0.985 0 0);
-  --card: oklch(0.205 0 0); --popover: oklch(0.205 0 0); --popover-foreground: oklch(0.985 0 0);
-  --primary: oklch(0.922 0 0); --primary-foreground: oklch(0.205 0 0);
-  --secondary: oklch(0.269 0 0); --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.269 0 0); --muted-foreground: oklch(0.708 0 0);
-  --accent: oklch(0.269 0 0); --accent-foreground: oklch(0.985 0 0);
+  --background: #000000; --foreground: oklch(0.985 0 0);
+  --card: oklch(0.17 0 0); --popover: oklch(0.17 0 0); --popover-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.22 0 0); --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.22 0 0); --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.22 0 0); --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216); --success: oklch(0.696 0.17 162.48);
-  --border: oklch(1 0 0 / 10%); --input: oklch(1 0 0 / 15%); --ring: oklch(0.556 0 0);
-  --chart-1: oklch(0.488 0.243 264.376); --chart-2: oklch(0.696 0.17 162.48); --chart-3: oklch(0.769 0.188 70.08);
+  --border: oklch(1 0 0 / 12%); --input: oklch(1 0 0 / 16%);
+  --chart-2: oklch(0.556 0 0); --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9); --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.205 0 0); --sidebar-foreground: oklch(0.985 0 0);
-  --sidebar-accent: oklch(0.269 0 0); --sidebar-accent-foreground: oklch(0.985 0 0);
-  --stat-card-gradient: var(--card);
-  --check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23171717' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");
+  --stat-card-gradient: linear-gradient(to top, color-mix(in oklch, var(--accent-brand) 8%, var(--card)), var(--card));
   color-scheme: dark;
 }
 *, *::before, *::after { box-sizing: border-box; border-color: var(--border); }
@@ -91,7 +92,11 @@ svg.i { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor;
 .side-user > span:last-child { flex: 1; min-width: 0; display: grid; line-height: 16px; }
 .side-user b { font-weight: 500; }
 .side-user small { font-size: 12px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The sidebar stays black in both themes: the dark tokens are forced inside it */
+.side { --background: var(--sidebar-surface); --foreground: var(--sidebar-foreground); --muted: var(--sidebar-accent); --muted-foreground: var(--sidebar-muted-foreground); --accent: var(--sidebar-accent); --accent-foreground: var(--sidebar-accent-foreground); --border: var(--sidebar-border); --input: var(--sidebar-input); }
 .main { flex: 1; min-width: 0; min-height: calc(100vh - 16px); margin: 8px 8px 8px 0; display: flex; flex-direction: column; border-radius: var(--radius-xl); background: var(--background); box-shadow: var(--shadow-sm); }
+/* In dark the black content stands out from the black sidebar with a hairline */
+.dark .main { outline: 1px solid var(--border); outline-offset: -1px; }
 .no-side .side { display: none; }
 .no-side .main { margin: 8px; }
 .scrim { display: none; }
@@ -304,6 +309,8 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
 .confirm span { flex: 1 1 320px; }
 .followup { display: flex; align-items: center; gap: 6px; color: var(--muted-foreground); }
 .followup svg { width: 14px; height: 14px; }
+.issue { display: grid; gap: 2px; }
+.quote { font-size: 13px; line-height: 18px; color: var(--muted-foreground); overflow-wrap: anywhere; }
 
 /* Prospects */
 .runchips { display: flex; gap: 8px; flex-wrap: wrap; }
@@ -654,11 +661,11 @@ const DEMO = {
       { label: "Levée de fonds", sent: 12, positive: 0 }, { label: "Recrutement KMP", sent: 9, positive: 1 }, { label: "Lien chaud", sent: 4, positive: 2 }
     ],
     accounts: [
-      { account: { id: 1, name: "Vélomoov", domain: "velomoov.example", source: "classement App Store", sector: "MOBILITY_TRANSPORT" }, score: 78, fit: 40, intent: 38, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+20 plaintes qualité", "+14 note en baisse", "+12 app mobile en production"], refreshedAt: "2026-10-10" },
+      { account: { id: 1, name: "Vélomoov", domain: "velomoov.example", source: "classement App Store", sector: "MOBILITY_TRANSPORT" }, appStoreUrl: "https://apps.apple.com/fr/", score: 78, fit: 40, intent: 38, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+20 plaintes qualité", "+14 note en baisse", "+12 app mobile en production"], refreshedAt: "2026-10-10" },
       { account: { id: 11, name: "Banque Ardoise", domain: "ardoise.example", source: "offres d'emploi", sector: "BANK_INSURANCE" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile", "+8 secteur avec référence"], refreshedAt: "2026-10-10" },
       { account: { id: 3, name: "Studio Polka", domain: "polka.example", source: "GitHub", sector: "MUSIC_MEDIA" }, score: 66, fit: 30, intent: 26, warm: 10, recommendedOffer: "TRAINING_KMP", reasons: ["+18 offre qui cite Kotlin Multiplatform", "+10 lien chaud : ex-collègue Music Work"], refreshedAt: "2026-10-09" },
-      { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "BODACC", sector: "LOGISTICS" }, score: 58, fit: 38, intent: 20, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 levée de fonds", "+5 nouvelle app annoncée"], refreshedAt: "2026-10-08" },
-      { account: { id: 14, name: "Pharmacie Lumen", domain: "lumen.example", source: "classement App Store", sector: "HEALTH" }, score: 47, fit: 24, intent: 23, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+10 aucune version depuis 211 jours", "+13 note en baisse"], refreshedAt: "2026-10-07" },
+      { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "BODACC", sector: "LOGISTICS" }, appStoreUrl: "https://apps.apple.com/fr/", score: 58, fit: 38, intent: 20, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 levée de fonds", "+5 nouvelle app annoncée"], refreshedAt: "2026-10-08" },
+      { account: { id: 14, name: "Pharmacie Lumen", domain: "lumen.example", source: "classement App Store", sector: "HEALTH" }, appStoreUrl: "https://apps.apple.com/fr/", score: 47, fit: 24, intent: 23, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+10 aucune version depuis 211 jours", "+13 note en baisse"], refreshedAt: "2026-10-07" },
       { account: { id: 15, name: "Nomad Assurances", domain: "nomad.example", source: "import CSV", sector: "BANK_INSURANCE" }, score: 39, fit: 33, intent: 6, warm: 0, recommendedOffer: "TRAINING_ANTHROPIC", reasons: ["+6 équipe qui recrute sur les LLM"], refreshedAt: "2026-10-05" }
     ],
     agents: [
@@ -695,7 +702,7 @@ const DEMO = {
     { id: 902, accountId: 902, name: "Holding Marbrier", reason: "Écarté depuis Prospects", since: "2026-09-28T09:00:00Z" }
   ],
   book: [
-    { accountId: 1, name: "Vélomoov", score: 78, source: "classement App Store", offer: "DISCOVERY", why: "celui qui subit le problème technique de l'app",
+    { accountId: 1, name: "Vélomoov", score: 78, source: "classement App Store", offer: "DISCOVERY", why: "celui qui subit le problème technique de l'app", appStoreUrl: "https://apps.apple.com/fr/",
       contacts: [{ contact: { fullName: "Claire Morel", role: "Head of Mobile", email: "claire.morel@velomoov.example", dataSource: "saisie manuelle" }, status: "sequence" }],
       officers: [{ fullName: "Antoine Leroy", role: "Président de SAS", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
       searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head%20of%20Mobile%20V%C3%A9lomoov" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20V%C3%A9lomoov" }] },
@@ -715,8 +722,15 @@ const DEMO = {
       offer: "REGIE", roles: ["Engineering Manager", "CTO", "Head of Mobile"], why: "celui qui porte le recrutement en retard",
       searches: [{ role: "Engineering Manager", url: "https://www.linkedin.com/search/results/people/?keywords=Engineering+Manager+Banque+Ardoise" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO+Banque+Ardoise" }],
       facts: [{ id: "c4d09e11", kind: "JOB_POSTING", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/", retrievedAt: "2026-10-10T00:14:00Z" }, { id: "9a1b2c3d", kind: "COMPANY_REGISTRY", statement: "Banque Ardoise : tranche d'effectif INSEE 22 (100 à 199)", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/", retrievedAt: "2026-10-10T00:14:00Z" }] },
-    { row: { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "BODACC" }, score: 53, fit: 38, intent: 15, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 augmentation de capital", "+12 app mobile en production"], refreshedAt: "2026-10-08" },
+    { row: { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "BODACC" }, appStoreUrl: "https://apps.apple.com/fr/", score: 53, fit: 38, intent: 15, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 augmentation de capital", "+12 app mobile en production"], refreshedAt: "2026-10-08" },
       offer: "FORFAIT", roles: ["CTO", "Head of Product"], why: "celui qui arbitre le prochain chantier produit",
+      issues: [
+        { id: "1ab2c3d4", kind: "APP_REVIEW_ISSUE", statement: "Trackr : 6 avis sur 22 des 90 derniers jours parlent de plantages", sourceUrl: "https://apps.apple.com/fr/", retrievedAt: "2026-10-08T00:14:00Z" },
+        { id: "5ef6a7b8", kind: "APP_REVIEW_ISSUE", statement: "Trackr : 4 avis sur 22 des 90 derniers jours parlent de problèmes de connexion", sourceUrl: "https://apps.apple.com/fr/", retrievedAt: "2026-10-08T00:14:00Z" },
+        { id: "9c0d1e2f", kind: "APP_REVIEW_QUOTE", statement: "Avis App Store 1/5 du 06/10/2026, version 4.1 : « Inutilisable »", sourceUrl: "https://apps.apple.com/fr/", retrievedAt: "2026-10-08T00:14:00Z", excerpt: "L'app plante dès que je scanne un colis, je dois tout ressaisir à la main." },
+        { id: "3a4b5c6d", kind: "APP_REVIEW_QUOTE", statement: "Avis App Store 2/5 du 02/10/2026, version 4.1 : « Déconnecté sans arrêt »", sourceUrl: "https://apps.apple.com/fr/", retrievedAt: "2026-10-08T00:14:00Z", excerpt: "Je dois me reconnecter à chaque ouverture, le mot de passe n'est jamais retenu." },
+        { id: "7e8f9a0b", kind: "APP_REVIEW_QUOTE", statement: "Avis App Store 1/5 du 24/09/2026, version 4.0 : « Depuis la 4.0 »", sourceUrl: "https://apps.apple.com/fr/", retrievedAt: "2026-10-08T00:14:00Z", excerpt: "Se ferme toute seule en pleine tournée, deux fois ce matin." }
+      ],
       searches: [{ role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO+Trackr" }, { role: "Head of Product", url: "https://www.linkedin.com/search/results/people/?keywords=Head+of+Product+Trackr" }],
       facts: [{ id: "b0dacc01", kind: "LEGAL_NOTICE", statement: "Augmentation de capital publiée au BODACC le 08/10/2026, capital porté à 1 250 000 €", sourceUrl: "https://www.bodacc.fr/", retrievedAt: "2026-10-08T00:14:00Z" }, { id: "5e6f7a8b", kind: "APP_REVIEW", statement: "Trackr : moyenne des 22 avis des 90 derniers jours 2,6, contre 4,1 en moyenne globale", sourceUrl: "https://apps.apple.com/", retrievedAt: "2026-10-08T00:14:00Z" }] },
     { row: { account: { id: 13, name: "Mairie de Brévanne-sur-Loire", domain: null, source: "marché public" }, score: 49, fit: 4, intent: 45, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+45 appel d'offres ouvert"] },
@@ -787,6 +801,14 @@ function extLink(url, label, cls) {
   const u = safeUrl(url);
   if (!u) return cls ? "" : label;
   return `<a${cls ? ` class="${cls}"` : ""} href="${esc(u)}" target="_blank" rel="noopener">${label}</a>`;
+}
+// Page of the account's app on the App Store, when it has one: appended to a meta line
+const appLink = (url, label) => safeUrl(url) ? ` · ${extLink(url, label)}` : "";
+/** What the recent low-rated reviews say: one line per theme, then the reviews quoted, each with its source. */
+function issuesPanel(issues) {
+  if (!issues || !issues.length) return "";
+  return `<div class="panel"><span class="kind">Ce que disent les avis App Store</span>${issues.map((f) => `<div class="issue"><span>${esc(f.statement)} · ${extLink(f.sourceUrl, "source")}${retrieved(f)}</span>${
+    f.excerpt ? `<span class="quote">${esc(f.excerpt)}</span>` : ""}</div>`).join("")}</div>`;
 }
 const searchButtons = (searches) => searches.map((q) => extLink(q.url, `${icon("external")}Chercher « ${esc(q.role)} » sur LinkedIn`, "btn")).join("");
 const srcBadge = (source) => `<span class="badge soft"><span class="sq"${familyAttr(source)}></span>${esc(source || "manuel")}</span>`;
@@ -1070,7 +1092,7 @@ function renderAccounts() {
     const on = state.sel.has(r.account.id);
     return `<tr id="a-${r.account.id}" class="pick${on ? " on" : ""}" data-pick="${r.account.id}">
       <td><input type="checkbox" class="check" ${on ? "checked" : ""} aria-label="Sélectionner ${esc(r.account.name)}"></td>
-      <td><div class="acct"><b>${esc(r.account.name)}</b><span class="meta">${esc(r.account.domain || "")}</span></div></td>
+      <td><div class="acct"><b>${esc(r.account.name)}</b><span class="meta">${esc(r.account.domain || "")}${r.account.domain ? appLink(r.appStoreUrl, "App Store") : safeUrl(r.appStoreUrl) ? extLink(r.appStoreUrl, "App Store") : ""}</span></div></td>
       <td class="nowrap">${srcBadge(r.account.source)}</td>
       <td class="nowrap">${scoreBar(r)}</td>
       <td>${tierBadge(r.score)}</td>
@@ -1192,7 +1214,7 @@ function renderAside() {
 
 const FACT_KINDS = {
   JOB_POSTING: "Offre d'emploi", LEGAL_NOTICE: "Annonce légale", PUBLIC_TENDER: "Marché public", PUBLIC_CONTRACT: "Marché attribué", PRESS: "Presse", CODE_REPOSITORY: "Code public",
-  APP_REVIEW: "Avis App Store", APP_METADATA: "App Store", COMPANY_REGISTRY: "Annuaire des entreprises", WEB_PAGE: "Site web", MANUAL: "Saisie manuelle"
+  APP_REVIEW: "Avis App Store", APP_REVIEW_ISSUE: "Avis App Store", APP_REVIEW_QUOTE: "Avis App Store", APP_METADATA: "App Store", COMPANY_REGISTRY: "Annuaire des entreprises", WEB_PAGE: "Site web", MANUAL: "Saisie manuelle"
 };
 
 // Source families: an outline badge with a chart-colour square. A source outside the map keeps a grey square.
@@ -1274,7 +1296,7 @@ function renderNewList() {
   box.innerHTML = state.toComplete.map(prospectCard).join("");
 }
 
-function prospectCard({ row: r, offer, roles, why, searches, facts }) {
+function prospectCard({ row: r, offer, roles, why, searches, facts, issues }) {
   const id = r.account.id;
   // The first fact is the one behind the account's signal (the server sorts them): it explains why the prospect is here
   const [trigger, ...others] = facts || [];
@@ -1282,10 +1304,11 @@ function prospectCard({ row: r, offer, roles, why, searches, facts }) {
   const meta = [r.account.domain, r.refreshedAt ? "mis à jour le " + day(r.refreshedAt) : "jamais mis à jour"].filter(Boolean).join(" · ");
   return `<article class="card" id="n-${id}">
     <div class="row" style="align-items:flex-start">
-      <div class="stack" style="gap:2px"><span class="name">${esc(r.account.name)}</span><span class="meta">${esc(meta)}</span></div>
+      <div class="stack" style="gap:2px"><span class="name">${esc(r.account.name)}</span><span class="meta">${esc(meta)}${appLink(r.appStoreUrl, "Voir l'app sur l'App Store")}</span></div>
       <div class="actions" style="gap:12px">${srcBadge(r.account.source)}${scoreBar(r)}</div>
     </div>
     ${trigger ? `<div class="panel" style="gap:4px"><span class="kind">${esc(FACT_KINDS[trigger.kind] || "Source")}</span><span>${esc(trigger.statement)} · ${extLink(trigger.sourceUrl, "source")}${retrieved(trigger)}</span></div>` : ""}
+    ${issuesPanel(issues)}
     <div><span style="font-weight:500">${esc(OFFERS[offer] || offer)}</span><span class="muted"> · à contacter : ${esc(roles.join(", "))}, ${esc(why)}</span></div>
     ${n ? `<details class="sources"><summary>${icon("chevron")}${n > 1 ? "Autres sources" : "Autre source"}</summary>${factList(others)}</details>` : ""}
     <div class="actions">${searchButtons(searches)}</div>
@@ -1329,7 +1352,7 @@ function renderBook() {
   if (!shown.length) { $("#book-list").innerHTML = `<div class="empty">${NO_MATCH}</div>`; return; }
   $("#book-list").innerHTML = shown.map((e) => `<article class="card">
       <div class="row" style="align-items:flex-start">
-        <div class="stack" style="gap:2px"><span class="name">${esc(e.name)}</span><span><span style="font-weight:500">${esc(OFFERS[e.offer] || e.offer)}</span><span class="muted"> · à contacter : ${esc(e.why)}</span></span></div>
+        <div class="stack" style="gap:2px"><span class="name">${esc(e.name)}</span><span><span style="font-weight:500">${esc(OFFERS[e.offer] || e.offer)}</span><span class="muted"> · à contacter : ${esc(e.why)}${appLink(e.appStoreUrl, "Voir l'app sur l'App Store")}</span></span></div>
         <div class="actions">${srcBadge(e.source)}${tierBadge(e.score, true)}</div>
       </div>
       ${e.contacts.length ? `<div class="people"><div>Contacts choisis</div>${e.contacts.map(({ contact: c, status }) => { const [label, tone] = CONTACT_STATUS[status] || ["", "neutral"]; return `<div class="person"><span><span><b>${esc(c.fullName)}</b><span class="muted"> · ${esc(c.role)}</span></span><small>${esc([c.email, c.dataSource].filter(Boolean).join(" · "))}</small></span>${label ? `<span class="badge soft"><span class="dot" style="background:${DOT[tone]}"></span>${label}</span>` : ""}</div>`; }).join("")}</div>` : ""}
