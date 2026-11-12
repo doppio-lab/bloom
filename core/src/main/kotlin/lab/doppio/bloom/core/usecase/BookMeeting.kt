@@ -28,13 +28,14 @@ class BookMeeting(
     }
 
     suspend operator fun invoke(accountId: AccountId, replyId: Long?): Result {
-        accountRepo.account(accountId) ?: return Result.NotFound
+        // Blacklisted accounts are missing from accountsByScore, so they answer NotFound
+        val row = accountRepo.accountsByScore(AccountRepository.ALL).firstOrNull { it.account.id == accountId } ?: return Result.NotFound
         val deals = dealRepo.deals().filter { it.accountId == accountId }
         val result = if (deals.any { it.stage in BOOKED }) Result.AlreadyBooked else {
             val deal = deals.firstOrNull { it.stage == DealStage.QUALIFIED }?.copy(stage = DealStage.MEETING) ?: Deal(
                 accountId = accountId,
                 offer = factRepo.dossier(accountId)?.offer
-                    ?: accountRepo.accountsByScore(500).firstOrNull { it.account.id == accountId }?.recommendedOffer
+                    ?: row.recommendedOffer
                     ?: Offer.DISCOVERY,
                 stage = DealStage.MEETING, amountEur = 0, sourceSignal = factRepo.dominantSignal(accountId), expectedClose = null,
             )

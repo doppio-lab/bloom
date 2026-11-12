@@ -9,6 +9,7 @@ import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EnrollmentStatus
 import lab.doppio.bloom.core.model.Persona
 import lab.doppio.bloom.core.model.Sector
+import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.sequence.DefaultSequences
 import lab.doppio.bloom.data.TestDatabase
 import lab.doppio.bloom.data.persistence.account.ExposedAccountRepository
@@ -30,6 +31,14 @@ class AccountRepositoryTest {
 
     @BeforeTest
     fun clean() = TestDatabase.reset()
+
+    @Test
+    fun `sans limite, la liste garde tous les comptes sauf ceux de la liste noire`() = runTest {
+        val kept = accounts.upsertAccount(Account(name = "Velomoov"))
+        val excluded = accounts.upsertAccount(Account(name = "Concurrent"))
+        accounts.excludeAccount(excluded, "concurrent")
+        assertEquals(listOf(kept), accounts.accountsByScore(AccountRepository.ALL).map { it.account.id })
+    }
 
     @Test
     fun `réintégrer un compte bloqué par son nom le retire aussi de la liste noire`() = runTest {

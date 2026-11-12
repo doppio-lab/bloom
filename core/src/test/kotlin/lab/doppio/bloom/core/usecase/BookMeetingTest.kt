@@ -59,4 +59,13 @@ class BookMeetingTest {
         assertEquals(emptyList(), deals.deals)
         assertEquals(emptyList(), replies.handled)
     }
+
+    @Test
+    fun `un compte en liste noire répond introuvable et rien n'est créé`() = runTest {
+        accounts.excludeAccount(10, "liste noire")
+        assertEquals(BookMeeting.Result.NotFound, book(10, replyId = 7))
+        assertEquals(emptyList(), deals.deals)
+        assertEquals(emptyList(), events.types)
+        assertEquals(emptyList(), replies.handled)
+    }
 }

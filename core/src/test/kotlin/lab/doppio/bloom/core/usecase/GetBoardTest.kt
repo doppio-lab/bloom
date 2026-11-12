@@ -158,4 +158,60 @@ class GetBoardTest {
         drafts.add(sequences.addEnrollment(contacts.add(accountId = 11).id).id, DraftStatus.APPROVED, channel = Channel.LINKEDIN)
         assertEquals(listOf("Bas", "Haut", "Attente"), board().cards.map { it.title })
     }
+
+    @Test
+    fun `un compte au-delà des 500 premiers scores garde sa carte`() = runTest {
+        accounts.rows = (1L..600L).map { row(it, "Compte $it", score = 1000 - it.toInt()) }
+        val last = contacts.add(accountId = 600, name = "Jane")
+        replies.open += reply(7, "jane@client.test", sequences.addEnrollment(last.id).id)
+        val card = board().cards.single { it.stage == BoardStage.REPLIED }
+        assertEquals("Compte 600", card.title)
+    }
+
+    @Test
+    fun `la carte Rendez-vous montre l'offre de l'affaire la plus avancée, pas celle du dossier`() = runTest {
+        accounts.rows = listOf(row(10, "Acme", offer = Offer.DISCOVERY))
+        facts.dossier = Dossier(10, "", emptyList(), "", Offer.DISCOVERY)
+        deals.deals += Deal(1, 10, Offer.REGIE, DealStage.MEETING, 0, null, null)
+        deals.deals += Deal(2, 10, Offer.FORFAIT, DealStage.PROPOSAL, 40000, null, null)
+        val card = board().cards.single()
+        assertEquals(BoardStage.MEETING, card.stage)
+        assertEquals(Offer.FORFAIT, card.offer)
+    }
+
+    @Test
+    fun `un envoi en échec bloque la séquence et vous demande de vérifier vos envois`() = runTest {
+        accounts.rows = listOf(row(10, "Acme"), row(11, "Globex"))
+        val failed = drafts.add(sequences.addEnrollment(contacts.add(accountId = 10).id, nextStep = 1).id, DraftStatus.FAILED)
+        val other = sequences.addEnrollment(contacts.add(email = "max@globex.test", accountId = 11).id, nextStep = 1)
+        drafts.add(other.id, DraftStatus.FAILED)
+        drafts.add(other.id, DraftStatus.APPROVED, step = 1)
+        val cards = board().cards.associateBy { it.title }
+        val acme = cards.getValue("Acme")
+        assertEquals(BoardStage.IN_SEQUENCE, acme.stage)
+        assertEquals(BoardAction.CHECK_FAILED_SEND, acme.action)
+        assertTrue(acme.yours)
+        assertEquals(failed.id, acme.draftId)
+        // An email ready to leave keeps its place before the failed one
+        assertEquals(BoardAction.WAIT_SEND, cards.getValue("Globex").action)
+    }
+
+    @Test
+    fun `une adresse opposée n'est jamais proposée au lancement de la séquence`() = runTest {
+        accounts.rows = listOf(row(10, "Acme"), row(11, "Globex"), row(12, "Initech"))
+        replies.suppressed["jane@acme.test"] = "opposition"
+        replies.suppressed["max@globex.test"] = "opposition"
+        replies.suppressed["ann@initech.test"] = "opposition"
+        contacts.add(email = "jane@acme.test", accountId = 10, name = "Jane")
+        contacts.add(email = null, accountId = 10, name = "Paul")
+        contacts.add(email = "max@globex.test", accountId = 11, name = "Max")
+        contacts.add(email = "ann@initech.test", accountId = 12, name = "Ann")
+        contacts.add(email = "bob@initech.test", accountId = 12, name = "Bob")
+        val cards = board().cards.associateBy { it.title }
+        assertEquals(BoardAction.ADD_EMAIL, cards.getValue("Acme").action)
+        assertEquals("Paul", cards.getValue("Acme").contactName)
+        assertTrue("Globex" !in cards)
+        assertEquals(BoardAction.START_SEQUENCE, cards.getValue("Initech").action)
+        assertEquals("Bob", cards.getValue("Initech").contactName)
+    }
 }

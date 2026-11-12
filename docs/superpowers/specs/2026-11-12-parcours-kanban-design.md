@@ -63,6 +63,7 @@ the same vocabulary as the Méthode view.
 | `TO_REVIEW` | `REVIEW_EMAIL` | Relire et approuver | Vous |
 | `TO_REVIEW` | `FIX_EMAIL` | Corriger : bloqué par le garde-fou | Vous |
 | `IN_SEQUENCE` | `SEND_LINKEDIN_NOTE` | Envoyer la note LinkedIn | Vous |
+| `IN_SEQUENCE` | `CHECK_FAILED_SEND` | Envoi en échec : vérifier vos envois | Vous |
 | `IN_SEQUENCE` | `WAIT_DRAFT` | Bloom rédige le prochain message | Bloom |
 | `IN_SEQUENCE` | `WAIT_SEND` | Email approuvé, part {date} | Bloom |
 | `IN_SEQUENCE` | `WAIT_REPLY` | En attente de réponse | Bloom |
@@ -76,7 +77,8 @@ Inside a column, cards that wait for the user come first, then by score, highest
 Blacklisted accounts never appear. For the others:
 
 1. **Meeting.** An account with a deal in stage `MEETING`, `DISCOVERY_SOLD` or `PROPOSAL` has exactly one
-   card, in Rendez-vous, and no other card. Best score first, 20 at most (a deal carries no date).
+   card, in Rendez-vous, and no other card. The card shows the offer of the deal; with several such deals,
+   the one at the most advanced stage. Best score first, 20 at most (a deal carries no date).
 2. **Reply.** An open reply gives one card in A répondu. When the reply belongs to no known contact, the
    card is titled with the sender address and has no account.
 3. **Running sequence.** An `ACTIVE` enrollment (what `activeEnrollments()` returns) whose contact has no
@@ -84,13 +86,19 @@ Blacklisted accounts never appear. For the others:
    - a draft `PENDING_REVIEW`: Email à valider, `FIX_EMAIL` when the guard blocks it, else `REVIEW_EMAIL`;
    - an approved draft on a channel other than email: En séquence, `SEND_LINKEDIN_NOTE`;
    - an approved or sending email: En séquence, `WAIT_SEND`;
+   - a draft `FAILED` (the sender gave up or was interrupted): En séquence, `CHECK_FAILED_SEND`, actor
+     Vous. The failed draft still counts as open, so the sequence waits until a human checks the sent
+     folder;
    - no open draft: En séquence, `WAIT_DRAFT` before the first email was sent, `WAIT_REPLY` after.
 4. **Not started.** An account where nobody was ever enrolled gives one card in À démarrer:
    `FIND_CONTACT` with no contact (same accounts as today's "prospects à compléter": score 45 and more,
    dossier not marked no fit), `ADD_EMAIL` when its contact has no email, `START_SEQUENCE` when the email
-   is known. With several contacts, the first one with an email is shown.
+   is known. With several contacts, the first one with an email is shown. An address that opposed
+   prospecting (suppressed) is skipped: when every contact with an email is suppressed, the card is
+   `ADD_EMAIL` for a contact with no email if there is one, otherwise the account has no card.
 5. A finished sequence (completed, stopped, or replied with the reply handled) gives no card. The account
    stays visible in Pilotage and in the Carnet.
+   A PAUSED enrollment (out-of-office reply) gives no card while it is paused.
 
 ### No drag and drop
 
@@ -181,7 +189,7 @@ so rule 4 needs one query instead of one per contact.
 enum class BoardStage { TO_START, TO_REVIEW, IN_SEQUENCE, REPLIED, MEETING }
 enum class BoardAction {
     FIND_CONTACT, ADD_EMAIL, START_SEQUENCE, REVIEW_EMAIL, FIX_EMAIL,
-    SEND_LINKEDIN_NOTE, WAIT_DRAFT, WAIT_SEND, WAIT_REPLY, ANSWER_REPLY, NONE,
+    SEND_LINKEDIN_NOTE, CHECK_FAILED_SEND, WAIT_DRAFT, WAIT_SEND, WAIT_REPLY, ANSWER_REPLY, NONE,
 }
 data class BoardCard(
     val stage: BoardStage, val action: BoardAction, val yours: Boolean,
@@ -202,7 +210,7 @@ Route: `GET /api/board`.
 Input: an account id and the id of the reply that led to it. Creates a deal in stage `MEETING` for the
 account (offer of the dossier, else the recommended offer, else Discovery; amount 0), or moves an existing
 `QUALIFIED` deal to `MEETING`; does nothing more when a deal is already at `MEETING` or later. Logs
-`MEETING_BOOKED` once, and marks the reply handled.
+`MEETING_BOOKED` once, and marks the reply handled. A blacklisted account answers not found.
 
 Route: `POST /api/accounts/{id}/meeting` with `{ "replyId": 12 }`. `POST /api/deals` is left as it is.
 

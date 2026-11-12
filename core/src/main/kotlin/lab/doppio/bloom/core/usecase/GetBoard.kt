@@ -26,7 +26,7 @@ enum class BoardStage { TO_START, TO_REVIEW, IN_SEQUENCE, REPLIED, MEETING }
 @Serializable
 enum class BoardAction(val yours: Boolean) {
     FIND_CONTACT(true), ADD_EMAIL(true), START_SEQUENCE(true), REVIEW_EMAIL(true), FIX_EMAIL(true),
-    SEND_LINKEDIN_NOTE(true), WAIT_DRAFT(false), WAIT_SEND(false), WAIT_REPLY(false), ANSWER_REPLY(true), NONE(false),
+    SEND_LINKEDIN_NOTE(true), CHECK_FAILED_SEND(true), WAIT_DRAFT(false), WAIT_SEND(false), WAIT_REPLY(false), ANSWER_REPLY(true), NONE(false),
 }
 
 /** One card: an account, or an account and the person contacted there. The page finds the content of its panel by these ids. */
@@ -57,7 +57,7 @@ class GetBoard(
     private val factRepo: FactRepository,
 ) {
     suspend operator fun invoke(): Board {
-        val rows = accountRepo.accountsByScore(500).associateBy { it.account.id }
+        val rows = accountRepo.accountsByScore(AccountRepository.ALL).associateBy { it.account.id }
         val contacts = contactRepo.contactsByAccount().values.flatten()
         val contactById = contacts.associateBy { it.id }
         val stepCounts = sequenceRepo.all().associate { it.id to it.steps.size }
@@ -70,10 +70,12 @@ class GetBoard(
             contactId = contact?.id, contactName = contact?.fullName, contactRole = contact?.role,
         )
 
-        // 1. A meeting: one card for the account, and nothing else for it
-        val meetings = dealRepo.deals().filter { it.stage in MEETING_STAGES }.map { it.accountId }.toSet()
-        meetings.mapNotNull { rows[it] }.sortedByDescending { it.score }.take(MAX_MEETINGS)
-            .forEach { cards += card(it, BoardStage.MEETING, BoardAction.NONE) }
+        // 1. A meeting: one card for the account, and nothing else for it. It shows the offer of its most advanced deal
+        val meetingDeals = dealRepo.deals().filter { it.stage in MEETING_STAGES }
+            .groupBy { it.accountId }.mapValues { (_, deals) -> deals.maxBy { it.stage.ordinal } }
+        val meetings = meetingDeals.keys
+        meetingDeals.values.mapNotNull { deal -> rows[deal.accountId]?.let { it to deal } }.sortedByDescending { it.first.score }.take(MAX_MEETINGS)
+            .forEach { (row, deal) -> cards += card(row, BoardStage.MEETING, BoardAction.NONE).copy(offer = deal.offer) }
 
         // 2. Open replies. The sequence of the person who replied is stopped, so it gets no other card
         val replied = mutableSetOf<ContactId>()
@@ -90,8 +92,10 @@ class GetBoard(
             cards += card(row, BoardStage.REPLIED, BoardAction.ANSWER_REPLY, contact).copy(replyId = r.id, replyIntent = r.intent)
         }
 
-        // 3. Running sequences: a draft to review, a LinkedIn note to send, or Bloom at work
+        // 3. Running sequences: a draft to review, a LinkedIn note to send, a failed send to check, or Bloom at work
         val pending = draftRepo.draftsByStatus(DraftStatus.PENDING_REVIEW).groupBy { it.enrollmentId }
+        // A failed draft counts as open, so the sequence waits on it until a human checks the sent folder
+        val failed = draftRepo.draftsByStatus(DraftStatus.FAILED).groupBy { it.enrollmentId }
         val approved = (draftRepo.draftsByStatus(DraftStatus.APPROVED) + draftRepo.draftsByStatus(DraftStatus.SENDING)).groupBy { it.enrollmentId }
         for (e in sequenceRepo.activeEnrollments()) {
             if (e.contactId in replied) continue
@@ -101,11 +105,13 @@ class GetBoard(
             val review = pending[e.id]?.firstOrNull()
             val note = approved[e.id]?.firstOrNull { it.channel != Channel.EMAIL }
             val email = approved[e.id]?.firstOrNull { it.channel == Channel.EMAIL }
-            val draft = review ?: note ?: email
+            val failure = failed[e.id]?.firstOrNull()
+            val draft = review ?: note ?: email ?: failure
             val (stage, action) = when {
                 review != null -> BoardStage.TO_REVIEW to if (review.guardReport.any { it.startsWith(BLOCK) }) BoardAction.FIX_EMAIL else BoardAction.REVIEW_EMAIL
                 note != null -> BoardStage.IN_SEQUENCE to BoardAction.SEND_LINKEDIN_NOTE
                 email != null -> BoardStage.IN_SEQUENCE to BoardAction.WAIT_SEND
+                failure != null -> BoardStage.IN_SEQUENCE to BoardAction.CHECK_FAILED_SEND
                 e.nextStep == 0 -> BoardStage.IN_SEQUENCE to BoardAction.WAIT_DRAFT
                 else -> BoardStage.IN_SEQUENCE to BoardAction.WAIT_REPLY
             }
@@ -116,14 +122,18 @@ class GetBoard(
             )
         }
 
-        // 4. Not started: nobody of the account was ever enrolled
+        // 4. Not started: nobody of the account was ever enrolled. An address that opposed prospecting is never offered
         val enrolled = sequenceRepo.enrolledContactIds()
         val byAccount = contacts.groupBy { it.accountId }
         for ((accountId, people) in byAccount) {
             if (accountId in meetings || people.any { it.id in enrolled || it.id in replied }) continue
             val row = rows[accountId] ?: continue
-            val contact = people.firstOrNull { it.email != null } ?: people.first()
-            cards += card(row, BoardStage.TO_START, if (contact.email != null) BoardAction.START_SEQUENCE else BoardAction.ADD_EMAIL, contact)
+            val reachable = people.firstOrNull { it.email != null && !replyRepo.isSuppressed(it.email) }
+            val withoutEmail = people.firstOrNull { it.email == null }
+            when {
+                reachable != null -> cards += card(row, BoardStage.TO_START, BoardAction.START_SEQUENCE, reachable)
+                withoutEmail != null -> cards += card(row, BoardStage.TO_START, BoardAction.ADD_EMAIL, withoutEmail)
+            }
         }
         for (row in accountRepo.accountsToComplete()) {
             val id = row.account.id

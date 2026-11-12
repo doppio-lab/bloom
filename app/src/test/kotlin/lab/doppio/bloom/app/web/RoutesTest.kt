@@ -251,4 +251,14 @@ class RoutesTest {
         assertTrue("séquence lancée" in ok.bodyAsText())
         assertEquals(1, ports.sequences.enrollments.size)
     }
+
+    @Test
+    fun `adding the email of a person who opposed prospecting answers 400 with an error and starts nothing`() = routeTest { ports ->
+        val contact = ports.contacts.add(email = null)
+        ports.replies.suppressed["jane@acme.test"] = "opposition"
+        val response = client.post("/api/contacts/${contact.id}/email") { admin(); contentType(ContentType.Application.Json); setBody("""{"email":"jane@acme.test"}""") }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertTrue("\"error\"" in response.bodyAsText(), response.bodyAsText())
+        assertTrue(ports.sequences.enrollments.isEmpty())
+    }
 }

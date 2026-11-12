@@ -41,4 +41,9 @@ interface AccountRepository {
     suspend fun blockedNames(): Set<String>
 
     suspend fun blacklist(): List<Blocked>
+
+    companion object {
+        /** Limit for [accountsByScore] that keeps every account that is not blacklisted. */
+        const val ALL: Int = Int.MAX_VALUE
+    }
 }

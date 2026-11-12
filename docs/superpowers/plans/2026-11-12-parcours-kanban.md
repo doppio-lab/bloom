@@ -1125,6 +1125,7 @@ const COLUMNS = [
 const ACTIONS = {
   FIND_CONTACT: "Trouver la personne", ADD_EMAIL: "Ajouter son email", START_SEQUENCE: "Lancer la séquence",
   REVIEW_EMAIL: "Relire et approuver", FIX_EMAIL: "Corriger : bloqué par le garde-fou", SEND_LINKEDIN_NOTE: "Envoyer la note LinkedIn",
+  CHECK_FAILED_SEND: "Envoi en échec : vérifier vos envois",
   WAIT_DRAFT: "Bloom rédige le prochain message", WAIT_SEND: "Email approuvé, part au prochain créneau", WAIT_REPLY: "En attente de réponse",
   ANSWER_REPLY: "Répondre, noter un rendez-vous ou classer", NONE: "La suite se passe hors de Bloom"
 };
@@ -1271,6 +1272,8 @@ const CONSEQUENCES = {
   ANSWER_REPLY: "Noter un rendez-vous : le compte passe dans Rendez-vous et compte dans l'objectif. Classer : la carte quitte le tableau, le compte reste dans Pilotage et le Carnet."
 };
 const WAITING = {
+  // Shown by the default branch of panelBody, so it is not repeated in CONSEQUENCES
+  CHECK_FAILED_SEND: "L'envoi a échoué. Vérifiez dans votre boîte d'envoi s'il est parti avant de relancer quoi que ce soit.",
   WAIT_DRAFT: "Bloom rédige le prochain message. Il arrivera dans Email à valider.",
   WAIT_SEND: () => `Email approuvé. Il part au prochain créneau, ${nextSlot()}.`,
   WAIT_REPLY: "Email envoyé. Sans réponse, Bloom prépare la relance et vous la soumet ici.",

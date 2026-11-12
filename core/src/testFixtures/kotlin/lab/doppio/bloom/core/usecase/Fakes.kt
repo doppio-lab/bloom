@@ -225,12 +225,17 @@ class FakeFactRepository(var dossier: Dossier? = null) : FactRepository {
 class FakeAccountRepository(var rows: List<AccountRow> = emptyList()) : AccountRepository {
     override suspend fun upsertAccount(a: Account): AccountId = TODO()
     override suspend fun mergeDiscovered(a: Account): Pair<AccountId, Boolean> = TODO()
-    override suspend fun account(id: AccountId): Account? = rows.firstOrNull { it.account.id == id }?.account
-    override suspend fun accountsByScore(limit: Int): List<AccountRow> = rows
+    /** Blacklisted accounts: still found by id, missing from every list, like the real repository. */
+    val excluded = mutableListOf<Account>()
+    override suspend fun account(id: AccountId): Account? = rows.firstOrNull { it.account.id == id }?.account ?: excluded.firstOrNull { it.id == id }
+    override suspend fun accountsByScore(limit: Int): List<AccountRow> = rows.take(limit)
     var toComplete: List<AccountRow> = emptyList()
     override suspend fun accountsToComplete(minScore: Int, limit: Int): List<AccountRow> = toComplete
     override suspend fun saveScore(s: ScoreBreakdown) {}
-    override suspend fun excludeAccount(id: AccountId, reason: String) {}
+    override suspend fun excludeAccount(id: AccountId, reason: String) {
+        excluded += rows.filter { it.account.id == id }.map { it.account }
+        rows = rows.filter { it.account.id != id }
+    }
     override suspend fun restoreAccount(id: AccountId) {}
     override suspend fun blockName(name: String, reason: String?): AccountId? = null
     override suspend fun unblockName(id: Long) {}

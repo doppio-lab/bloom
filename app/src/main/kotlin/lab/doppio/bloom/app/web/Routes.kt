@@ -122,7 +122,7 @@ class ApiRoutes(
                     is EnrollContact.Result.Enrolled -> "Email enregistré, séquence lancée"
                     EnrollContact.Result.AlreadyEnrolled -> "Email enregistré. Une séquence est déjà en cours."
                     EnrollContact.Result.NoFit -> "Email enregistré. Le dossier ne trouve aucune offre : lancez la séquence en choisissant l'offre."
-                    EnrollContact.Result.OptedOut -> "Cette personne s'est opposée à la prospection"
+                    EnrollContact.Result.OptedOut -> throw IllegalArgumentException("Cette personne s'est opposée à la prospection")
                     EnrollContact.Result.NoSequence -> error("aucune séquence pour cette offre")
                 }))
             }
