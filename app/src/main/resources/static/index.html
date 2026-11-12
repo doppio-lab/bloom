@@ -321,6 +321,34 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
 .demand { flex-direction: row; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .demand > div:first-child { flex: 1 1 360px; display: grid; gap: 4px; }
 
+/* Parcours: five columns, one card per account or person contacted, each saying whose turn it is */
+#view-parcours { gap: 16px; }
+.board-head { display: flex; gap: 12px; align-items: center; justify-content: flex-end; flex-wrap: wrap; }
+.toggles .n { color: var(--muted-foreground); }
+.runline > summary { display: flex; gap: 8px; flex-wrap: wrap; align-items: baseline; cursor: pointer; }
+.runline > summary > span:first-child { font-weight: 500; }
+.runline .link-text { text-decoration: underline; text-underline-offset: 4px; }
+.runline-body { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.run-notes { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted-foreground); }
+.board-tools { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.board-tools .grow { flex: 1; }
+.board { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; align-items: start; }
+.col-skeleton { height: 240px; border-radius: var(--radius-xl); background: var(--muted); }
+.col { display: flex; flex-direction: column; gap: 8px; min-width: 0; min-height: 240px; padding: 12px; border-radius: var(--radius-xl); border: 1px solid var(--border); background: var(--muted); }
+.col-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; }
+.col-line { font-size: 12px; line-height: 18px; color: var(--muted-foreground); text-wrap: pretty; }
+.bcard { width: 100%; display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; text-align: left; border-radius: var(--radius-lg); border: 1px solid var(--border); background: var(--card); color: var(--foreground); font: 400 14px/20px var(--font-sans); cursor: pointer; }
+.bcard:hover { border-color: var(--ring); }
+.bcard[aria-current="true"] { border-color: var(--ring); box-shadow: 0 0 0 1px var(--ring); }
+.bcard .t { display: flex; justify-content: space-between; gap: 8px; font-weight: 600; }
+.bcard .t > span:first-child { min-width: 0; }
+.bcard .t .s { flex: none; font-weight: 500; color: var(--muted-foreground); }
+.bcard .c { font-size: 12px; line-height: 16px; color: var(--muted-foreground); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bcard .a { display: flex; gap: 6px; align-items: flex-start; font-size: 13px; line-height: 18px; }
+.bcard .a .badge { flex: none; padding: 0 6px; }
+.bcard.wait .a { color: var(--muted-foreground); }
+.board-tabs { display: none; }
+
 /* Carnet */
 .people { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
 .people > div:first-child { padding: 8px 12px; background: var(--muted); font-weight: 500; }
@@ -742,7 +770,7 @@ const UNDO_MS = 5000;
 // The sending window is set in Paris time, whatever the browser's time zone
 const PARIS = "Europe/Paris";
 
-let state = { loaded: false, demo: false, view: "parcours", facets: { ...NO_FACETS }, tier: "all", range: "90", hover: null, sel: new Set(), sort: { key: "score", dir: "descending" }, q: { accounts: "", book: "", blacklist: "", board: "" }, overview: null, drafts: [], tasks: [], replies: [], toComplete: [], demands: [], book: [], blacklist: [], lastRun: null, board: { cards: [] }, open: null, mine: false };
+let state = { loaded: false, demo: false, view: "parcours", facets: { ...NO_FACETS }, tier: "all", range: "90", hover: null, sel: new Set(), sort: { key: "score", dir: "descending" }, q: { accounts: "", book: "", blacklist: "", board: "" }, overview: null, drafts: [], tasks: [], replies: [], toComplete: [], demands: [], book: [], blacklist: [], lastRun: null, board: { cards: [] }, open: null, mine: false, col: null, gone: new Set() };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const pct = (x, d = 1) => (x * 100).toFixed(d).replace(".", ",") + " %";
@@ -891,6 +919,9 @@ function render() {
 
 /* ---- Shell: sidebar, header, headline of the open view. */
 
+/** The next sending slot, in Paris time: « mardi à 08:30 ». */
+const sendSlot = (iso) => { const d = new Date(iso); return `${d.toLocaleDateString("fr-FR", { weekday: "long", timeZone: PARIS })} à ${d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: PARIS })}`; };
+
 const VIEWS = { parcours: "Parcours", demands: "Demandes", pilotage: "Pilotage", book: "Carnet", results: "Résultats", method: "Méthode", blacklist: "Liste noire" };
 // Former views, so old links and the view stored at the last visit still open the board
 const ALIASES = { today: "parcours", prospects: "parcours" };
@@ -900,8 +931,7 @@ function renderShell() {
   const o = state.overview, mode = $("#mode");
   mode.hidden = false;
   mode.textContent = state.demo ? "Données d'exemple" : o.dryRun ? "Mode test : aucun envoi" : "Envois actifs";
-  const next = o.nextSendAt ? new Date(o.nextSendAt) : null;
-  $("#side-next").textContent = next ? `Prochain envoi ${next.toLocaleDateString("fr-FR", { weekday: "long", timeZone: PARIS })} à ${next.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", timeZone: PARIS })}` : "";
+  $("#side-next").textContent = o.nextSendAt ? `Prochain envoi ${sendSlot(o.nextSendAt)}` : "";
 }
 
 /** Headline and subline of the open view. Pilotage has none; loading views say so instead of showing empty queues. */
@@ -909,10 +939,9 @@ function renderHero() {
   const v = state.view, L = state.loaded;
   const people = state.book.reduce((n, e) => n + e.contacts.length, 0);
   const days = state.overview?.periodDays || 30;
-  const mine = state.board.cards.filter((c) => c.yours).length;
   const head = {
     pilotage: ["", ""],
-    parcours: !L ? ["Chargement…", "Récupération du parcours."] : mine ? [plural(mine, "action vous attend", "actions vous attendent"), ""] : ["Rien ne vous attend", ""],
+    parcours: !L ? ["Chargement…", "Récupération du parcours."] : boardHeadline(),
     demands: [!L ? "Chargement…" : state.demands.length ? `${plural(state.demands.length, "demande", "demandes")} à répondre` : "Aucune demande", "Publiées par des entreprises. On répond sur la plateforme, pas par email."],
     book: [!L ? "Chargement…" : state.book.length ? `${plural(state.book.length, "entreprise", "entreprises")}, ${plural(people, "contact", "contacts")}` : "Carnet vide", "Les personnes à qui écrire, entreprise par entreprise."],
     results: [`Résultats sur ${days} jours`, `Le pipeline, ce qui convertit et la santé de la boîte d'envoi, au ${todayLong()}.`],
@@ -927,12 +956,12 @@ function renderHero() {
 
 const setCount = (sel, n) => { $(sel).textContent = n || ""; };
 
-/** Headlines, counts and filters. Cheap, so it runs after every action instead of a full render. */
+/** Headlines, counts, filters and the board (renderFacets ends with renderBoard). Cheap, so it runs after every action instead of a full render. */
 function renderCounts() {
   renderHero();
   if (!state.loaded) return;
   renderFacets();
-  setCount("#c-parcours", state.board.cards.filter((c) => c.yours).length); setCount("#c-demands", state.demands.length);
+  setCount("#c-parcours", boardCards().filter((c) => c.yours).length); setCount("#c-demands", state.demands.length);
   $("#nav-demands").hidden = !state.demands.length;
   setCount("#c-book", state.book.length); setCount("#c-blacklist", state.blacklist.length);
 }
@@ -1177,7 +1206,12 @@ function renderRun() {
   const run = state.lastRun;
   const when = run?.ranAt ? new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", hour: "2-digit", minute: "2-digit", timeZone: "Europe/Paris" }).format(new Date(run.ranAt)).replace(/^./, (c) => c.toUpperCase()) : "";
   $("#run-title").textContent = run?.running ? "Recherche en cours" : "Dernière recherche";
-  $("#run-sub").textContent = [when || (run?.running ? "" : "Aucune recherche pour l'instant"), ...(run?.notes || [])].filter(Boolean).join(" · ");
+  // Codeur counts demands, not accounts: they are not new prospects
+  const found = Object.entries(run?.bySource || {}).filter(([label]) => SOURCE_FAMILIES[label] !== "demand").reduce((n, [, k]) => n + k, 0);
+  $("#run-sub").textContent = [when || (run?.running ? "" : "Aucune recherche pour l'instant"), when && plural(found, "nouveau prospect", "nouveaux prospects")].filter(Boolean).join(" · ");
+  const notes = (run?.notes || []).map((n) => n.charAt(0).toUpperCase() + n.slice(1)).join(" · ");
+  $("#run-notes").hidden = !notes;
+  $("#run-notes").textContent = notes ? notes + "." : "";
   const chips = Object.entries(run?.bySource || {});
   $("#run-chips").hidden = !chips.length;
   $("#run-chips").innerHTML = chips.map(([label, n]) => `<span class="badge soft${n > 0 ? "" : " zero"}"><span class="sq"${n > 0 ? familyAttr(label) : ""}></span>${esc(label)}<span class="mono">${n}</span></span>`).join("");
@@ -1194,18 +1228,12 @@ function renderDemands() {
   }).join("");
 }
 
-/* ---- Filters of the Prospects view: three selects, one choice each, applied to prospects and demands.
-   Cards are hidden, not redrawn, so a form being filled keeps its fields. */
+/* ---- Filters of the board: three selects, one choice each, applied to the cards of Parcours. */
 const FACETS = [
   ["source", "Source", [["all", "Toutes les sources"], ["store", "App Store"], ["hiring", "Emploi"], ["legal", "Registres"], ["watch", "Presse et code"], ["demand", "Codeur"], ["other", "Autres"]]],
   ["tier", "Score", [["all", "Tous les scores"], ["ACT_NOW", "Agir, 65 et plus"], ["NURTURE", "Suivre, 45 à 64"], ["WATCH", "Veille, moins de 45"]]],
   ["offer", "Offre", [["all", "Toutes les offres"], ...Object.entries(OFFERS)]]
 ];
-// A demand has no score and no offer: a score or offer filter hides it
-const FACET_ITEM = {
-  prospect: (x) => ({ source: x.row.account.source, score: x.row.score, offer: x.offer }),
-  demand: (d) => ({ source: d.source })
-};
 const FACET_TESTS = {
   source: (it, v) => (SOURCE_FAMILIES[it.source] || "other") === v,
   tier: (it, v) => it.score != null && tierOf(it.score) === v,
@@ -1214,7 +1242,7 @@ const FACET_TESTS = {
 const passes = (it) => Object.entries(state.facets).every(([k, v]) => v === "all" || FACET_TESTS[k](it, v));
 
 function renderFacets() {
-  const items = state.toComplete.map(FACET_ITEM.prospect);
+  const items = state.board.cards.filter(itemOf).map(facetItem);
   const focused = document.activeElement?.id;
   // An option that matches nothing in the view is not offered, unless it is the current choice
   $("#facets-body").innerHTML = FACETS.map(([key, label, options]) => `<label class="lbl" for="f-${key}">${label}
@@ -1222,7 +1250,106 @@ function renderFacets() {
       .map(([v, text]) => `<option value="${v}"${state.facets[key] === v ? " selected" : ""}>${esc(text)}</option>`).join("")}</select></label>`).join("");
   if (focused?.startsWith("f-")) $("#" + focused)?.focus();
   $("#facets-clear").hidden = Object.values(state.facets).every((v) => v === "all");
+  renderBoard();
 }
+
+/* ---- Parcours: the board */
+
+const COLUMNS = [
+  ["TO_START", "À démarrer", "Trouvés par la recherche ou importés. Il manque la personne à contacter."],
+  ["TO_REVIEW", "Email à valider", "Rédigés par Bloom. Rien ne part sans vous."],
+  ["IN_SEQUENCE", "En séquence", "Bloom envoie et relance. Vous envoyez les notes LinkedIn."],
+  ["REPLIED", "A répondu", "La séquence est arrêtée. À vous de répondre."],
+  ["MEETING", "Rendez-vous", "Objectif : 2 par semaine."]
+];
+const ACTIONS = {
+  FIND_CONTACT: "Trouver la personne", ADD_EMAIL: "Ajouter son email", START_SEQUENCE: "Lancer la séquence",
+  REVIEW_EMAIL: "Relire et approuver", FIX_EMAIL: "Corriger : bloqué par le garde-fou", SEND_LINKEDIN_NOTE: "Envoyer la note LinkedIn",
+  CHECK_FAILED_SEND: "Envoi en échec : vérifier vos envois",
+  WAIT_DRAFT: "Bloom rédige le prochain message", WAIT_SEND: "Email approuvé, part au prochain créneau", WAIT_REPLY: "En attente de réponse",
+  ANSWER_REPLY: "Répondre, noter un rendez-vous ou classer", NONE: "La suite se passe hors de Bloom"
+};
+/** The action of a card as written on it: the sending slot when it is known, and only « Classer » for a reply nobody may answer. */
+function actionText(c) {
+  if (c.action === "WAIT_SEND" && state.overview?.nextSendAt) return `Email approuvé, part ${sendSlot(state.overview.nextSendAt)}`;
+  // An opposition, a refusal or a bounce: no reply and no meeting, the card can only be classed
+  if (c.action === "ANSWER_REPLY" && INTENTS[c.replyIntent]?.[1] === "error") return "Classer";
+  return ACTIONS[c.action] || "";
+}
+const cardKey = (c) => c.replyId ? "r" + c.replyId : c.draftId ? "d" + c.draftId : c.contactId ? "c" + c.contactId : "a" + c.accountId + c.stage;
+
+/** The content behind a card. A card whose content left the page (approved, classed, completed) leaves the board with it. */
+function itemOf(c) {
+  switch (c.action) {
+    case "REVIEW_EMAIL": case "FIX_EMAIL": return state.drafts.find((d) => d.draft.id === c.draftId);
+    case "SEND_LINKEDIN_NOTE": return state.tasks.find((t) => t.draft.id === c.draftId);
+    case "ANSWER_REPLY": return state.replies.find((r) => r.id === c.replyId);
+    case "FIND_CONTACT": return state.toComplete.find((x) => x.row.account.id === c.accountId);
+    default: return !state.gone.has(cardKey(c));
+  }
+}
+const facetItem = (c) => ({ source: c.source, score: c.score, offer: c.offer });
+/** Cards shown: content still here, filters and header search. The "À vous" toggle applies on top (visibleCards). */
+const boardCards = () => state.board.cards.filter((c) => itemOf(c) && passes(facetItem(c)) && matches(state.q.board || "", c.title, c.contactName));
+const visibleCards = () => boardCards().filter((c) => !state.mine || c.yours);
+/** The order of "Commencer" and "Suivant": the column closest to a meeting first, then top to bottom. */
+const queue = () => COLUMNS.map(([s]) => s).reverse().flatMap((s) => boardCards().filter((c) => c.stage === s && c.yours));
+
+/** Headline of Parcours: how many cards wait for the user, by kind. */
+function boardHeadline() {
+  const mine = boardCards().filter((c) => c.yours);
+  const n = (a) => mine.filter((c) => a.includes(c.action)).length;
+  const parts = [
+    [["ANSWER_REPLY"], "réponse", "réponses"],
+    [["REVIEW_EMAIL", "FIX_EMAIL"], "email à valider", "emails à valider"],
+    [["SEND_LINKEDIN_NOTE"], "note LinkedIn", "notes LinkedIn"],
+    [["CHECK_FAILED_SEND"], "envoi à vérifier", "envois à vérifier"],
+    [["FIND_CONTACT", "ADD_EMAIL", "START_SEQUENCE"], "contact à trouver", "contacts à trouver"]
+  ].filter(([a]) => n(a)).map(([a, one, many]) => plural(n(a), one, many));
+  return mine.length
+    ? [plural(mine.length, "action vous attend", "actions vous attendent"), parts.join(", ") + "."]
+    : ["Rien ne vous attend", "Les prochains brouillons arriveront dans Email à valider."];
+}
+
+function renderBoard() {
+  if (!state.loaded) return;
+  const all = boardCards(), cards = visibleCards(), mineCount = all.filter((c) => c.yours).length;
+  document.querySelectorAll("#mine [data-mine]").forEach((b) => {
+    b.setAttribute("aria-pressed", String(state.mine) === b.dataset.mine);
+    b.querySelector(".n").textContent = " " + (b.dataset.mine === "true" ? mineCount : all.length);
+  });
+  $("#start").hidden = !mineCount;
+  $("#board").innerHTML = COLUMNS.map(([stage, title, line]) => {
+    const list = cards.filter((c) => c.stage === stage);
+    return `<section class="col" data-stage="${stage}" aria-label="${esc(title)}"${state.col && state.col !== stage ? " data-off" : ""}>
+      <div class="col-head"><span>${esc(title)}</span><span class="badge soft mono">${list.length}</span></div>
+      <div class="col-line">${esc(line)}</div>
+      ${list.map(boardCard).join("")}
+    </section>`;
+  }).join("");
+  $("#board-tabs").innerHTML = COLUMNS.map(([stage, title]) => `<button role="tab" type="button" data-col="${stage}" aria-selected="${(state.col || "TO_START") === stage}">${esc(title)}<span class="n">${cards.filter((c) => c.stage === stage).length}</span></button>`).join("");
+  syncPanel();
+}
+
+function boardCard(c) {
+  const context = {
+    TO_START: [OFFERS[c.offer], c.contactName, c.source].filter(Boolean).join(" · "),
+    MEETING: OFFERS[c.offer] || "",
+    REPLIED: [c.contactName, (INTENTS[c.replyIntent] || [""])[0]].filter(Boolean).join(" · ")
+  }[c.stage] ?? [c.contactName && `${c.contactName}${c.contactRole ? " · " + c.contactRole : ""}`, c.step && c.stepCount && `étape ${c.step} sur ${c.stepCount}`].filter(Boolean).join(" · ");
+  // Same vocabulary as the Méthode legend: « Vous » filled, « Bloom » outline, no badge once the meeting is noted
+  const who = c.action === "NONE" ? "" : c.yours ? `<span class="badge default">Vous</span>` : `<span class="badge">Bloom</span>`;
+  return `<button type="button" class="bcard${c.yours ? "" : " wait"}" data-card="${cardKey(c)}" aria-current="${state.open === cardKey(c)}">
+    <span class="t"><span>${esc(c.title)}</span>${c.score != null ? `<span class="s">${c.score}</span>` : ""}</span>
+    ${context ? `<span class="c">${esc(context)}</span>` : ""}
+    <span class="a">${who}<span>${esc(actionText(c))}</span></span>
+  </button>`;
+}
+
+// The side panel (open a card, act, go to the next) is not built yet: a click on a card does nothing for now.
+// openCard and syncPanel are placeholders that the panel replaces.
+function openCard(key) {}
+function syncPanel() {}
 
 function prospectCard({ row: r, offer, roles, why, searches, facts, issues }) {
   const id = r.account.id;
@@ -1734,6 +1861,13 @@ document.addEventListener("click", (e) => {
     return;
   }
   if (e.target.closest("#facets-clear")) { state.facets = { ...NO_FACETS }; renderCounts(); $("#f-source")?.focus(); return; }
+  const mineBtn = e.target.closest("[data-mine]");
+  if (mineBtn) { state.mine = mineBtn.dataset.mine === "true"; renderBoard(); return; }
+  const colTab = e.target.closest("[data-col]");
+  if (colTab && colTab.closest("#board-tabs")) { state.col = colTab.dataset.col; renderBoard(); return; }
+  if (e.target.closest("#start")) { const first = queue()[0]; if (first) openCard(cardKey(first)); return; }
+  const bc = e.target.closest("[data-card]");
+  if (bc) { openCard(bc.dataset.card); return; }
   const cite = e.target.closest("button.cite");
   if (cite) {
     const f = cite.closest(".card")?.querySelector(`[data-fid="${cite.dataset.fact}"]`);
@@ -1775,7 +1909,7 @@ document.addEventListener("input", (e) => {
     state.q.accounts = state.q.book = state.q.board = e.target.value;
     const bookField = document.querySelector('[data-search="book"]'); if (bookField) bookField.value = e.target.value;
     if (!["pilotage", "book", "parcours"].includes(state.view)) goTab("pilotage");
-    if (state.loaded) { renderAccounts(); renderBook(); }
+    if (state.loaded) { renderAccounts(); renderBook(); renderCounts(); }
     return;
   }
   const list = e.target.dataset?.search;
