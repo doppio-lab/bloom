@@ -13,9 +13,12 @@ import io.ktor.http.contentType
 import lab.doppio.bloom.app.admin
 import lab.doppio.bloom.app.routeTest
 import lab.doppio.bloom.core.model.Account
+import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.EnrollmentStatus
+import lab.doppio.bloom.core.model.ReplyIntent
 import lab.doppio.bloom.core.port.AccountRow
+import lab.doppio.bloom.core.port.ReplyRow
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -214,5 +217,38 @@ class RoutesTest {
         assertEquals(HttpStatusCode.Created, response.status)
         assertTrue("Ajoutez son email" in response.bodyAsText())
         assertTrue(ports.sequences.enrollments.isEmpty())
+    }
+
+    // --- Parcours ------------------------------------------------------------------------------
+
+    @Test
+    fun `the board lists a prospect to complete with the action expected from the user`() = routeTest { ports ->
+        ports.accounts.rows = listOf(AccountRow(Account(10, "Acme"), 60, 0, 0, 0, null, emptyList(), null))
+        ports.accounts.toComplete = ports.accounts.rows
+        val body = client.get("/api/board") { admin() }.bodyAsText()
+        assertTrue("TO_START" in body, body)
+        assertTrue("FIND_CONTACT" in body, body)
+    }
+
+    @Test
+    fun `recording a meeting creates the deal and closes the reply`() = routeTest { ports ->
+        ports.accounts.rows = listOf(AccountRow(Account(10, "Acme"), 60, 0, 0, 0, null, emptyList(), null))
+        ports.replies.open += ReplyRow(7, null, "jane@acme.test", ReplyIntent.MEETING_REQUEST, "appel jeudi", null, "2026-11-04T09:00:00Z", false)
+        val response = client.post("/api/accounts/10/meeting") { admin(); contentType(ContentType.Application.Json); setBody("""{"replyId":7}""") }
+        assertEquals(HttpStatusCode.OK, response.status)
+        assertEquals(listOf(DealStage.MEETING), ports.deals.deals.map { it.stage })
+        assertEquals(listOf(7L), ports.replies.handled)
+        assertEquals(HttpStatusCode.NotFound, client.post("/api/accounts/99/meeting") { admin(); contentType(ContentType.Application.Json); setBody("{}") }.status)
+    }
+
+    @Test
+    fun `adding the missing email starts the sequence, a bad address answers 400`() = routeTest { ports ->
+        val contact = ports.contacts.add(email = null)
+        val bad = client.post("/api/contacts/${contact.id}/email") { admin(); contentType(ContentType.Application.Json); setBody("""{"email":"jane"}""") }
+        assertEquals(HttpStatusCode.BadRequest, bad.status)
+        val ok = client.post("/api/contacts/${contact.id}/email") { admin(); contentType(ContentType.Application.Json); setBody("""{"email":"jane@acme.test"}""") }
+        assertEquals(HttpStatusCode.OK, ok.status)
+        assertTrue("séquence lancée" in ok.bodyAsText())
+        assertEquals(1, ports.sequences.enrollments.size)
     }
 }

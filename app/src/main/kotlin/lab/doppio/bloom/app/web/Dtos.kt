@@ -12,6 +12,8 @@ import lab.doppio.bloom.core.model.Signal
 @Serializable data class AccountDetail(val account: Account, val facts: List<Fact>, val signals: List<Signal>, val dossier: Dossier?, val contacts: List<Contact>)
 @Serializable data class NewAccount(val account: Account, val contacts: List<Contact> = emptyList(), val researchNow: Boolean = true)
 @Serializable data class EnrollRequest(val offer: Offer? = null)
+@Serializable data class MeetingRequest(val replyId: Long? = null)
+@Serializable data class EmailRequest(val email: String)
 @Serializable data class DecisionRequest(val subject: String? = null, val body: String? = null)
 
 @Serializable data class NewContactRequest(

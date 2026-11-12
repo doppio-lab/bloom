@@ -25,9 +25,12 @@ import lab.doppio.bloom.core.port.FactRepository
 import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.port.ReplyRow
 import lab.doppio.bloom.core.port.Researcher
+import lab.doppio.bloom.core.usecase.BookMeeting
+import lab.doppio.bloom.core.usecase.CompleteContactEmail
 import lab.doppio.bloom.core.usecase.CompleteTask
 import lab.doppio.bloom.core.usecase.DecideDraft
 import lab.doppio.bloom.core.usecase.EnrollContact
+import lab.doppio.bloom.core.usecase.GetBoard
 import lab.doppio.bloom.core.usecase.GetOverview
 import lab.doppio.bloom.core.usecase.ReviewQueue
 import lab.doppio.bloom.core.usecase.UnsubscribeContact
@@ -47,6 +50,9 @@ class ApiRoutes(
     private val reviewQueue: ReviewQueue,
     private val decideDraft: DecideDraft,
     private val completeTask: CompleteTask,
+    private val getBoard: GetBoard,
+    private val bookMeeting: BookMeeting,
+    private val completeContactEmail: CompleteContactEmail,
     private val replyRepo: ReplyRepository,
     private val dealRepo: DealRepository,
     private val eventRepo: EventRepository,
@@ -105,6 +111,32 @@ class ApiRoutes(
                 EnrollContact.Result.AlreadyEnrolled -> throw IllegalArgumentException("Ce contact est déjà inscrit dans une séquence")
                 EnrollContact.Result.NoFit -> throw IllegalArgumentException("Le dossier conclut qu'aucune offre ne convient : choisir l'offre explicitement")
                 EnrollContact.Result.NoSequence -> error("aucune séquence pour cette offre")
+            }
+        }
+
+        post("/contacts/{id}/email") {
+            val req = call.receive<EmailRequest>()
+            when (val result = completeContactEmail(call.parameters["id"]!!.toLong(), req.email)) {
+                CompleteContactEmail.Result.NotFound -> call.respond(HttpStatusCode.NotFound)
+                is CompleteContactEmail.Result.Done -> call.respond(HttpStatusCode.OK, mapOf("message" to when (result.enrollment) {
+                    is EnrollContact.Result.Enrolled -> "Email enregistré, séquence lancée"
+                    EnrollContact.Result.AlreadyEnrolled -> "Email enregistré. Une séquence est déjà en cours."
+                    EnrollContact.Result.NoFit -> "Email enregistré. Le dossier ne trouve aucune offre : lancez la séquence en choisissant l'offre."
+                    EnrollContact.Result.OptedOut -> "Cette personne s'est opposée à la prospection"
+                    EnrollContact.Result.NoSequence -> error("aucune séquence pour cette offre")
+                }))
+            }
+        }
+
+        // --- Parcours ---------------------------------------------------------------------------------
+        get("/board") { call.respond(getBoard()) }
+
+        post("/accounts/{id}/meeting") {
+            val req = runCatching { call.receive<MeetingRequest>() }.getOrDefault(MeetingRequest())
+            when (bookMeeting(call.parameters["id"]!!.toLong(), req.replyId)) {
+                BookMeeting.Result.Booked -> call.respond(HttpStatusCode.OK, mapOf("status" to "MEETING"))
+                BookMeeting.Result.AlreadyBooked -> call.respond(HttpStatusCode.OK, mapOf("status" to "déjà noté"))
+                BookMeeting.Result.NotFound -> call.respond(HttpStatusCode.NotFound)
             }
         }
 

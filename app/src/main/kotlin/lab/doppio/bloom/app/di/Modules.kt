@@ -47,11 +47,14 @@ import lab.doppio.bloom.core.port.Researcher
 import lab.doppio.bloom.core.port.SequenceRepository
 import lab.doppio.bloom.core.port.WebPages
 import lab.doppio.bloom.core.usecase.AddContact
+import lab.doppio.bloom.core.usecase.BookMeeting
+import lab.doppio.bloom.core.usecase.CompleteContactEmail
 import lab.doppio.bloom.core.usecase.CompleteTask
 import lab.doppio.bloom.core.usecase.ContactBook
 import lab.doppio.bloom.core.usecase.DecideDraft
 import lab.doppio.bloom.core.usecase.EnrollContact
 import lab.doppio.bloom.core.usecase.FindContactEmail
+import lab.doppio.bloom.core.usecase.GetBoard
 import lab.doppio.bloom.core.usecase.GetOverview
 import lab.doppio.bloom.core.usecase.ImportAccounts
 import lab.doppio.bloom.core.usecase.ListToComplete
@@ -257,6 +260,9 @@ val useCasesModule: Module = module {
     singleOf(::ContactBook)
     singleOf(::ListToComplete)
     singleOf(::ImportAccounts)
+    singleOf(::GetBoard)
+    singleOf(::BookMeeting)
+    singleOf(::CompleteContactEmail)
 }
 
 /** The background loops and the two scopes they and the dashboard run in. Closing Koin cancels both. */
@@ -271,7 +277,9 @@ val webModule: Module = module {
     single {
         ApiRoutes(
             overview = get(), accountRepo = get(), contactRepo = get(), factRepo = get(), enrollContact = get(),
-            reviewQueue = get(), decideDraft = get(), completeTask = get(), replyRepo = get(), dealRepo = get(),
+            reviewQueue = get(), decideDraft = get(), completeTask = get(),
+            getBoard = get(), bookMeeting = get(), completeContactEmail = get(),
+            replyRepo = get(), dealRepo = get(),
             eventRepo = get(), research = get(), background = get(BACKGROUND),
         )
     }
