@@ -12,7 +12,7 @@
 
 **Rules of the repo that apply to every task** (from `AGENTS.md` and the global rules):
 
-- No em dash character anywhere (code, comments, copy, commit messages). Check with `grep -n "—" <file>` before committing.
+- No em dash character (U+2014) anywhere (code, comments, copy, commit messages). Check with `grep -n "$(printf '\342\200\224')" <file>` before committing.
 - Code comments and commit messages in English. Interface copy in French, addressing the user as "vous".
 - Test names are French sentences in backticks describing the behaviour.
 - No Claude sign-off or `Co-Authored-By` trailer in commits.
@@ -1481,7 +1481,7 @@ Open the design artifact and `?demo=1#parcours` side by side, view by view (`par
 
 - [ ] **Step 4: No em dash, then commit**
 
-Run: `git diff main --name-only | xargs grep -n "—"`
+Run: `git diff main --name-only | xargs grep -n "$(printf '\342\200\224')"`
 Expected: no output.
 
 ```bash
