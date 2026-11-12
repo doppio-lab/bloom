@@ -52,6 +52,17 @@ d'interface ou de token commence dans ce projet, puis est reporté dans
 
 ## Lancer le serveur en local
 
+Le plus court, avec [mise](https://mise.jdx.dev) (`brew install mise`, puis `mise trust` une fois dans le dépôt) :
+
+```bash
+mise run dev      # crée .env s'il manque, démarre PostgreSQL, lance le serveur sur http://localhost:8080
+```
+
+Au tout premier lancement, `.env` vient d'être créé : renseigner `ADMIN_PASSWORD` et le LLM (étape 1 ci-dessous),
+puis relancer. `mise tasks` liste les autres commandes (`up`, `down`, `demo`, `test`, `check`, `logs`, `psql`,
+`backup`). Elles ne font qu'appeler les commandes décrites dans la suite de cette section, qui restent
+utilisables telles quelles.
+
 Deux façons de faire. La première ne demande que Docker, la seconde est plus confortable pour développer.
 Dans les deux cas, PostgreSQL tourne dans Docker et le schéma est créé tout seul au démarrage (Flyway).
 
@@ -140,7 +151,7 @@ Pour le lancer en arrière-plan : `docker compose up --build -d`, puis `docker c
 ### 2b. Option B : base dans Docker, serveur avec Gradle
 
 ```bash
-docker compose up -d db                 # PostgreSQL sur 127.0.0.1:5432
+docker compose up -d db                 # PostgreSQL sur 127.0.0.1:5433
 ./gradlew :app:run
 ```
 
@@ -236,7 +247,7 @@ Garanties :
 | `JAVA_OPTS` | vide | options de la JVM, par exemple `-XX:MaxRAMPercentage=60` (fixé par `deploy/docker-compose.prod.yml`) |
 | `PORT` | `8080` | port HTTP du serveur (option B ; en option A, changer le mapping dans `docker-compose.yml`) |
 | `LOG_LEVEL` | `INFO` | niveau des logs de Bloom (`DEBUG` pour le détail) |
-| `DATABASE_URL` | `jdbc:postgresql://localhost:5432/bloom` | URL JDBC, fixée par Compose en option A |
+| `DATABASE_URL` | `jdbc:postgresql://localhost:5433/bloom` | URL JDBC, fixée par Compose en option A |
 | `DB_USER`, `DB_PASSWORD` | `bloom`, `bloom` | identifiants PostgreSQL |
 | `PUBLIC_BASE_URL` | `http://localhost:8080` | base des liens de désinscription |
 | `FT_CLIENT_ID`, `FT_CLIENT_SECRET` | vides | API Offres d'emploi France Travail ; sans elles, la source « offres d'emploi » est coupée et le dashboard le signale |
@@ -257,6 +268,9 @@ Garanties :
 ### Commandes utiles
 
 ```bash
+mise run dev                       # base dans Docker puis serveur avec Gradle (option B)
+mise run up                        # tout dans Docker (option A)
+mise run backup                    # dump de la base locale dans backups/, à faire avant une version qui ajoute une migration
 ./gradlew build                    # compile tout et lance les tests (Docker requis pour ceux de data ; OrbStack détecté tout seul)
 ./gradlew :core:test               # tests du domaine seulement
 ./gradlew :data:test               # tests sur un vrai Postgres (Testcontainers)
@@ -274,8 +288,9 @@ docker compose down -v             # arrêter et effacer la base
 |---|---|
 | `Variable d'environnement manquante : X` | `X` n'est pas dans `.env`, ou le `.env` n'a pas été chargé dans le shell (option B : refaire `set -a; source .env; set +a`) |
 | `env file .env not found` | faire `cp .env.example .env` avant `docker compose` |
-| `port is already allocated` sur 8080 ou 5432 | un autre service occupe le port : `lsof -nP -iTCP:8080 -sTCP:LISTEN`, puis l'arrêter ou changer le port de gauche dans `docker-compose.yml` (et `DATABASE_URL` si c'est 5432) |
-| `Connection to localhost:5432 refused` (option B) | la base n'est pas lancée : `docker compose up -d db` |
+| `port is already allocated` sur 8080 ou 5433 | un autre service occupe le port : `lsof -nP -iTCP:8080 -sTCP:LISTEN`, puis l'arrêter ou changer le port de gauche dans `docker-compose.yml` (et `DATABASE_URL` si c'est 5433) |
+| `Connection to localhost:5433 refused` (option B) | la base n'est pas lancée : `docker compose up -d db` |
+| `password authentication failed for user "bloom"` alors que le mot de passe est bon | `DATABASE_URL` pointe sur le PostgreSQL d'un autre projet : vérifier avec `docker ps` quel conteneur publie le port, celui de Bloom est 5433 |
 | `password authentication failed for user "bloom"` | `DB_PASSWORD` a changé après la création de la base : remettre l'ancien, ou `docker compose down -v` (efface les données) |
 | `ADMIN_PASSWORD a encore sa valeur d'exemple` ou `doit faire au moins 16 caractères` | générer un secret : `openssl rand -hex 32` |
 | 401 sur le dashboard | utilisateur `doppio`, mot de passe `ADMIN_PASSWORD` ; après un changement du `.env`, redémarrer le serveur |

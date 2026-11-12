@@ -6,8 +6,9 @@ services:
       POSTGRES_USER: bloom
       POSTGRES_PASSWORD: ${DB_PASSWORD:-bloom}
     ports:
-      # Local only: lets ./gradlew :app:run reach the database
-      - "127.0.0.1:5432:5432"
+      # Local only: lets ./gradlew :app:run reach the database. 5433 on the host, so a PostgreSQL of another
+      # project on the usual 5432 never answers in its place
+      - "127.0.0.1:5433:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:

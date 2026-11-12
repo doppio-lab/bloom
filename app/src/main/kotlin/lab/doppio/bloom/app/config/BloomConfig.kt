@@ -114,7 +114,7 @@ data class BloomConfig(
             return BloomConfig(
                 server = ServerConfig(port = e.value("PORT", "8080").toInt(), adminPassword = adminPassword),
                 database = DbConfig(
-                    e.value("DATABASE_URL", "jdbc:postgresql://localhost:5432/bloom"),
+                    e.value("DATABASE_URL", "jdbc:postgresql://localhost:5433/bloom"),
                     e.value("DB_USER", "bloom"),
                     e.value("DB_PASSWORD", "bloom"),
                 ),

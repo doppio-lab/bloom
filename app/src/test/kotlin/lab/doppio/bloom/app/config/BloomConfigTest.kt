@@ -20,7 +20,7 @@ class BloomConfigTest {
         val c = BloomConfig.from(env())
         assertEquals(8080, c.server.port)
         assertEquals(secret, c.server.adminPassword)
-        assertEquals("jdbc:postgresql://localhost:5432/bloom", c.database.url)
+        assertEquals("jdbc:postgresql://localhost:5433/bloom", c.database.url)
         assertEquals("bloom", c.database.user)
         assertEquals("bloom", c.database.password)
         assertEquals(LlmProvider.ANTHROPIC, c.llm.client.provider)
