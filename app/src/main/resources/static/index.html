@@ -663,6 +663,7 @@ const DEMO = {
     accounts: [
       { account: { id: 1, name: "Vélomoov", domain: "velomoov.example", source: "classement App Store", sector: "MOBILITY_TRANSPORT" }, appStoreUrl: "https://apps.apple.com/fr/", score: 78, fit: 40, intent: 38, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+20 plaintes qualité", "+14 note en baisse", "+12 app mobile en production"], refreshedAt: "2026-10-10" },
       { account: { id: 11, name: "Banque Ardoise", domain: "ardoise.example", source: "offres d'emploi", sector: "BANK_INSURANCE" }, score: 71, fit: 36, intent: 35, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile", "+8 secteur avec référence"], refreshedAt: "2026-10-10" },
+      { account: { id: 16, name: "Coop Marée", domain: "coopmaree.example", source: "offres d'emploi", sector: "RETAIL" }, score: 68, fit: 34, intent: 34, warm: 0, recommendedOffer: "REGIE", reasons: ["+22 offre iOS ouverte depuis 74 jours", "+12 recrutement mobile"], refreshedAt: "2026-10-10" },
       { account: { id: 3, name: "Studio Polka", domain: "polka.example", source: "GitHub", sector: "MUSIC_MEDIA" }, score: 66, fit: 30, intent: 26, warm: 10, recommendedOffer: "TRAINING_KMP", reasons: ["+18 offre qui cite Kotlin Multiplatform", "+10 lien chaud : ex-collègue Music Work"], refreshedAt: "2026-10-09" },
       { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "BODACC", sector: "LOGISTICS" }, appStoreUrl: "https://apps.apple.com/fr/", score: 58, fit: 38, intent: 20, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 levée de fonds", "+5 nouvelle app annoncée"], refreshedAt: "2026-10-08" },
       { account: { id: 14, name: "Pharmacie Lumen", domain: "lumen.example", source: "classement App Store", sector: "HEALTH" }, appStoreUrl: "https://apps.apple.com/fr/", score: 47, fit: 24, intent: 23, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+10 aucune version depuis 211 jours", "+13 note en baisse"], refreshedAt: "2026-10-07" },
@@ -677,9 +678,9 @@ const DEMO = {
   },
   drafts: [
     { draft: { id: 101, channel: "EMAIL", stepIndex: 0, subject: "crash au paiement depuis la 5.2",
-      body: "Bonjour Claire,\n\nDepuis la version 5.2 de Vélomoov, 11 avis sur 30 des 90 derniers jours signalent un problème technique, souvent au moment du paiement [F:a2f1c9e0]. La note des avis récents est descendue à 2,9 [F:7b31d2aa].\n\nMon hypothèse : une régression côté session ou SDK de paiement, qui ne remonte pas dans les crash reports parce que l'app ne plante pas vraiment.\n\nOn fait des audits de 2 jours à prix fixe, avec un rapport et des correctifs priorisés. Ça vous intéresse d'en parler 15 minutes ?",
+      body: "Bonjour Hugo,\n\nDepuis la version 5.2 de Vélomoov, 11 avis sur 30 des 90 derniers jours signalent un problème technique, souvent au moment du paiement [F:a2f1c9e0]. La note des avis récents est descendue à 2,9 [F:7b31d2aa].\n\nMon hypothèse : une régression côté session ou SDK de paiement, qui ne remonte pas dans les crash reports parce que l'app ne plante pas vraiment.\n\nOn fait des audits de 2 jours à prix fixe, avec un rapport et des correctifs priorisés. Ça vous intéresse d'en parler 15 minutes ?",
       rationale: "Signal le plus fort et le plus récent ; la persona est Head of Mobile, donc angle technique direct.", guardReport: [], citedFactIds: ["a2f1c9e0", "7b31d2aa"] },
-      contactName: "Claire Morel", contactRole: "Head of Mobile", accountName: "Vélomoov",
+      contactName: "Hugo Lenoir", contactRole: "CTO", accountName: "Vélomoov",
       facts: [
         { id: "a2f1c9e0", statement: "Vélomoov : 11 avis sur 30 des 90 derniers jours signalent un problème technique (version la plus citée : 5.2)", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json", retrievedAt: "2026-10-10T00:14:00Z" },
         { id: "7b31d2aa", statement: "Vélomoov : moyenne des 30 avis des 90 derniers jours 2,9, contre 4,3 en moyenne globale", sourceUrl: "https://itunes.apple.com/fr/rss/customerreviews/page=1/id=0000000/sortBy=mostRecent/json", retrievedAt: "2026-10-10T00:14:00Z" }
@@ -688,7 +689,7 @@ const DEMO = {
       body: "Bonjour Karim,\n\nVotre offre « Développeur iOS senior » est ouverte depuis 74 jours [F:c4d09e11]. Nous accompagnons des banques sur ce type de besoin, dont Crédit Agricole.\n\nUn de nos seniors Swift peut rejoindre l'équipe pendant le recrutement, au mois, sans engagement long. Le sujet est d'actualité ?",
       rationale: "Recrutement bloqué depuis plus de 45 jours, secteur bancaire avec référence directe.",
       guardReport: ["[BLOCK] vocabulaire : expression interdite : « accompagn »"], citedFactIds: ["c4d09e11"] },
-      contactName: "Karim Benali", contactRole: "Engineering Manager", accountName: "Banque Ardoise",
+      contactName: "Karim Benali", contactRole: "Engineering Manager", accountName: "Coop Marée",
       facts: [{ id: "c4d09e11", statement: "Offre d'emploi « Développeur iOS senior » publiée il y a 74 jours", sourceUrl: "https://candidat.francetravail.fr/offres/recherche/detail/000XXXX", retrievedAt: "2026-10-10T00:14:00Z" }] }
   ],
   lastRun: { ranAt: "2026-10-10T00:14:00Z", running: false, bySource: { "offres d'emploi": 1, "BODACC": 1, "marché public": 1, "Codeur": 2, "presse": 1, "classement App Store": 0, "marché européen": 0, "marché attribué": 0, "GitHub": 0 }, notes: ["pages carrières : 4 lues, 1 avec une offre mobile"] },
@@ -707,7 +708,7 @@ const DEMO = {
       officers: [{ fullName: "Antoine Leroy", role: "Président de SAS", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
       searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head%20of%20Mobile%20V%C3%A9lomoov" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20V%C3%A9lomoov" }] },
     { accountId: 11, name: "Banque Ardoise", score: 71, source: "offres d'emploi", offer: "REGIE", why: "celui qui porte le recrutement en retard",
-      contacts: [{ contact: { fullName: "Hugo Perrin", role: "Engineering Manager", email: null, dataSource: "saisie manuelle" }, status: "no-email" }],
+      contacts: [],
       officers: [{ fullName: "Nadia Benali", role: "Directeur général", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }, { fullName: "Paul Girard", role: "Président du conseil d'administration", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
       searches: [{ role: "Engineering Manager", url: "https://www.linkedin.com/search/results/people/?keywords=Engineering%20Manager%20Banque%20Ardoise" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20Banque%20Ardoise" }] },
     { accountId: 3, name: "Studio Polka", score: 66, source: "GitHub", offer: "TRAINING_KMP", why: "celui qui fait monter l'équipe en compétence",
@@ -744,9 +745,25 @@ const DEMO = {
   ],
   replies: [
     { id: 1, from: "claire.morel@velomoov.example", accountName: "Vélomoov", subject: "crash au paiement depuis la 5.2", intent: "MEETING_REQUEST", summary: "Propose un appel jeudi ou vendredi matin, confirme des tickets paiement depuis la 5.2.", receivedAt: "2026-10-09T09:12:00Z" },
-    { id: 2, from: "t.lambert@trackr.example", accountName: "Trackr Logistique", intent: "NOT_NOW", summary: "Budget 2027 bouclé en janvier, recontacter début janvier.", followUpOn: "2027-01-06", receivedAt: "2026-10-08T15:40:00Z" },
+    { id: 2, from: "t.lambert@halle.example", accountName: "Halle Numérique", intent: "NOT_NOW", summary: "Budget 2027 bouclé en janvier, recontacter début janvier.", followUpOn: "2027-01-06", receivedAt: "2026-10-08T15:40:00Z" },
     { id: 3, from: "dsi@nomad.example", accountName: "Nomad Assurances", intent: "UNSUBSCRIBE", summary: "Demande à ne plus être contacté. Ajouté à la liste d'opposition.", receivedAt: "2026-10-07T08:02:00Z" }
-  ]
+  ],
+  // The board the server would compute from the lists above (GetBoard): same accounts, drafts, tasks and replies
+  board: { cards: [
+    { stage: "TO_START", action: "FIND_CONTACT", yours: true, accountId: 11, title: "Banque Ardoise", score: 71, source: "offres d'emploi", offer: "REGIE" },
+    { stage: "TO_START", action: "FIND_CONTACT", yours: true, accountId: 12, title: "Trackr Logistique", score: 53, source: "BODACC", offer: "FORFAIT" },
+    { stage: "TO_START", action: "FIND_CONTACT", yours: true, accountId: 13, title: "Mairie de Brévanne-sur-Loire", score: 49, source: "marché public", offer: "FORFAIT" },
+    { stage: "TO_REVIEW", action: "REVIEW_EMAIL", yours: true, accountId: 1, title: "Vélomoov", score: 78, source: "classement App Store", offer: "DISCOVERY", contactName: "Hugo Lenoir", contactRole: "CTO", draftId: 101, step: 1, stepCount: 4 },
+    { stage: "TO_REVIEW", action: "FIX_EMAIL", yours: true, accountId: 16, title: "Coop Marée", score: 68, source: "offres d'emploi", offer: "REGIE", contactName: "Karim Benali", contactRole: "Engineering Manager", draftId: 102, step: 1, stepCount: 4 },
+    { stage: "IN_SEQUENCE", action: "SEND_LINKEDIN_NOTE", yours: true, accountId: 3, title: "Studio Polka", score: 66, source: "GitHub", offer: "TRAINING_KMP", contactName: "Inès Garnier", contactRole: "Lead Android", draftId: 201, step: 2, stepCount: 4 },
+    { stage: "IN_SEQUENCE", action: "SEND_LINKEDIN_NOTE", yours: true, accountId: 14, title: "Pharmacie Lumen", score: 47, source: "classement App Store", offer: "DISCOVERY", contactName: "Paul Riviere", contactRole: "CTO", draftId: 202, step: 3, stepCount: 4 },
+    { stage: "IN_SEQUENCE", action: "WAIT_SEND", yours: false, accountId: 17, title: "Atelier Fenouil", score: 61, source: "presse", offer: "FORFAIT", contactName: "Léa Dumas", contactRole: "CTO", step: 2, stepCount: 4 },
+    { stage: "REPLIED", action: "ANSWER_REPLY", yours: true, accountId: 1, title: "Vélomoov", score: 78, source: "classement App Store", offer: "DISCOVERY", contactName: "Claire Morel", replyId: 1, replyIntent: "MEETING_REQUEST" },
+    { stage: "REPLIED", action: "ANSWER_REPLY", yours: true, accountId: 20, title: "Halle Numérique", score: 44, source: "marché attribué", offer: "FORFAIT", replyId: 2, replyIntent: "NOT_NOW" },
+    { stage: "REPLIED", action: "ANSWER_REPLY", yours: true, accountId: 15, title: "Nomad Assurances", score: 39, source: "import CSV", offer: "TRAINING_ANTHROPIC", replyId: 3, replyIntent: "UNSUBSCRIBE" },
+    { stage: "MEETING", action: "NONE", yours: false, accountId: 18, title: "Maison Ondine", score: 74, source: "classement App Store", offer: "DISCOVERY" },
+    { stage: "MEETING", action: "NONE", yours: false, accountId: 19, title: "Cycles Arpège", score: 58, source: "BODACC", offer: "FORFAIT" }
+  ] }
 };
 
 // Example data only on demand (?demo=1): an error must never pass fictional drafts off as real ones.
@@ -756,7 +773,7 @@ const UNDO_MS = 5000;
 // The sending window is set in Paris time, whatever the browser's time zone
 const PARIS = "Europe/Paris";
 
-let state = { loaded: false, demo: false, view: "pilotage", filter: "all", facets: { ...NO_FACETS }, tier: "all", range: "90", hover: null, sel: new Set(), sort: { key: "score", dir: "descending" }, q: { accounts: "", book: "", blacklist: "" }, overview: null, drafts: [], tasks: [], replies: [], toComplete: [], demands: [], book: [], blacklist: [], lastRun: null };
+let state = { loaded: false, demo: false, view: "pilotage", filter: "all", facets: { ...NO_FACETS }, tier: "all", range: "90", hover: null, sel: new Set(), sort: { key: "score", dir: "descending" }, q: { accounts: "", book: "", blacklist: "" }, overview: null, drafts: [], tasks: [], replies: [], toComplete: [], demands: [], book: [], blacklist: [], lastRun: null, board: { cards: [] }, open: null, mine: false };
 const $ = (s) => document.querySelector(s);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const pct = (x, d = 1) => (x * 100).toFixed(d).replace(".", ",") + " %";
@@ -859,17 +876,17 @@ function setBanner(kind) {
 
 async function load() {
   if (DEMO_MODE) {
-    Object.assign(state, { loaded: true, demo: true, overview: structuredClone(DEMO.overview), drafts: structuredClone(DEMO.drafts), tasks: structuredClone(DEMO.tasks), replies: structuredClone(DEMO.replies), toComplete: structuredClone(DEMO.toComplete), lastRun: DEMO.lastRun, demands: structuredClone(DEMO.demands), book: structuredClone(DEMO.book), blacklist: structuredClone(DEMO.blacklist) });
+    Object.assign(state, { loaded: true, demo: true, overview: structuredClone(DEMO.overview), drafts: structuredClone(DEMO.drafts), tasks: structuredClone(DEMO.tasks), replies: structuredClone(DEMO.replies), toComplete: structuredClone(DEMO.toComplete), lastRun: DEMO.lastRun, demands: structuredClone(DEMO.demands), book: structuredClone(DEMO.book), blacklist: structuredClone(DEMO.blacklist), board: structuredClone(DEMO.board) });
     render();
     return;
   }
   try {
-    const [overview, drafts, approved, replies, toComplete, lastRun, demands, book, blacklist] = await Promise.all([
+    const [overview, drafts, approved, replies, toComplete, lastRun, demands, book, blacklist, board] = await Promise.all([
       api("/api/overview"), api("/api/drafts?status=PENDING_REVIEW"), api("/api/drafts?status=APPROVED"), api("/api/replies"), api("/api/to-complete"),
       api("/api/discovery/last").catch(() => null), api("/api/demands").catch(() => []),
-      api("/api/book").catch(() => []), api("/api/blacklist").catch(() => [])
+      api("/api/book").catch(() => []), api("/api/blacklist").catch(() => []), api("/api/board")
     ]);
-    Object.assign(state, { loaded: true, demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete, lastRun, demands, book, blacklist });
+    Object.assign(state, { loaded: true, demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete, lastRun, demands, book, blacklist, board });
   } catch (e) {
     setBanner(e.status === 401 ? "expired" : "error");
     return;
@@ -1475,23 +1492,25 @@ async function syncLists() {
   if (state.demo) return;
   let fresh;
   try {
-    const [overview, drafts, approved, toComplete, book, blacklist] = await Promise.all([
-      api("/api/overview"), api("/api/drafts?status=PENDING_REVIEW"), api("/api/drafts?status=APPROVED"),
-      api("/api/to-complete"), api("/api/book"), api("/api/blacklist")
+    const [overview, drafts, approved, replies, toComplete, book, blacklist, board] = await Promise.all([
+      api("/api/overview"), api("/api/drafts?status=PENDING_REVIEW"), api("/api/drafts?status=APPROVED"), api("/api/replies"),
+      api("/api/to-complete"), api("/api/book"), api("/api/blacklist"), api("/api/board")
     ]);
-    fresh = { overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), toComplete, book, blacklist };
+    fresh = { overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete, book, blacklist, board };
   } catch (_) { return; }
   const prune = (list, ids, idOf, prefix) => {
     state[list] = state[list].filter((x) => { const keep = ids.has(idOf(x)); if (!keep) $(prefix + idOf(x))?.remove(); return keep; });
   };
   prune("drafts", new Set(fresh.drafts.map((d) => d.draft.id)), (d) => d.draft.id, "#d-");
   prune("tasks", new Set(fresh.tasks.map((d) => d.draft.id)), (d) => d.draft.id, "#t-");
+  // Replies classed elsewhere (another tab, a meeting recorded) leave too
+  prune("replies", new Set(fresh.replies.map((r) => r.id)), (r) => r.id, "#r-");
   prune("toComplete", new Set(fresh.toComplete.map((x) => x.row.account.id)), (x) => x.row.account.id, "#n-");
   const known = new Set(state.toComplete.map((x) => x.row.account.id));
   const added = fresh.toComplete.filter((x) => !known.has(x.row.account.id));
   if (!state.toComplete.length) { state.toComplete = added; renderNewList(); }
   else if (added.length) { state.toComplete.push(...added); $("#newlist").insertAdjacentHTML("beforeend", added.map(prospectCard).join("")); }
-  Object.assign(state, { overview: fresh.overview, book: fresh.book, blacklist: fresh.blacklist });
+  Object.assign(state, { overview: fresh.overview, book: fresh.book, blacklist: fresh.blacklist, board: fresh.board });
   renderPilotage(); renderBook(); renderBlacklist(); renderCounts();
 }
 
