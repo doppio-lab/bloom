@@ -51,7 +51,7 @@ One card per account and per person contacted: a sequence belongs to a person, s
 people in a sequence has two cards. An account with no contact has one card.
 
 A card shows: the account name and its score, one context line (the offer and the source in À démarrer,
-the person and « étape N sur M » elsewhere, the intent of the reply in A répondu, the date in
+the person and « étape N sur M » elsewhere, the intent of the reply in A répondu, the offer in
 Rendez-vous), and the next action with an actor badge: **Vous** (filled badge) or **Bloom** (outline badge),
 the same vocabulary as the Méthode view.
 
@@ -76,10 +76,11 @@ Inside a column, cards that wait for the user come first, then by score, highest
 Blacklisted accounts never appear. For the others:
 
 1. **Meeting.** An account with a deal in stage `MEETING`, `DISCOVERY_SOLD` or `PROPOSAL` has exactly one
-   card, in Rendez-vous, and no other card. Most recent first, 20 at most.
+   card, in Rendez-vous, and no other card. Best score first, 20 at most (a deal carries no date).
 2. **Reply.** An open reply gives one card in A répondu. When the reply belongs to no known contact, the
    card is titled with the sender address and has no account.
-3. **Running sequence.** An `ACTIVE` or `PAUSED` enrollment with no open reply gives one card:
+3. **Running sequence.** An `ACTIVE` enrollment (what `activeEnrollments()` returns) whose contact has no
+   open reply gives one card:
    - a draft `PENDING_REVIEW`: Email à valider, `FIX_EMAIL` when the guard blocks it, else `REVIEW_EMAIL`;
    - an approved draft on a channel other than email: En séquence, `SEND_LINKEDIN_NOTE`;
    - an approved or sending email: En séquence, `WAIT_SEND`;
@@ -132,7 +133,7 @@ behind it, the selected card is outlined.
   - `REPLIED`: the reply card with « Répondre », **« Noter un rendez-vous »** (new) and « Classer »
     (today's « Marquer comme traité »). « Répondre » and « Noter un rendez-vous » are not shown for an
     opposition, a "not interested" or a bounce, nor for a reply with no account;
-  - `MEETING`: the date the meeting was recorded and one sentence.
+  - `MEETING`: one sentence, « Rendez-vous noté. La suite se passe hors de Bloom. »
 - **Consequence line.** Under each primary action, one muted sentence says what happens next:
   - Approuver: « L'email part au prochain créneau, {date}. »
   - Ajouter et lancer la séquence: « Bloom rédige le premier email, vous le validez ici. »
@@ -172,7 +173,9 @@ All logic sits in `core` use cases with tests on the fakes. Routes stay thin. No
 ### `GetBoard` (new use case)
 
 Returns `Board(cards: List<BoardCard>)`, built from the existing ports (accounts, contacts, sequences,
-drafts, replies, deals, facts) with the rules above.
+drafts, replies, deals, facts) with the rules above. One port method is added:
+`SequenceRepository.enrolledContactIds(): Set<ContactId>` (every contact ever enrolled, whatever the status),
+so rule 4 needs one query instead of one per contact.
 
 ```kotlin
 enum class BoardStage { TO_START, TO_REVIEW, IN_SEQUENCE, REPLIED, MEETING }
@@ -185,7 +188,7 @@ data class BoardCard(
     val accountId: AccountId?, val title: String, val score: Int?, val source: String?, val offer: Offer?,
     val contactId: ContactId? = null, val contactName: String? = null, val contactRole: String? = null,
     val draftId: Long? = null, val replyId: Long? = null, val replyIntent: ReplyIntent? = null,
-    val step: Int? = null, val stepCount: Int? = null, val since: String? = null,
+    val step: Int? = null, val stepCount: Int? = null,
 )
 ```
 
