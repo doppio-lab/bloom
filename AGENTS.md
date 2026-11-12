@@ -24,6 +24,7 @@ Never put logic in a route or an adapter that a use case could hold: that is wha
 - OrbStack: `data/build.gradle.kts` points Testcontainers at `~/.orbstack/run/docker.sock` when `DOCKER_HOST` is unset, so no manual variable is needed. If Docker is not running, `:data:test` fails with "Could not find a valid Docker environment": start it, do not skip the tests.
 - Tests: Kotlin `kotlin.test`, French backtick names describing the behaviour. Use cases and routes use the in-memory fakes, `data` tests use the real database and recorded HTTP responses (`MockEngine`), never the network.
 - Run the app: `docker compose up -d db && ./gradlew :app:run` (needs `.env`, see `README.md`). `DRY_RUN=true` sends nothing. Discovery and research call the paid LLM: do not trigger them to verify a change that does not touch them.
+- `mise.toml` wraps these commands: `mise run test` (fast loop), `mise run check` (`./gradlew build`), `mise run demo`, `mise run dev` (database then server). `dev`, `up`, `db` and `backup` start the real local database, and a start applies pending migrations: leave them to the owner.
 - Never read or print `.env` (secrets). `.env.example` lists every variable.
 
 ## Checking an interface change

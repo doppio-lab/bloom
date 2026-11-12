@@ -3,6 +3,10 @@
     "allow": [
       "Bash(./gradlew:*)",
       "Bash(scripts/ui-demo.sh:*)",
+      "Bash(mise tasks:*)",
+      "Bash(mise run test)",
+      "Bash(mise run check)",
+      "Bash(mise run demo)",
       "Bash(git status:*)",
       "Bash(git diff:*)",
       "Bash(git log:*)",

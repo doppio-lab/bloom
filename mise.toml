@@ -1,0 +1,69 @@
+# One entry point for the local commands of the README: `mise tasks` lists them, `mise run dev` starts Bloom.
+# No [env]: the server reads the root .env by itself, and no task reads or prints it.
+# CI does not use this file, it calls ./gradlew build directly.
+
+[tools]
+# Same version as jvmToolchain(21) in build.gradle.kts. Gradle comes from the wrapper, Docker from the host.
+java = "temurin-21"
+
+[tasks.setup]
+description = "Create .env from .env.example when it is missing"
+run = '''
+if [ -f .env ]; then
+  echo ".env already exists, left as it is"
+else
+  cp .env.example .env
+  echo "Created .env: fill in ADMIN_PASSWORD and the LLM settings before starting (see README, 1. Configurer)"
+fi
+'''
+
+[tasks.db]
+description = "Start PostgreSQL in Docker and wait until it accepts connections"
+run = "docker compose up -d --wait db"
+
+[tasks.dev]
+description = "Start Bloom for development: database in Docker, server with Gradle on http://localhost:8080"
+depends = ["setup", "db"]
+run = "./gradlew :app:run"
+
+[tasks.up]
+description = "Start everything in Docker (database and server image built from the sources)"
+depends = ["setup"]
+run = "docker compose up --build"
+
+# Erasing the database (docker compose down -v) has no task on purpose: it stays a command typed in full.
+[tasks.down]
+description = "Stop the containers and keep the data"
+run = "docker compose down"
+
+[tasks.demo]
+description = "Serve the dashboard with example data on http://localhost:8099/?demo=1, without server or password"
+run = "scripts/ui-demo.sh"
+
+[tasks.test]
+description = "Fast tests, without Docker: core, agents and app"
+run = "./gradlew :core:test :agents:test :app:test"
+
+[tasks.check]
+description = "Everything CI runs: compile and all tests (Docker needed for the data tests)"
+run = "./gradlew build"
+
+[tasks.logs]
+description = "Follow the logs of the containers"
+run = "docker compose logs -f"
+
+[tasks.psql]
+description = "Open a SQL console on the local database"
+run = "docker compose exec db psql -U bloom bloom"
+raw = true
+
+# Flyway migrations cannot be undone: take a dump before starting a version that adds one.
+[tasks.backup]
+description = "Dump the local database into backups/ (git-ignored)"
+depends = ["db"]
+run = '''
+mkdir -p backups
+file="backups/bloom-$(date +%Y%m%d-%H%M%S).dump"
+docker compose exec -T db pg_dump -U bloom -Fc bloom > "$file"
+echo "Wrote $file"
+'''
