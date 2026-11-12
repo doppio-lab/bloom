@@ -83,8 +83,6 @@ svg.i { flex: none; width: 16px; height: 16px; fill: none; stroke: currentColor;
 .nav .count { font-size: 12px; font-weight: 500; color: var(--muted-foreground); }
 .brand b { font-size: 16px; font-weight: 600; }
 .brand span { font-size: 12px; color: var(--muted-foreground); }
-.quick { display: flex; gap: 8px; align-items: center; margin-bottom: 4px; }
-.quick .btn.primary { flex: 1; min-width: 0; justify-content: flex-start; gap: 8px; padding: 0 8px; }
 .nav-label { height: 32px; display: flex; align-items: center; padding: 0 8px; font-size: 12px; font-weight: 500; color: color-mix(in oklch, var(--sidebar-foreground) 70%, transparent); }
 .config { margin-top: auto; display: flex; flex-direction: column; }
 .side-user { display: flex; align-items: center; gap: 8px; height: 48px; padding: 8px; border-radius: var(--radius-md); }
@@ -198,9 +196,9 @@ label.lbl { display: grid; gap: 8px; font-size: 14px; font-weight: 500; line-hei
 /* Pill tabs with counts, joined toggle group */
 .tabs { align-self: flex-start; display: inline-flex; align-items: center; height: 36px; padding: 3px; border-radius: var(--radius-lg); background: var(--muted); color: var(--muted-foreground); max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .tabs button { height: 100%; display: inline-flex; align-items: center; gap: 6px; padding: 4px 8px; border: 1px solid transparent; border-radius: var(--radius-md); background: transparent; color: var(--muted-foreground); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; }
-.tabs button[aria-selected="true"] { background: var(--background); color: var(--foreground); box-shadow: var(--shadow-sm); }
+.tabs button[aria-selected="true"], .tabs button[aria-pressed="true"] { background: var(--background); color: var(--foreground); box-shadow: var(--shadow-sm); }
 .tabs .n { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px; padding: 0 6px; border-radius: 9999px; background: var(--muted-foreground); color: var(--background); font-size: 12px; opacity: .3; }
-.tabs button[aria-selected="true"] .n { opacity: 1; }
+.tabs button[aria-selected="true"] .n, .tabs button[aria-pressed="true"] .n { opacity: 1; }
 .toggles { display: inline-flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; border-radius: var(--radius-md); box-shadow: var(--shadow-xs); }
 .toggles button { height: 32px; padding: 0 12px; border: 1px solid var(--input); background: var(--background); color: var(--foreground); font: 500 14px/20px var(--font-sans); white-space: nowrap; cursor: pointer; }
 .toggles button + button { margin-left: -1px; }
@@ -274,7 +272,7 @@ tbody tr.pick { cursor: pointer; }
 th[aria-sort="ascending"] .sort svg, th[aria-sort="descending"] .sort svg { opacity: 1; }
 .table-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--muted-foreground); }
 
-/* Work queue */
+/* Cards shown in the panel: drafts, replies, LinkedIn notes, sources and guard reports */
 .subject { font-size: 16px; line-height: 24px; font-weight: 600; }
 .body { max-width: 680px; white-space: pre-wrap; line-height: 22px; overflow-wrap: anywhere; }
 .ex .body { max-width: none; overflow-wrap: normal; }
@@ -302,7 +300,7 @@ th[aria-sort="ascending"] .sort svg, th[aria-sort="descending"] .sort svg { opac
 .issue { display: grid; gap: 2px; }
 .quote { font-size: 13px; line-height: 18px; color: var(--muted-foreground); overflow-wrap: anywhere; }
 
-/* Prospects */
+/* Last discovery run, filters and Codeur demands */
 .runchips { display: flex; gap: 8px; flex-wrap: wrap; }
 .runchips .badge.zero { opacity: .6; }
 .runchips .badge .mono { color: var(--foreground); }
@@ -500,7 +498,7 @@ th[aria-sort="ascending"] .sort svg, th[aria-sort="descending"] .sort svg { opac
           <button class="btn" data-act="run-discovery" data-id="0">Chercher maintenant</button>
           <label class="btn file-btn"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>Importer (CSV)<input type="file" id="csv" accept=".csv,text/csv"></label>
         </div>
-        <div class="tabs board-tabs" id="board-tabs" role="tablist" aria-label="Colonne"></div>
+        <div class="tabs board-tabs" id="board-tabs" role="group" aria-label="Colonne affichée"></div>
         <div class="board" id="board"><div class="col-skeleton"></div><div class="col-skeleton"></div><div class="col-skeleton"></div><div class="col-skeleton"></div><div class="col-skeleton"></div></div>
         <aside class="board-panel" id="panel" role="dialog" aria-modal="false" aria-labelledby="panel-title" hidden></aside>
       </section>
@@ -907,7 +905,7 @@ async function load() {
       api("/api/discovery/last").catch(() => null), api("/api/demands").catch(() => []),
       api("/api/book").catch(() => []), api("/api/blacklist").catch(() => []), api("/api/board")
     ]);
-    Object.assign(state, { loaded: true, demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete, lastRun, demands, book, blacklist, board });
+    Object.assign(state, { gone: new Set(), loaded: true, demo: false, overview, drafts, tasks: approved.filter((d) => d.draft.channel !== "EMAIL"), replies, toComplete, lastRun, demands, book, blacklist, board });
   } catch (e) {
     setBanner(e.status === 401 ? "expired" : "error");
     return;
@@ -1200,7 +1198,7 @@ function replyCard(r, accountId) {
   return `<article class="card" id="r-${r.id}" tabindex="-1" style="gap:12px">
     <div class="row"><span>${r.accountName ? `<b style="font-weight:500">${esc(r.accountName)}</b><span class="muted"> · ` : `<span class="muted">`}${esc(r.from)}</span></span><span class="badge soft"><span class="dot" style="background:${DOT[tone]}"></span>${esc(label)}</span></div>
     <div>${esc(r.summary)}</div>${r.followUpOn ? `<div class="followup">${icon("clock")}Relance prévue le ${day(r.followUpOn)}</div>` : ""}
-    <div class="actions">${mail ? `<a class="btn primary" href="${esc(mail)}">Répondre</a>` : ""}${open ? `<button class="btn" data-act="meeting" data-id="${r.id}" data-account="${accountId}">Noter un rendez-vous</button>` : ""}<button class="btn ghost" data-act="handled" data-id="${r.id}">Classer</button></div></article>`;
+    <div class="actions">${mail ? `<a class="btn primary" href="${esc(mail)}">Répondre</a>` : ""}${open ? `<button class="btn" data-act="meeting" data-id="${esc(r.id)}" data-account="${esc(accountId)}">Noter un rendez-vous</button>` : ""}<button class="btn ghost" data-act="handled" data-id="${r.id}">Classer</button></div></article>`;
 }
 
 /** A LinkedIn note to send by hand, as shown in the panel. */
@@ -1349,7 +1347,9 @@ function renderBoard() {
     b.setAttribute("aria-pressed", String(state.mine) === b.dataset.mine);
     b.querySelector(".n").textContent = " " + (b.dataset.mine === "true" ? mineCount : all.length);
   });
-  $("#start").hidden = !mineCount;
+  $("#start").hidden = !queue().length;
+  // The board and the tabs are rebuilt: the card or tab that had the focus gets it back
+  const had = document.activeElement, hadCard = had?.dataset?.card, hadCol = had?.closest?.("#board-tabs") && had.dataset.col;
   $("#board").innerHTML = COLUMNS.map(([stage, title, line]) => {
     const list = cards.filter((c) => c.stage === stage);
     return `<section class="col" data-stage="${stage}" aria-label="${esc(title)}"${(state.col || "TO_START") !== stage ? " data-off" : ""}>
@@ -1359,12 +1359,17 @@ function renderBoard() {
     </section>`;
   }).join("");
   $("#view-parcours").classList.toggle("panel-open", !!state.open);
-  $("#board-tabs").innerHTML = COLUMNS.map(([stage, title]) => `<button role="tab" type="button" data-col="${stage}" aria-selected="${(state.col || "TO_START") === stage}">${esc(title)}<span class="n">${cards.filter((c) => c.stage === stage).length}</span></button>`).join("");
+  $("#board-tabs").innerHTML = COLUMNS.map(([stage, title]) => `<button type="button" data-col="${stage}" aria-pressed="${(state.col || "TO_START") === stage}">${esc(title)}<span class="n">${cards.filter((c) => c.stage === stage).length}</span></button>`).join("");
+  if (hadCard) $(`#board [data-card="${CSS.escape(hadCard)}"]`)?.focus({ preventScroll: true });
+  else if (hadCol) $(`#board-tabs [data-col="${CSS.escape(hadCol)}"]`)?.focus({ preventScroll: true });
+  // On a narrow screen the panel covers the page: what lies behind it is out of reach of the keyboard and screen readers
+  const cover = !!state.open && narrow.matches;
+  [$("header.top"), ...[...$("#view-parcours").children].filter((el) => el.id !== "panel")].forEach((el) => { el.inert = cover; });
   // On a phone the tab of the column shown (after a panel closed, say) is scrolled into the strip, without moving the page
-  const tabs = $("#board-tabs"), on = tabs.querySelector('[aria-selected="true"]');
+  const tabs = $("#board-tabs"), on = tabs.querySelector('[aria-pressed="true"]');
   if (on && tabs.scrollWidth > tabs.clientWidth) tabs.scrollLeft += on.getBoundingClientRect().left - tabs.getBoundingClientRect().left - 3;
   // On a wide screen the board scrolls sideways while the panel is open: the open card is brought into sight
-  if (state.open && !narrow.matches) $(`[data-card="${state.open}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
+  if (state.open && !narrow.matches) $(`[data-card="${CSS.escape(state.open)}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   syncPanel();
 }
 
@@ -1376,8 +1381,8 @@ function boardCard(c) {
   }[c.stage] ?? [c.contactName && `${c.contactName}${c.contactRole ? " · " + c.contactRole : ""}`, c.step && c.stepCount && `étape ${c.step} sur ${c.stepCount}`].filter(Boolean).join(" · ");
   // Same vocabulary as the Méthode legend: « Vous » filled, « Bloom » outline, no badge once the meeting is noted
   const who = c.action === "NONE" ? "" : c.yours ? `<span class="badge default">Vous</span>` : `<span class="badge">Bloom</span>`;
-  return `<button type="button" class="bcard${c.yours ? "" : " wait"}" data-card="${cardKey(c)}" aria-current="${state.open === cardKey(c)}">
-    <span class="t"><span>${esc(c.title)}</span>${c.score != null ? `<span class="s">${c.score}</span>` : ""}</span>
+  return `<button type="button" class="bcard${c.yours ? "" : " wait"}" data-card="${esc(cardKey(c))}" aria-current="${state.open === cardKey(c)}">
+    <span class="t"><span>${esc(c.title)}</span>${c.score != null ? `<span class="s">${esc(c.score)}</span>` : ""}</span>
     ${context ? `<span class="c">${esc(context)}</span>` : ""}
     <span class="a">${who}<span>${esc(actionText(c))}</span></span>
   </button>`;
@@ -1388,15 +1393,19 @@ function boardCard(c) {
 
 const STAGE_ORDER = COLUMNS.map(([s]) => s);
 const lowerFirst = (s) => s.charAt(0).toLowerCase() + s.slice(1);
-const slotText = () => state.overview?.nextSendAt ? `, ${sendSlot(state.overview.nextSendAt)}` : "";
+// Approved emails leave one at a time, spaced and under a daily cap: the slot is the earliest, not a promise
+const leavesAtSlot = () => `part dès le prochain créneau${state.overview?.nextSendAt ? `, ${sendSlot(state.overview.nextSendAt)}` : ""}`;
+const FIRST_EMAIL = "Bloom rédige le premier email, vous le validez ici.";
 const CLASS_ONLY = "Classer : la carte quitte le tableau, le compte reste dans Pilotage et le Carnet.";
 // What happens after the primary action, under the content of the panel
 const CONSEQUENCES = {
-  FIND_CONTACT: "Ajouter avec un email lance la séquence : Bloom rédige le premier email, vous le validez ici.",
-  ADD_EMAIL: "Bloom rédige le premier email, vous le validez ici.",
-  START_SEQUENCE: "Bloom rédige le premier email, vous le validez ici.",
-  // Approved emails leave one at a time, spaced and under a daily cap: the slot is the earliest, not a promise
-  REVIEW_EMAIL: () => `Approuver : l'email part dès le prochain créneau${slotText()}.`,
+  FIND_CONTACT: "Ajouter avec un email lance la séquence : " + FIRST_EMAIL,
+  ADD_EMAIL: FIRST_EMAIL,
+  START_SEQUENCE: FIRST_EMAIL,
+  // A LinkedIn draft is not sent by Bloom: once approved it waits in En séquence for you to send it
+  REVIEW_EMAIL: (c) => itemOf(c)?.draft?.channel && itemOf(c).draft.channel !== "EMAIL"
+    ? "Approuver : la note passe dans En séquence, vous l'envoyez sur LinkedIn."
+    : `Approuver : l'email ${leavesAtSlot()}.`,
   FIX_EMAIL: "Corrigez le message, puis approuvez : le garde-fou le relit.",
   SEND_LINKEDIN_NOTE: "Fait : la séquence passe à l'étape suivante.",
   ANSWER_REPLY: "Noter un rendez-vous : le compte passe dans Rendez-vous et compte dans l'objectif. " + CLASS_ONLY
@@ -1405,12 +1414,13 @@ const CONSEQUENCES = {
 const WAITING = {
   CHECK_FAILED_SEND: "L'envoi a échoué. Vérifiez dans votre boîte d'envoi s'il est parti avant de relancer quoi que ce soit.",
   WAIT_DRAFT: "Bloom rédige le prochain message. Il arrivera dans Email à valider.",
-  WAIT_SEND: () => `Email approuvé. Il part dès le prochain créneau${slotText()}.`,
+  WAIT_SEND: () => `Email approuvé. Il ${leavesAtSlot()}.`,
   // The last step of a sequence has no follow-up: the sequence ends. The step sent may be a LinkedIn note
   WAIT_REPLY: "Message envoyé. Sans réponse, Bloom prépare l'étape suivante, s'il en reste une, et vous la soumet ici.",
   NONE: "Rendez-vous noté. La suite se passe hors de Bloom."
 };
-const text = (v) => typeof v === "function" ? v() : v;
+/** A sentence that may depend on the card (the slot, the channel of the draft). */
+const resolveText = (v, c) => typeof v === "function" ? v(c) : v;
 
 /** The card after `key` in the order of « Commencer », none after the last; the first one when `key` does not wait for the user. */
 function nextOf(key) {
@@ -1426,7 +1436,7 @@ const liveCard = (key) => state.board.cards.find((c) => cardKey(c) === key && it
 
 function consequenceOf(c) {
   if (c.action === "ANSWER_REPLY" && !canAnswer(c.replyIntent, c.accountId)) return CLASS_ONLY;
-  return text(CONSEQUENCES[c.action]) || "";
+  return resolveText(CONSEQUENCES[c.action], c) || "";
 }
 
 const contactLine = (c) => `<div><b style="font-weight:500">${esc(c.contactName)}</b>${c.contactRole ? `<span class="muted"> · ${esc(c.contactRole)}</span>` : ""}</div>`;
@@ -1442,11 +1452,11 @@ function panelBody(c) {
       return prospectCard(item) + (entry ? officersHtml(entry) : "");
     }
     case "ADD_EMAIL": return `<form class="card stack" style="gap:12px">${contactLine(c)}
-      <label class="lbl" for="ce-${c.contactId}">Email<input type="text" id="ce-${c.contactId}" inputmode="email" placeholder="prenom@entreprise.fr" autocomplete="off"></label>
-      <div class="actions"><button class="btn primary" type="submit" data-act="contact-email" data-id="${c.contactId}">Enregistrer et lancer la séquence</button></div></form>`;
+      <label class="lbl" for="ce-${esc(c.contactId)}">Email<input type="text" id="ce-${esc(c.contactId)}" inputmode="email" placeholder="prenom@entreprise.fr" autocomplete="off"></label>
+      <div class="actions"><button class="btn primary" type="submit" data-act="contact-email" data-id="${esc(c.contactId)}">Enregistrer et lancer la séquence</button></div></form>`;
     case "START_SEQUENCE": return `<div class="card stack" style="gap:12px">${contactLine(c)}
-      <div class="actions"><button class="btn primary" type="button" data-act="start-sequence" data-id="${c.contactId}">Lancer la séquence</button></div></div>`;
-    default: return `<p class="note">${esc(text(WAITING[c.action]) || "")}</p>`;
+      <div class="actions"><button class="btn primary" type="button" data-act="start-sequence" data-id="${esc(c.contactId)}">Lancer la séquence</button></div></div>`;
+    default: return `<p class="note">${esc(resolveText(WAITING[c.action], c) || "")}</p>`;
   }
 }
 
@@ -1466,7 +1476,7 @@ function renderPanel(c) {
 function renderFoot(c) {
   const next = nextOf(cardKey(c));
   $("#panel-foot").innerHTML = next
-    ? `<span>Suivant : ${esc(next.title)}, ${esc(lowerFirst(actionText(next)))}</span><button type="button" class="btn" id="panel-next" data-next="${cardKey(next)}">Suivant</button>`
+    ? `<span>Suivant : ${esc(next.title)}, ${esc(lowerFirst(actionText(next)))}</span><button type="button" class="btn" id="panel-next" data-next="${esc(cardKey(next))}">Suivant</button>`
     : `<span>Plus rien ne vous attend après cette carte.</span>`;
 }
 
@@ -1479,8 +1489,8 @@ function openCard(key) {
   $("#panel").hidden = false;
   renderPanel(c);
   renderBoard();
-  // The primary action of the card, without scrolling the panel away from its head
-  ($("#panel-body .btn.primary:not([hidden])") || $("#panel-body .actions .btn:not([hidden])") || $("#panel-close")).focus({ preventScroll: true });
+  // The first empty field of a form, else the primary action, without scrolling the panel away from its head
+  ([...document.querySelectorAll("#panel-body form input")].find((i) => !i.value) || $("#panel-body .btn.primary:not([hidden])") || $("#panel-body .actions .btn:not([hidden])") || $("#panel-close")).focus({ preventScroll: true });
 }
 
 function closePanel() {
@@ -1489,7 +1499,7 @@ function closePanel() {
   $("#panel").hidden = true;
   $("#panel").innerHTML = "";
   renderBoard();
-  if (state.view === "parcours") ($(`[data-card="${key}"]`) || $("#headline"))?.focus();
+  if (state.view === "parcours") ($(`[data-card="${CSS.escape(key || "")}"]`) || $("#headline"))?.focus();
 }
 
 /** After an action the card's content leaves the page: the panel opens the card that followed it, or closes. */
@@ -1702,8 +1712,10 @@ async function syncLists() {
   // Replies classed elsewhere (another tab, a meeting recorded) leave too
   prune("replies", new Set(fresh.replies.map((r) => r.id)), (r) => r.id, "#r-");
   prune("toComplete", new Set(fresh.toComplete.map((x) => x.row.account.id)), (x) => x.row.account.id, "#n-");
-  const known = new Set(state.toComplete.map((x) => x.row.account.id));
-  state.toComplete.push(...fresh.toComplete.filter((x) => !known.has(x.row.account.id)));
+  // New items (a draft written since, a LinkedIn note just approved, a new reply) join the lists, so their cards show
+  const append = (list, idOf) => { const known = new Set(state[list].map(idOf)); state[list].push(...fresh[list].filter((x) => !known.has(idOf(x)))); };
+  append("drafts", (d) => d.draft.id); append("tasks", (d) => d.draft.id); append("replies", (r) => r.id);
+  append("toComplete", (x) => x.row.account.id);
   Object.assign(state, { overview: fresh.overview, book: fresh.book, blacklist: fresh.blacklist, board: fresh.board });
   // The fresh board is the truth: cards taken out by hand come back if the server still has them (no offer found, say)
   state.gone = new Set();
@@ -1735,7 +1747,7 @@ function dropCard(el, list, match) {
 }
 
 /** Takes a card out now and tells the server after 5 seconds, unless "Annuler" puts it back. */
-function removeLater(el, { list, match, send, message }) {
+function removeLater(el, { list, match, send, message, reopen }) {
   const parent = el.parentNode, after = el.nextSibling, next = neighbour(el);
   const index = state[list].findIndex(match), item = state[list][index];
   state[list].splice(index, 1);
@@ -1745,6 +1757,8 @@ function removeLater(el, { list, match, send, message }) {
     state[list].splice(Math.min(index, state[list].length), 0, item);
     parent.insertBefore(el, after && after.parentNode === parent ? after : null);
     renderCounts();
+    // The panel moved on to another card meanwhile: the card put back is opened again instead
+    if (!el.isConnected && reopen) { openCard(reopen); return; }
     el.querySelector(".actions .btn:not([hidden])")?.focus();
   };
   const fire = (keepalive) => {
@@ -1948,14 +1962,14 @@ async function run(btn) {
   if (act === "copy") return copyNote(id, btn);
   if (act === "exclude") return askExclude(btn);
   if (act === "exclude-no") return cancelExclude(btn);
-  if (act === "reject") return removeLater($("#d-" + id), { list: "drafts", match: (d) => d.draft.id === id, message: "Brouillon rejeté.",
+  if (act === "reject") return removeLater($("#d-" + id), { list: "drafts", match: (d) => d.draft.id === id, message: "Brouillon rejeté.", reopen: "d" + id,
     send: (keepalive) => api(`/api/drafts/${id}/reject`, { method: "POST", keepalive }).then(() => syncLists()) });
-  if (act === "handled") return removeLater($("#r-" + id), { list: "replies", match: (r) => r.id === id, message: "Réponse classée.",
+  if (act === "handled") return removeLater($("#r-" + id), { list: "replies", match: (r) => r.id === id, message: "Réponse classée.", reopen: "r" + id,
     send: (keepalive) => api(`/api/replies/${id}/handled`, { method: "POST", keepalive }) });
   if (act === "meeting") {
     const accountId = Number(btn.dataset.account);
     if (state.demo) demoMeeting(id);
-    return removeLater($("#r-" + id), { list: "replies", match: (r) => r.id === id, message: "Rendez-vous noté.",
+    return removeLater($("#r-" + id), { list: "replies", match: (r) => r.id === id, message: "Rendez-vous noté.", reopen: "r" + id,
       send: (keepalive) => api(`/api/accounts/${accountId}/meeting`, { method: "POST", keepalive, body: JSON.stringify({ replyId: id }) }).then(() => syncLists()) });
   }
   if (act === "dismiss-demand") {
@@ -2150,7 +2164,8 @@ document.addEventListener("keydown", (e) => {
     openCard(cardKey(to));
     return;
   }
-  const card = state.open && $('#panel-body article[id^="d-"]');
+  // a and e act on the draft of the panel, so only while the focus is in the panel
+  const card = state.open && e.target.closest?.("#panel") && $('#panel-body article[id^="d-"]');
   if (!card) return;
   e.preventDefault();
   const id = Number(card.id.slice(2)), approve = card.querySelector('[data-act="approve"]');
