@@ -275,16 +275,6 @@ th[aria-sort="ascending"] .sort svg, th[aria-sort="descending"] .sort svg { opac
 .table-foot { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; color: var(--muted-foreground); }
 
 /* Work queue */
-.focus { display: flex; gap: 24px; flex-wrap: wrap; align-items: flex-start; }
-.queue { flex: 1 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 24px; }
-.group { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
-.aside { flex: 0 1 300px; }
-@media (max-width: 900px) { .aside { flex-basis: 100%; } }
-.stat-line { display: grid; gap: 2px; }
-.stat-line b { font-size: 24px; line-height: 32px; font-weight: 600; }
-.stat-line span { color: var(--muted-foreground); }
-.hr { height: 1px; background: var(--border); }
-kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--muted); font: 500 11px/16px var(--font-mono); color: var(--foreground); }
 .subject { font-size: 16px; line-height: 24px; font-weight: 600; }
 .body { max-width: 680px; white-space: pre-wrap; line-height: 22px; overflow-wrap: anywhere; }
 .ex .body { max-width: none; overflow-wrap: normal; }
@@ -317,7 +307,6 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
 .runchips .badge.zero { opacity: .6; }
 .runchips .badge .mono { color: var(--foreground); }
 .facets { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
-.facet-line { height: 32px; display: inline-flex; align-items: center; color: var(--muted-foreground); }
 .demand { flex-direction: row; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
 .demand > div:first-child { flex: 1 1 360px; display: grid; gap: 4px; }
 
@@ -349,8 +338,14 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
 .bcard.wait .a { color: var(--muted-foreground); }
 .board-tabs { display: none; }
 /* Panel of the open card: over the right of the content, header included; the board stays visible behind it, dimmed */
-.board-panel { position: fixed; top: 8px; right: 8px; bottom: 8px; z-index: 30; width: min(calc((100vw - var(--sidebar-width) - 8px) * 0.46), 640px); display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; overflow-y: auto; background: var(--background); border-left: 1px solid var(--border); border-radius: 0 var(--radius-xl) var(--radius-xl) 0; box-shadow: var(--shadow-lg); }
-.no-side .board-panel { width: min(calc((100vw - 16px) * 0.46), 640px); }
+.app { --panel-width: min(calc((100vw - var(--sidebar-width) - 8px) * 0.46), 640px); }
+.app.no-side { --panel-width: min(calc((100vw - 16px) * 0.46), 640px); }
+.board-panel { position: fixed; top: 8px; right: 8px; bottom: 8px; z-index: 30; width: var(--panel-width); display: flex; flex-direction: column; gap: 16px; padding: 20px 24px; overflow-y: auto; background: var(--background); border-left: 1px solid var(--border); border-radius: 0 var(--radius-xl) var(--radius-xl) 0; box-shadow: var(--shadow-lg); }
+/* On a wide screen the board makes room for the panel and scrolls sideways, so the open card stays in sight */
+@media (min-width: 901px) {
+  #view-parcours.panel-open { padding-right: calc(var(--panel-width) - 8px); }
+  #view-parcours.panel-open .board { grid-template-columns: repeat(5, minmax(220px, 1fr)); overflow-x: auto; padding-bottom: 4px; }
+}
 #view-parcours.panel-open > :not(.board-panel) { opacity: 0.6; }
 .panel-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
 .panel-head > div { display: grid; gap: 2px; min-width: 0; }
@@ -369,7 +364,7 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
   .board-tabs { display: inline-flex; }
   .board { grid-template-columns: minmax(0, 1fr); }
   .board .col[data-off] { display: none; }
-  .app .board-panel { left: 8px; width: auto; border-radius: var(--radius-xl); }
+  .board-panel { left: 8px; width: auto; border-radius: var(--radius-xl); }
   #view-parcours.panel-open > :not(.board-panel) { opacity: 1; }
 }
 
@@ -439,7 +434,7 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
 
 <div class="app" id="app">
   <aside class="side" id="side" aria-label="Menu">
-    <a class="brand" href="#pilotage" data-view-link="pilotage"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg><b>Bloom</b><span>Doppio Lab</span></a>
+    <a class="brand" href="#parcours" data-view-link="parcours"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3"/></svg><b>Bloom</b><span>Doppio Lab</span></a>
     <div class="side-scroll">
       <div class="nav">
         <a href="#parcours" data-view="parcours"><svg class="i" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h5v18H3zM10 3h5v12h-5zM17 3h4v8h-4z"/></svg><span>Parcours</span><span class="count" id="c-parcours"></span></a>
@@ -688,6 +683,10 @@ const DEMO = {
       { account: { id: 3, name: "Studio Polka", domain: "polka.example", source: "GitHub", sector: "MUSIC_MEDIA" }, score: 66, fit: 30, intent: 26, warm: 10, recommendedOffer: "TRAINING_KMP", reasons: ["+18 offre qui cite Kotlin Multiplatform", "+10 lien chaud : ex-collègue Music Work"], refreshedAt: "2026-10-09" },
       { account: { id: 12, name: "Trackr Logistique", domain: "trackr.example", source: "BODACC", sector: "LOGISTICS" }, appStoreUrl: "https://apps.apple.com/fr/", score: 53, fit: 38, intent: 15, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 levée de fonds", "+5 nouvelle app annoncée"], refreshedAt: "2026-10-08" },
       { account: { id: 14, name: "Pharmacie Lumen", domain: "lumen.example", source: "classement App Store", sector: "HEALTH" }, appStoreUrl: "https://apps.apple.com/fr/", score: 47, fit: 24, intent: 23, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+10 aucune version depuis 211 jours", "+13 note en baisse"], refreshedAt: "2026-10-07" },
+      { account: { id: 18, name: "Maison Ondine", domain: "ondine.example", source: "classement App Store", sector: "RETAIL" }, appStoreUrl: "https://apps.apple.com/fr/", score: 74, fit: 38, intent: 36, warm: 0, recommendedOffer: "DISCOVERY", reasons: ["+18 plaintes qualité", "+12 note en baisse", "+6 app mobile en production"], refreshedAt: "2026-10-09" },
+      { account: { id: 17, name: "Atelier Fenouil", domain: "fenouil.example", source: "presse", sector: "RETAIL" }, score: 61, fit: 31, intent: 30, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+18 nouvelle app annoncée dans la presse", "+12 levée de fonds"], refreshedAt: "2026-10-09" },
+      { account: { id: 19, name: "Cycles Arpège", domain: "arpege.example", source: "BODACC", sector: "MOBILITY_TRANSPORT" }, score: 58, fit: 34, intent: 24, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+15 augmentation de capital", "+9 app mobile en production"], refreshedAt: "2026-10-08" },
+      { account: { id: 20, name: "Halle Numérique", domain: "halle.example", source: "marché attribué", sector: "RETAIL" }, score: 44, fit: 20, intent: 24, warm: 0, recommendedOffer: "FORFAIT", reasons: ["+24 marché d'application mobile qui arrive à échéance"], refreshedAt: "2026-10-08" },
       { account: { id: 15, name: "Nomad Assurances", domain: "nomad.example", source: "import CSV", sector: "BANK_INSURANCE" }, score: 39, fit: 33, intent: 6, warm: 0, recommendedOffer: "TRAINING_ANTHROPIC", reasons: ["+6 équipe qui recrute sur les LLM"], refreshedAt: "2026-10-05" }
     ],
     agents: [
@@ -721,11 +720,12 @@ const DEMO = {
   blacklist: [
     { id: 901, accountId: 901, name: "Crédit Horizon", reason: "Client actuel", since: "2026-10-09T09:00:00Z" },
     { id: 12, name: "Agence Pixelle", reason: "Concurrent", since: "2026-10-02T09:00:00Z" },
-    { id: 902, accountId: 902, name: "Holding Marbrier", reason: "Écarté depuis Prospects", since: "2026-09-28T09:00:00Z" }
+    { id: 902, accountId: 902, name: "Holding Marbrier", reason: "Écarté depuis Parcours", since: "2026-09-28T09:00:00Z" }
   ],
   book: [
     { accountId: 1, name: "Vélomoov", score: 78, source: "classement App Store", offer: "DISCOVERY", why: "celui qui subit le problème technique de l'app", appStoreUrl: "https://apps.apple.com/fr/",
-      contacts: [{ contact: { fullName: "Claire Morel", role: "Head of Mobile", email: "claire.morel@velomoov.example", dataSource: "saisie manuelle" }, status: "sequence" }],
+      contacts: [{ contact: { fullName: "Claire Morel", role: "Head of Mobile", email: "claire.morel@velomoov.example", dataSource: "saisie manuelle" }, status: "sequence" },
+        { contact: { fullName: "Hugo Lenoir", role: "CTO", email: "hugo.lenoir@velomoov.example", dataSource: "saisie manuelle" }, status: "sequence" }],
       officers: [{ fullName: "Antoine Leroy", role: "Président de SAS", sourceUrl: "https://annuaire-entreprises.data.gouv.fr/" }],
       searches: [{ role: "Head of Mobile", url: "https://www.linkedin.com/search/results/people/?keywords=Head%20of%20Mobile%20V%C3%A9lomoov" }, { role: "CTO", url: "https://www.linkedin.com/search/results/people/?keywords=CTO%20V%C3%A9lomoov" }] },
     { accountId: 11, name: "Banque Ardoise", score: 71, source: "offres d'emploi", offer: "REGIE", why: "celui qui porte le recrutement en retard",
@@ -1300,17 +1300,21 @@ function actionText(c) {
   if (c.action === "ANSWER_REPLY" && INTENTS[c.replyIntent]?.[1] === "error") return "Classer";
   return ACTIONS[c.action] || "";
 }
+// A card taken out by hand is remembered with its column: the same person comes back in the next one
+const goneKey = (c) => c.stage + ":" + cardKey(c);
 const cardKey = (c) => c.replyId ? "r" + c.replyId : c.draftId ? "d" + c.draftId : c.contactId ? "c" + c.contactId : "a" + c.accountId + c.stage;
 
 /** The content behind a card. A card whose content left the page (approved, classed, completed) leaves the board with it. */
 function itemOf(c) {
+  // Example data only: once a meeting is noted, the other cards of that account leave (« Annuler » brings them back)
+  if (c.hiddenBy && !state.replies.some((r) => r.id === c.hiddenBy)) return null;
   switch (c.action) {
     case "REVIEW_EMAIL": case "FIX_EMAIL": return state.drafts.find((d) => d.draft.id === c.draftId);
     case "SEND_LINKEDIN_NOTE": return state.tasks.find((t) => t.draft.id === c.draftId);
     case "ANSWER_REPLY": return state.replies.find((r) => r.id === c.replyId);
     case "FIND_CONTACT": return state.toComplete.find((x) => x.row.account.id === c.accountId);
     // A meeting noted in the example data leaves again when « Annuler » puts its reply back
-    default: return !state.gone.has(cardKey(c)) && !(c.fromReply && state.replies.some((r) => r.id === c.fromReply));
+    default: return !state.gone.has(goneKey(c)) && !(c.fromReply && state.replies.some((r) => r.id === c.fromReply));
   }
 }
 const facetItem = (c) => ({ source: c.source, score: c.score, offer: c.offer });
@@ -1318,7 +1322,8 @@ const facetItem = (c) => ({ source: c.source, score: c.score, offer: c.offer });
 const boardCards = () => state.board.cards.filter((c) => itemOf(c) && passes(facetItem(c)) && matches(state.q.board || "", c.title, c.contactName));
 const visibleCards = () => boardCards().filter((c) => !state.mine || c.yours);
 /** The order of "Commencer" and "Suivant": the column closest to a meeting first, then top to bottom. */
-const queue = () => COLUMNS.map(([s]) => s).reverse().flatMap((s) => boardCards().filter((c) => c.stage === s && c.yours));
+// A failed send is the user's to check, but the panel has no action that clears it: it stays out of the queue
+const queue = () => COLUMNS.map(([s]) => s).reverse().flatMap((s) => boardCards().filter((c) => c.stage === s && c.yours && c.action !== "CHECK_FAILED_SEND"));
 
 /** Headline of Parcours: how many cards wait for the user, by kind. */
 function boardHeadline() {
@@ -1329,7 +1334,8 @@ function boardHeadline() {
     [["REVIEW_EMAIL", "FIX_EMAIL"], "email à valider", "emails à valider"],
     [["SEND_LINKEDIN_NOTE"], "note LinkedIn", "notes LinkedIn"],
     [["CHECK_FAILED_SEND"], "envoi à vérifier", "envois à vérifier"],
-    [["FIND_CONTACT", "ADD_EMAIL", "START_SEQUENCE"], "contact à trouver", "contacts à trouver"]
+    [["FIND_CONTACT"], "contact à trouver", "contacts à trouver"],
+    [["ADD_EMAIL", "START_SEQUENCE"], "séquence à lancer", "séquences à lancer"]
   ].filter(([a]) => n(a)).map(([a, one, many]) => plural(n(a), one, many));
   return mine.length
     ? [plural(mine.length, "action vous attend", "actions vous attendent"), parts.join(", ") + "."]
@@ -1357,6 +1363,8 @@ function renderBoard() {
   // On a phone the tab of the column shown (after a panel closed, say) is scrolled into the strip, without moving the page
   const tabs = $("#board-tabs"), on = tabs.querySelector('[aria-selected="true"]');
   if (on && tabs.scrollWidth > tabs.clientWidth) tabs.scrollLeft += on.getBoundingClientRect().left - tabs.getBoundingClientRect().left - 3;
+  // On a wide screen the board scrolls sideways while the panel is open: the open card is brought into sight
+  if (state.open && !narrow.matches) $(`[data-card="${state.open}"]`)?.scrollIntoView({ block: "nearest", inline: "nearest" });
   syncPanel();
 }
 
@@ -1398,8 +1406,8 @@ const WAITING = {
   CHECK_FAILED_SEND: "L'envoi a échoué. Vérifiez dans votre boîte d'envoi s'il est parti avant de relancer quoi que ce soit.",
   WAIT_DRAFT: "Bloom rédige le prochain message. Il arrivera dans Email à valider.",
   WAIT_SEND: () => `Email approuvé. Il part dès le prochain créneau${slotText()}.`,
-  // The last step of a sequence has no follow-up: the sequence ends
-  WAIT_REPLY: "Email envoyé. Sans réponse, Bloom prépare l'étape suivante, s'il en reste une, et vous la soumet ici.",
+  // The last step of a sequence has no follow-up: the sequence ends. The step sent may be a LinkedIn note
+  WAIT_REPLY: "Message envoyé. Sans réponse, Bloom prépare l'étape suivante, s'il en reste une, et vous la soumet ici.",
   NONE: "Rendez-vous noté. La suite se passe hors de Bloom."
 };
 const text = (v) => typeof v === "function" ? v() : v;
@@ -1697,8 +1705,8 @@ async function syncLists() {
   const known = new Set(state.toComplete.map((x) => x.row.account.id));
   state.toComplete.push(...fresh.toComplete.filter((x) => !known.has(x.row.account.id)));
   Object.assign(state, { overview: fresh.overview, book: fresh.book, blacklist: fresh.blacklist, board: fresh.board });
-  // Cards taken out by hand (email added, sequence started) are forgotten once the server no longer returns them
-  state.gone = new Set([...state.gone].filter((k) => fresh.board.cards.some((c) => cardKey(c) === k)));
+  // The fresh board is the truth: cards taken out by hand come back if the server still has them (no offer found, say)
+  state.gone = new Set();
   renderPilotage(); renderBook(); renderBlacklist(); renderCounts();
 }
 
@@ -1805,6 +1813,8 @@ async function approve(id) {
   }
   dropCard(card, "drafts", (d) => d.draft.id === id);
   toast("Approuvé, envoi au prochain créneau.");
+  // The person comes back in En séquence, waiting for the sending slot
+  await syncLists();
 }
 
 function askExclude(btn) {
@@ -1843,7 +1853,7 @@ async function addContact(id) {
   const payload = { fullName: v("fn"), role: v("ro") || roles[0] || "inconnu", email: v("em") || null, linkedinUrl: v("li") || null, enroll: true };
   if (!payload.fullName) { toast("Indiquez au moins le nom de la personne."); $(`#fn-${id}`).focus(); return; }
   if (payload.linkedinUrl && !payload.linkedinUrl.startsWith("https://")) { toast("Le profil LinkedIn doit commencer par https://"); $(`#li-${id}`).focus(); return; }
-  let msg = payload.email ? "Séquence lancée, premier brouillon dans la file À valider." : "Contact ajouté, recherche de l'email en cours.";
+  let msg = payload.email ? "Séquence lancée, premier brouillon dans Email à valider." : "Contact ajouté, recherche de l'email en cours.";
   if (!state.demo) msg = (await api(`/api/accounts/${id}/contacts`, { method: "POST", body: JSON.stringify(payload) })).message || msg;
   dropCard($("#n-" + id), "toComplete", (x) => x.row.account.id === id);
   toast(msg);
@@ -1855,13 +1865,13 @@ async function contactEmail(id) {
   const field = $(`#ce-${id}`), email = field.value.trim();
   if (!EMAIL.test(email)) { toast("Indiquez une adresse email valide."); field.focus(); return; }
   const msg = state.demo ? "Email enregistré, séquence lancée" : (await api(`/api/contacts/${id}/email`, { method: "POST", body: JSON.stringify({ email }) })).message;
-  state.gone.add("c" + id); renderCounts(); toast(/[.!]$/.test(msg) ? msg : msg + ".");
+  state.gone.add("TO_START:c" + id); renderCounts(); toast(/[.!]$/.test(msg) ? msg : msg + ".");
   await syncLists();
 }
 
 async function startSequence(id) {
   if (!state.demo) await api(`/api/contacts/${id}/enroll`, { method: "POST", body: "{}" });
-  state.gone.add("c" + id); renderCounts(); toast("Séquence lancée. Bloom rédige le premier email, il arrivera dans Email à valider.");
+  state.gone.add("TO_START:c" + id); renderCounts(); toast("Séquence lancée. Bloom rédige le premier email, il arrivera dans Email à valider.");
   await syncLists();
 }
 
@@ -1870,6 +1880,8 @@ function demoMeeting(replyId) {
   const cards = state.board.cards, from = cards.find((c) => c.replyId === replyId);
   if (!from || from.accountId == null || cards.some((c) => c.fromReply === replyId)) return;
   const card = { ...from, stage: "MEETING", action: "NONE", yours: false, replyId: null, replyIntent: null, contactName: null, fromReply: replyId };
+  // A meeting account has one card (GetBoard rule 1): its other cards leave while the meeting stands
+  cards.forEach((c) => { if (c.accountId === from.accountId && c !== from) c.hiddenBy = replyId; });
   const at = cards.findIndex((c) => c.stage === "MEETING" && (c.score ?? 0) < (card.score ?? 0));
   cards.splice(at < 0 ? cards.length : at, 0, card);
 }
@@ -1937,7 +1949,7 @@ async function run(btn) {
   if (act === "exclude") return askExclude(btn);
   if (act === "exclude-no") return cancelExclude(btn);
   if (act === "reject") return removeLater($("#d-" + id), { list: "drafts", match: (d) => d.draft.id === id, message: "Brouillon rejeté.",
-    send: (keepalive) => api(`/api/drafts/${id}/reject`, { method: "POST", keepalive }) });
+    send: (keepalive) => api(`/api/drafts/${id}/reject`, { method: "POST", keepalive }).then(() => syncLists()) });
   if (act === "handled") return removeLater($("#r-" + id), { list: "replies", match: (r) => r.id === id, message: "Réponse classée.",
     send: (keepalive) => api(`/api/replies/${id}/handled`, { method: "POST", keepalive }) });
   if (act === "meeting") {
@@ -1958,6 +1970,7 @@ async function run(btn) {
         try { if (!state.demo) await api(`/api/drafts/${id}/done`, { method: "POST" }); }
         catch (err) { if (err.status !== 409) throw err; dropCard($("#t-" + id), "tasks", (d) => d.draft.id === id); toast(errorText(err), { error: true }); return; }
         dropCard($("#t-" + id), "tasks", (d) => d.draft.id === id); toast("Étape suivante planifiée.");
+        await syncLists();
       }
       else if (act === "add-contact") await addContact(id);
       else if (act === "contact-email") await contactEmail(id);
@@ -2165,6 +2178,8 @@ $("#csv").addEventListener("change", async (e) => {
     toast(`${plural(r.created, "compte créé", "comptes créés")}, ${r.updated} mis à jour, ${plural(r.contacts, "contact", "contacts")}.`);
     report.hidden = !r.errors.length;
     report.textContent = r.errors.length ? `Lignes non importées : ${r.errors.join(" · ")}.` : "";
+    // The report sits in the disclosure of the last run: it opens so the errors are seen
+    if (r.errors.length) $("#runline").open = true;
     await syncLists();
   } catch (err) {
     toast(err.status === 401 ? errorText(err) : "Import impossible. Vérifiez l'en-tête du fichier.", { error: true });
