@@ -364,6 +364,14 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
 .panel-note { margin: 0; font-size: 12px; line-height: 18px; color: var(--muted-foreground); text-wrap: pretty; }
 .panel-foot { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-top: 12px; border-top: 1px solid var(--border); }
 .panel-foot > span { color: var(--muted-foreground); }
+/* Below 900 px: one column at a time, chosen by the pill tabs (À démarrer first), and the panel over the whole content */
+@media (max-width: 900px) {
+  .board-tabs { display: inline-flex; }
+  .board { grid-template-columns: minmax(0, 1fr); }
+  .board .col[data-off] { display: none; }
+  .app .board-panel { left: 8px; width: auto; border-radius: var(--radius-xl); }
+  #view-parcours.panel-open > :not(.board-panel) { opacity: 1; }
+}
 
 /* Carnet */
 .people { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
@@ -593,7 +601,7 @@ kbd { padding: 0 4px; border: 1px solid var(--border); border-radius: var(--radi
             <div class="card-head"><div class="card-title">Votre demi-heure par jour</div><div class="muted">Un repère, pas une mesure.</div></div>
             <div class="lines">
               <div class="daily"><span class="mono">5 min</span><span>Trouver la bonne personne pour 3 à 5 nouveaux prospects</span></div>
-              <div class="daily"><span class="mono">10 min</span><span>Valider 5 à 10 emails dans la vue À faire</span></div>
+              <div class="daily"><span class="mono">10 min</span><span>Valider 5 à 10 emails dans Parcours</span></div>
               <div class="daily"><span class="mono">5 min</span><span>Envoyer 2 ou 3 notes LinkedIn préparées</span></div>
               <div class="daily"><span class="mono">10 min</span><span>Répondre aux personnes intéressées et caler les rendez-vous</span></div>
             </div>
@@ -1132,7 +1140,7 @@ function exportAccounts() {
   toast(`${plural(list.length, "compte exporté", "comptes exportés")}.`);
 }
 
-/* ---- À faire */
+/* ---- Drafts, replies and LinkedIn notes: the cards the panel shows */
 
 function bodyWithCites(text) {
   return esc(text).replace(/\[F:([A-Za-z0-9_-]+)\]/g, (_, id) => `<button class="cite" data-fact="${id}" aria-label="Voir la source ${id}">${id.slice(0, 4)}</button>`);
@@ -1206,7 +1214,7 @@ function taskCard({ draft: d, contactName, accountName, linkedinUrl }) {
     <button class="btn ghost" data-act="done" data-id="${d.id}">Fait</button></div></article>`;
 }
 
-/* ---- Prospects */
+/* ---- Prospects to complete: the card the panel shows for « Trouver la personne » */
 
 const FACT_KINDS = {
   JOB_POSTING: "Offre d'emploi", LEGAL_NOTICE: "Annonce légale", PUBLIC_TENDER: "Marché public", PUBLIC_CONTRACT: "Marché attribué", PRESS: "Presse", CODE_REPOSITORY: "Code public",
@@ -1272,22 +1280,22 @@ function renderFacets() {
 /* ---- Parcours: the board */
 
 const COLUMNS = [
-  ["TO_START", "À démarrer", "Trouvés par la recherche ou importés. Il manque la personne à contacter."],
+  ["TO_START", "À démarrer", "Trouvés par la recherche ou importés. Aucune séquence n'a commencé."],
   ["TO_REVIEW", "Email à valider", "Rédigés par Bloom. Rien ne part sans vous."],
-  ["IN_SEQUENCE", "En séquence", "Bloom envoie et relance. Vous envoyez les notes LinkedIn."],
-  ["REPLIED", "A répondu", "La séquence est arrêtée. À vous de répondre."],
+  ["IN_SEQUENCE", "En séquence", "Bloom envoie les emails validés et prépare les relances. Vous envoyez les notes LinkedIn."],
+  ["REPLIED", "A répondu", "La séquence est arrêtée, ou en pause pour une absence. À vous de répondre."],
   ["MEETING", "Rendez-vous", "Objectif : 2 par semaine."]
 ];
 const ACTIONS = {
   FIND_CONTACT: "Trouver la personne", ADD_EMAIL: "Ajouter son email", START_SEQUENCE: "Lancer la séquence",
   REVIEW_EMAIL: "Relire et approuver", FIX_EMAIL: "Corriger : bloqué par le garde-fou", SEND_LINKEDIN_NOTE: "Envoyer la note LinkedIn",
   CHECK_FAILED_SEND: "Envoi en échec : vérifier vos envois",
-  WAIT_DRAFT: "Bloom rédige le prochain message", WAIT_SEND: "Email approuvé, part au prochain créneau", WAIT_REPLY: "En attente de réponse",
+  WAIT_DRAFT: "Bloom rédige le prochain message", WAIT_SEND: "Email approuvé, part dès le prochain créneau", WAIT_REPLY: "En attente de réponse",
   ANSWER_REPLY: "Répondre, noter un rendez-vous ou classer", NONE: "La suite se passe hors de Bloom"
 };
 /** The action of a card as written on it: the sending slot when it is known, and only « Classer » for a reply nobody may answer. */
 function actionText(c) {
-  if (c.action === "WAIT_SEND" && state.overview?.nextSendAt) return `Email approuvé, part ${sendSlot(state.overview.nextSendAt)}`;
+  if (c.action === "WAIT_SEND" && state.overview?.nextSendAt) return `Email approuvé, part dès ${sendSlot(state.overview.nextSendAt)}`;
   // An opposition, a refusal or a bounce: no reply and no meeting, the card can only be classed
   if (c.action === "ANSWER_REPLY" && INTENTS[c.replyIntent]?.[1] === "error") return "Classer";
   return ACTIONS[c.action] || "";
@@ -1338,7 +1346,7 @@ function renderBoard() {
   $("#start").hidden = !mineCount;
   $("#board").innerHTML = COLUMNS.map(([stage, title, line]) => {
     const list = cards.filter((c) => c.stage === stage);
-    return `<section class="col" data-stage="${stage}" aria-label="${esc(title)}"${state.col && state.col !== stage ? " data-off" : ""}>
+    return `<section class="col" data-stage="${stage}" aria-label="${esc(title)}"${(state.col || "TO_START") !== stage ? " data-off" : ""}>
       <div class="col-head"><span>${esc(title)}</span><span class="badge soft mono">${list.length}</span></div>
       <div class="col-line">${esc(line)}</div>
       ${list.map(boardCard).join("")}
@@ -1346,6 +1354,9 @@ function renderBoard() {
   }).join("");
   $("#view-parcours").classList.toggle("panel-open", !!state.open);
   $("#board-tabs").innerHTML = COLUMNS.map(([stage, title]) => `<button role="tab" type="button" data-col="${stage}" aria-selected="${(state.col || "TO_START") === stage}">${esc(title)}<span class="n">${cards.filter((c) => c.stage === stage).length}</span></button>`).join("");
+  // On a phone the tab of the column shown (after a panel closed, say) is scrolled into the strip, without moving the page
+  const tabs = $("#board-tabs"), on = tabs.querySelector('[aria-selected="true"]');
+  if (on && tabs.scrollWidth > tabs.clientWidth) tabs.scrollLeft += on.getBoundingClientRect().left - tabs.getBoundingClientRect().left - 3;
   syncPanel();
 }
 
@@ -1601,7 +1612,7 @@ const ACTORS = { auto: ["Automatique", "secondary"], ai: ["Agent IA", ""], you: 
 const STEPS = [
   { title: "Trouver les entreprises", actors: ["auto"], when: "chaque nuit, entre 2 h et 5 h",
     paras: ["Bloom lit des sources publiques, sans IA, puis écarte les ESN, les cabinets de recrutement et les agences."],
-    bullets: ["Les classements App Store France de 21 catégories : jusqu'à 400 apps examinées par nuit. Seules restent celles d'un éditeur français dont les avis se dégradent ou qui n'est plus mise à jour.", "Les offres d'emploi de développeur mobile publiées en France (API France Travail), quand l'accès à cette API est configuré.", "Selon la configuration : annonces légales (BODACC), appels d'offres publics français et européens, marchés publics d'application mobile qui arrivent à échéance dans l'année, organisations GitHub qui publient du code Kotlin Multiplatform.", "Votre propre liste, importée en CSV depuis la vue Prospects."],
+    bullets: ["Les classements App Store France de 21 catégories : jusqu'à 400 apps examinées par nuit. Seules restent celles d'un éditeur français dont les avis se dégradent ou qui n'est plus mise à jour.", "Les offres d'emploi de développeur mobile publiées en France (API France Travail), quand l'accès à cette API est configuré.", "Selon la configuration : annonces légales (BODACC), appels d'offres publics français et européens, marchés publics d'application mobile qui arrivent à échéance dans l'année, organisations GitHub qui publient du code Kotlin Multiplatform.", "Votre propre liste, importée en CSV depuis la vue Parcours."],
     after: ["Chaque entreprise reçoit son SIREN, son effectif, son app et son site quand ils existent, et un premier score."],
     ex: [{ eyebrow: "Vélomoov", text: "Trouvée dans le classement Voyage : éditeur français, note des avis récents en baisse." }] },
   { title: "Collecter les faits", actors: ["auto"],
@@ -1614,7 +1625,7 @@ const STEPS = [
     paras: ["Un score sur 100, calculé sans IA donc toujours explicable : adéquation avec votre cible (40 points), force et fraîcheur des signaux (50), lien chaud (10). Une stack Flutter ou React Native citée dans une offre d'emploi retire 20 points d'adéquation. À partir de 65, on écrit cette semaine. De 45 à 64, on suit. En dessous, on surveille."],
     ex: [{ eyebrow: "Vélomoov", score: "78", note: "40 d'adéquation (app sur les deux stores, 100 à 199 personnes, secteur couvert), 38 d'intention (plaintes récentes, note en baisse)." }] },
   { title: "Trouver la bonne personne", actors: ["you", "auto"], you: true,
-    paras: ["Pour chaque entreprise au-dessus du seuil, la vue Prospects indique qui viser selon l'offre (Head of Mobile pour un audit, Engineering Manager pour de la régie) et propose la recherche LinkedIn toute prête. Vous choisissez la personne, vous saisissez son nom et son rôle. Si Dropcontact est branché, Bloom cherche son email professionnel. La séquence est lancée."],
+    paras: ["Pour chaque entreprise au-dessus du seuil, la colonne À démarrer de Parcours indique qui viser selon l'offre (Head of Mobile pour un audit, Engineering Manager pour de la régie) et propose la recherche LinkedIn toute prête. Vous choisissez la personne, vous saisissez son nom et son rôle. Si Dropcontact est branché, Bloom cherche son email professionnel. La séquence est lancée."],
     ex: [{ eyebrow: "Vélomoov", text: "Claire Morel, Head of Mobile. Séquence « App en difficulté » lancée." }] },
   { title: "Rédiger", actors: ["ai", "guard"],
     paras: ["L'agent part du constat sur leur app, jamais d'une présentation de Doppio Lab. Le premier email doit citer au moins un fait sourcé, et chaque chiffre du corps du message doit figurer dans un fait cité. Le garde-fou bloque aussi le jargon (« accompagner », « leader ») et tout lien dans le corps du premier email (seul le lien de désinscription du pied de message reste). L'agent corrige, deux fois au maximum."],
@@ -1623,7 +1634,7 @@ const STEPS = [
       { eyebrow: "Version corrigée", subject: "crash au paiement depuis la 5.2", body: "Bonjour Claire,\n\nDepuis la version 5.2, 11 avis sur 30 des 90 derniers jours signalent un problème technique, souvent au paiement [F:a2f1]. La note des avis récents est descendue à 2,9 [F:7b31].\n\nMon hypothèse : une régression côté session ou SDK de paiement, invisible dans les crash reports.\n\nOn fait des audits de 2 jours à prix fixe. Ça vaut un échange de 15 minutes ?" }
     ] },
   { title: "Valider", actors: ["you"], you: true,
-    paras: ["Rien ne part sans vous. Dans la vue À faire, vous approuvez, vous corrigez ou vous rejetez. Chaque fait garde le lien vers sa source. Quand vous corrigez, le garde-fou revérifie votre version, et vos corrections récentes servent d'exemples de ton pour les messages suivants."] },
+    paras: ["Rien ne part sans vous. Dans Parcours, colonne Email à valider, vous approuvez, vous corrigez ou vous rejetez. Chaque fait garde le lien vers sa source. Quand vous corrigez, le garde-fou revérifie votre version, et vos corrections récentes servent d'exemples de ton pour les messages suivants."] },
   { title: "Envoyer et relancer", actors: ["auto", "youLi"],
     paras: ["L'email part du mardi au jeudi, entre 8 h 30 et 11 h 30, à raison de 25 envois par jour et par boîte par défaut. La désinscription se fait en un clic. Les étapes LinkedIn restent manuelles : Bloom prépare la note, vous l'envoyez et vous cochez « Fait ». Chaque délai se compte en jours ouvrés à partir de l'étape précédente."],
     ex: [{ eyebrow: "Séquence « App en difficulté »", rows: [["Jour 0", "Email avec le constat et l'offre d'audit"], ["+2 jours ouvrés", "Demande de connexion LinkedIn, sans pitch (vous)"], ["+4 jours ouvrés", "Relance courte : ce qu'un audit comparable a révélé"]] }] },
@@ -1818,7 +1829,7 @@ async function exclude(id) {
   state.overview.accounts = state.overview.accounts.filter((r) => r.account.id !== id);
   state.sel.delete(id);
   state.book = state.book.filter((x) => x.accountId !== id);
-  if (state.demo) { if (gone) state.blacklist = [{ id, accountId: id, name: gone.name, reason: "Écarté depuis Prospects", since: new Date().toISOString() }, ...state.blacklist]; }
+  if (state.demo) { if (gone) state.blacklist = [{ id, accountId: id, name: gone.name, reason: "Écarté depuis Parcours", since: new Date().toISOString() }, ...state.blacklist]; }
   // The server also stopped the account's sequences and rejected its drafts: those cards leave too
   else await syncLists();
   renderAccounts(); renderBlacklist(); renderBook(); renderCounts();
