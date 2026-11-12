@@ -48,7 +48,7 @@ class EnrollContact(
         if (offer == null && dossier?.noFit == true) return Result.NoFit
         val chosen = offer
             ?: dossier?.offer
-            ?: accountRepo.accountsByScore(500).firstOrNull { it.account.id == contact.accountId }?.recommendedOffer
+            ?: accountRepo.accountsByScore(AccountRepository.ALL).firstOrNull { it.account.id == contact.accountId }?.recommendedOffer
             ?: Offer.DISCOVERY
         val seq = sequenceRepo.sequenceFor(chosen) ?: sequenceRepo.sequenceFor(Offer.DISCOVERY) ?: return Result.NoSequence
         val id = sequenceRepo.enroll(contact.id, seq.id)

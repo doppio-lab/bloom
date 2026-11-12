@@ -213,6 +213,7 @@ enum class ReplyIntent {
     INTERESTED, MEETING_REQUEST, NOT_NOW, WRONG_PERSON, REFERRAL, NOT_INTERESTED, UNSUBSCRIBE, OUT_OF_OFFICE, BOUNCE, OTHER
 }
 
+/** Declared in the order of progress: GetBoard compares ordinals to find the most advanced deal. Keep LOST last. */
 @Serializable
 enum class DealStage { QUALIFIED, MEETING, DISCOVERY_SOLD, PROPOSAL, WON, LOST }
 

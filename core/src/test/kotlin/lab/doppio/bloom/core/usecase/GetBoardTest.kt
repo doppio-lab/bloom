@@ -14,6 +14,7 @@ import lab.doppio.bloom.core.port.AccountRow
 import lab.doppio.bloom.core.port.ReplyRow
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -139,7 +140,7 @@ class GetBoardTest {
         val card = board().cards.single()
         assertEquals(BoardStage.MEETING, card.stage)
         assertEquals(BoardAction.NONE, card.action)
-        assertTrue(!card.yours)
+        assertFalse(card.yours)
     }
 
     @Test
@@ -184,6 +185,7 @@ class GetBoardTest {
         accounts.rows = listOf(row(10, "Acme"), row(11, "Globex"))
         val failed = drafts.add(sequences.addEnrollment(contacts.add(accountId = 10).id, nextStep = 1).id, DraftStatus.FAILED)
         val other = sequences.addEnrollment(contacts.add(email = "max@globex.test", accountId = 11).id, nextStep = 1)
+        // Artificial pair (a failed draft next to an approved one): it only checks which one takes precedence
         drafts.add(other.id, DraftStatus.FAILED)
         drafts.add(other.id, DraftStatus.APPROVED, step = 1)
         val cards = board().cards.associateBy { it.title }
@@ -213,5 +215,36 @@ class GetBoardTest {
         assertTrue("Globex" !in cards)
         assertEquals(BoardAction.START_SEQUENCE, cards.getValue("Initech").action)
         assertEquals("Bob", cards.getValue("Initech").contactName)
+    }
+
+    @Test
+    fun `une entreprise avec deux personnes en séquence a deux cartes`() = runTest {
+        accounts.rows = listOf(row(10, "Acme"))
+        val jane = contacts.add(email = "jane@acme.test", accountId = 10, name = "Jane")
+        val max = contacts.add(email = "max@acme.test", accountId = 10, name = "Max")
+        sequences.addEnrollment(jane.id, nextStep = 1)
+        sequences.addEnrollment(max.id, nextStep = 1)
+        val cards = board().cards
+        assertEquals(2, cards.size)
+        assertTrue(cards.all { it.stage == BoardStage.IN_SEQUENCE && it.accountId == 10L })
+        assertEquals(setOf(jane.id, max.id), cards.map { it.contactId }.toSet())
+    }
+
+    @Test
+    fun `une réponse hors séquence d'un contact connu porte son compte`() = runTest {
+        accounts.rows = listOf(row(10, "Acme"))
+        val jane = contacts.add(email = "jane@acme.test", accountId = 10, name = "Jane")
+        replies.open += reply(5, "jane@acme.test", enrollmentId = null)
+        val card = board().cards.single()
+        assertEquals(BoardStage.REPLIED, card.stage)
+        assertEquals(10L, card.accountId)
+        assertEquals(jane.id, card.contactId)
+    }
+
+    @Test
+    fun `une séquence en pause ne donne aucune carte`() = runTest {
+        accounts.rows = listOf(row(10, "Acme"))
+        sequences.addEnrollment(contacts.add(accountId = 10).id, EnrollmentStatus.PAUSED)
+        assertTrue(board().cards.isEmpty())
     }
 }

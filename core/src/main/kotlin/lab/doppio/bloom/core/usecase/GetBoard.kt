@@ -6,6 +6,7 @@ import lab.doppio.bloom.core.model.Channel
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.ContactId
 import lab.doppio.bloom.core.model.DealStage
+import lab.doppio.bloom.core.model.Dossier
 import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.Offer
 import lab.doppio.bloom.core.model.ReplyIntent
@@ -62,11 +63,15 @@ class GetBoard(
         val contactById = contacts.associateBy { it.id }
         val stepCounts = sequenceRepo.all().associate { it.id to it.steps.size }
         val cards = mutableListOf<BoardCard>()
+        // Read each dossier once, however many cards and rules ask for it
+        val dossiers = mutableMapOf<AccountId, Dossier?>()
+        suspend fun dossier(id: AccountId) = dossiers.getOrPut(id) { factRepo.dossier(id) }
 
-        suspend fun card(row: AccountRow, stage: BoardStage, action: BoardAction, contact: Contact? = null) = BoardCard(
+        /** [offer] given by the caller wins over the dossier and the recommended offer (a meeting shows its deal). */
+        suspend fun card(row: AccountRow, stage: BoardStage, action: BoardAction, contact: Contact? = null, offer: Offer? = null) = BoardCard(
             stage = stage, action = action, yours = action.yours,
             accountId = row.account.id, title = row.account.name, score = row.score, source = row.account.source,
-            offer = factRepo.dossier(row.account.id)?.offer ?: row.recommendedOffer,
+            offer = offer ?: dossier(row.account.id)?.offer ?: row.recommendedOffer,
             contactId = contact?.id, contactName = contact?.fullName, contactRole = contact?.role,
         )
 
@@ -75,7 +80,7 @@ class GetBoard(
             .groupBy { it.accountId }.mapValues { (_, deals) -> deals.maxBy { it.stage.ordinal } }
         val meetings = meetingDeals.keys
         meetingDeals.values.mapNotNull { deal -> rows[deal.accountId]?.let { it to deal } }.sortedByDescending { it.first.score }.take(MAX_MEETINGS)
-            .forEach { (row, deal) -> cards += card(row, BoardStage.MEETING, BoardAction.NONE).copy(offer = deal.offer) }
+            .forEach { (row, deal) -> cards += card(row, BoardStage.MEETING, BoardAction.NONE, offer = deal.offer) }
 
         // 2. Open replies. The sequence of the person who replied is stopped, so it gets no other card
         val replied = mutableSetOf<ContactId>()
@@ -83,7 +88,11 @@ class GetBoard(
             val contact = r.enrollmentId?.let { sequenceRepo.enrollment(it) }?.let { contactById[it.contactId] }
                 ?: contactRepo.contactByEmail(r.from)
             if (contact == null) {
-                cards += BoardCard(BoardStage.REPLIED, BoardAction.ANSWER_REPLY, true, null, r.from, null, null, null, replyId = r.id, replyIntent = r.intent)
+                cards += BoardCard(
+                    stage = BoardStage.REPLIED, action = BoardAction.ANSWER_REPLY, yours = BoardAction.ANSWER_REPLY.yours,
+                    accountId = null, title = r.from, score = null, source = null, offer = null,
+                    replyId = r.id, replyIntent = r.intent,
+                )
                 continue
             }
             replied += contact.id
@@ -137,7 +146,7 @@ class GetBoard(
         }
         for (row in accountRepo.accountsToComplete()) {
             val id = row.account.id
-            if (id in byAccount || id in meetings || factRepo.dossier(id)?.noFit == true) continue
+            if (id in byAccount || id in meetings || dossier(id)?.noFit == true) continue
             cards += card(row, BoardStage.TO_START, BoardAction.FIND_CONTACT)
         }
 

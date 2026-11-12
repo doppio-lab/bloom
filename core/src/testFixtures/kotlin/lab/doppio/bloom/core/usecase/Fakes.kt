@@ -228,7 +228,7 @@ class FakeAccountRepository(var rows: List<AccountRow> = emptyList()) : AccountR
     /** Blacklisted accounts: still found by id, missing from every list, like the real repository. */
     val excluded = mutableListOf<Account>()
     override suspend fun account(id: AccountId): Account? = rows.firstOrNull { it.account.id == id }?.account ?: excluded.firstOrNull { it.id == id }
-    override suspend fun accountsByScore(limit: Int): List<AccountRow> = rows.take(limit)
+    override suspend fun accountsByScore(limit: Int): List<AccountRow> = rows.sortedByDescending { it.score }.take(limit)
     var toComplete: List<AccountRow> = emptyList()
     override suspend fun accountsToComplete(minScore: Int, limit: Int): List<AccountRow> = toComplete
     override suspend fun saveScore(s: ScoreBreakdown) {}
