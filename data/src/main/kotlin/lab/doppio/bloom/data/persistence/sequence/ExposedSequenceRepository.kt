@@ -15,6 +15,7 @@ import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.insertIgnore
+import org.jetbrains.exposed.sql.select
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 
@@ -47,6 +48,10 @@ class ExposedSequenceRepository(private val clock: Clock = Clock.systemDefaultZo
 
     override suspend fun activeEnrollments(): List<Enrollment> = dbQuery {
         EnrollmentsTable.selectAll().where { EnrollmentsTable.status eq EnrollmentStatus.ACTIVE.name }.map { it.toEnrollment() }
+    }
+
+    override suspend fun enrolledContactIds(): Set<ContactId> = dbQuery {
+        EnrollmentsTable.select(EnrollmentsTable.contactId).withDistinct().map { it[EnrollmentsTable.contactId] }.toSet()
     }
 
     override suspend fun enrollmentsOfContact(contactId: ContactId): List<Enrollment> = dbQuery {

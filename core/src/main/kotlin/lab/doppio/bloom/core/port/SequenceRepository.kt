@@ -20,6 +20,9 @@ interface SequenceRepository {
 
     suspend fun activeEnrollments(): List<Enrollment>
 
+    /** Every contact that was ever enrolled, whatever the status of the enrollment. */
+    suspend fun enrolledContactIds(): Set<ContactId>
+
     suspend fun enrollmentsOfContact(contactId: ContactId): List<Enrollment>
 
     suspend fun advance(enrollmentId: Long, nextStep: Int, threadMessageId: String? = null)

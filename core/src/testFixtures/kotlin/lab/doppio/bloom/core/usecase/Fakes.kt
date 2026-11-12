@@ -84,6 +84,7 @@ class FakeSequenceRepository : SequenceRepository {
     override suspend fun enroll(contactId: ContactId, sequenceId: Long): Long = addEnrollment(contactId, sequenceId = sequenceId).id
     override suspend fun enrollment(id: Long): Enrollment? = enrollments[id]
     override suspend fun activeEnrollments(): List<Enrollment> = enrollments.values.filter { it.status == EnrollmentStatus.ACTIVE }
+    override suspend fun enrolledContactIds(): Set<ContactId> = enrollments.values.map { it.contactId }.toSet()
     override suspend fun enrollmentsOfContact(contactId: ContactId): List<Enrollment> = enrollments.values.filter { it.contactId == contactId }
     override suspend fun advance(enrollmentId: Long, nextStep: Int, threadMessageId: String?) {
         enrollments[enrollmentId] = enrollments.getValue(enrollmentId).copy(nextStep = nextStep)
@@ -179,9 +180,13 @@ class FakeReplyRepository : ReplyRepository {
         confidence: Double, followUpOn: LocalDate?, summary: String, receivedAt: Instant, inboundKey: String?,
     ): Long { saved += intent; inboundKey?.let { recordedKeys += it }; return saved.size.toLong() }
     override suspend fun replyRecorded(inboundKey: String): Boolean = inboundKey in recordedKeys
-    override suspend fun openReplies(): List<ReplyRow> = emptyList()
-    override suspend fun countOpenReplies(): Long = 0
-    override suspend fun markReplyHandled(id: Long) {}
+    /** Replies waiting for the user; a test adds rows here. */
+    val open = mutableListOf<ReplyRow>()
+    val handled = mutableListOf<Long>()
+
+    override suspend fun openReplies(): List<ReplyRow> = open.filter { it.id !in handled }
+    override suspend fun countOpenReplies(): Long = openReplies().size.toLong()
+    override suspend fun markReplyHandled(id: Long) { handled += id }
     override suspend fun isSuppressed(email: String): Boolean = email in suppressed
     override suspend fun suppress(value: String, reason: String) { suppressed[value] = reason }
 }
