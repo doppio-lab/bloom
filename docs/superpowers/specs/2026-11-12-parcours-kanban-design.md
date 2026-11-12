@@ -1,6 +1,7 @@
 # Parcours: a kanban board as the main work view
 
-Date: 12/11/2026. Status: design approved, not implemented.
+Date: 12/11/2026. Status: implemented on 12/11/2026 (branch `parcours-kanban`). This document describes
+what was built; the sentences that changed during the build are the ones the code could not keep true.
 
 ## Problem
 
@@ -35,10 +36,10 @@ Choices made with the owner:
 
 | Column (label) | Stage | Holds | Explanation line under the title |
 | --- | --- | --- | --- |
-| À démarrer | `TO_START` | Accounts whose sequence has not started | « Trouvés par la recherche ou importés. Il manque la personne à contacter. » |
+| À démarrer | `TO_START` | Accounts whose sequence has not started | « Trouvés par la recherche ou importés. Aucune séquence n'a commencé. » |
 | Email à valider | `TO_REVIEW` | Drafts waiting for review | « Rédigés par Bloom. Rien ne part sans vous. » |
-| En séquence | `IN_SEQUENCE` | Running sequences | « Bloom envoie et relance. Vous envoyez les notes LinkedIn. » |
-| A répondu | `REPLIED` | Replies not handled yet | « La séquence est arrêtée. À vous de répondre. » |
+| En séquence | `IN_SEQUENCE` | Running sequences | « Bloom envoie les emails validés et prépare les relances. Vous envoyez les notes LinkedIn. » |
+| A répondu | `REPLIED` | Replies not handled yet | « La séquence est arrêtée, ou en pause pour une absence. À vous de répondre. » |
 | Rendez-vous | `MEETING` | Accounts with a meeting recorded | « Objectif : 2 par semaine. » |
 
 The explanation line stays when the column is empty, so the board explains the journey with no data.
@@ -65,9 +66,9 @@ the same vocabulary as the Méthode view.
 | `IN_SEQUENCE` | `SEND_LINKEDIN_NOTE` | Envoyer la note LinkedIn | Vous |
 | `IN_SEQUENCE` | `CHECK_FAILED_SEND` | Envoi en échec : vérifier vos envois | Vous |
 | `IN_SEQUENCE` | `WAIT_DRAFT` | Bloom rédige le prochain message | Bloom |
-| `IN_SEQUENCE` | `WAIT_SEND` | Email approuvé, part {date} | Bloom |
+| `IN_SEQUENCE` | `WAIT_SEND` | Email approuvé, part dès {date} (« part dès le prochain créneau » when the slot is unknown) | Bloom |
 | `IN_SEQUENCE` | `WAIT_REPLY` | En attente de réponse | Bloom |
-| `REPLIED` | `ANSWER_REPLY` | Répondre, noter un rendez-vous ou classer | Vous |
+| `REPLIED` | `ANSWER_REPLY` | Répondre, noter un rendez-vous ou classer (« Classer » for an opposition, a "not interested" or a bounce) | Vous |
 | `MEETING` | `NONE` | La suite se passe hors de Bloom | none |
 
 Inside a column, cards that wait for the user come first, then by score, highest first.
@@ -108,11 +109,15 @@ the action is done, by the user or by Bloom. Cards cannot be moved by hand.
 ### Head of the view
 
 - Headline: « N actions vous attendent » with the detail by kind (« 3 réponses, 2 emails à valider,
-  2 notes LinkedIn, 3 contacts à trouver »), or « Rien ne vous attend » when N is 0.
+  2 notes LinkedIn, 3 contacts à trouver »), or « Rien ne vous attend » when N is 0. The kinds, in order:
+  réponses, emails à valider, notes LinkedIn, envois à vérifier, contacts à trouver (`FIND_CONTACT`),
+  séquences à lancer (`ADD_EMAIL`, `START_SEQUENCE`); a kind at 0 is left out.
 - A two-choice toggle, « À vous N » and « Tout M ». « À vous » keeps only the cards whose actor is the
   user. « Tout » is the default.
 - « Commencer » (primary) opens the first card that waits for the user, starting from the right-hand
-  column: the closest to a meeting first. Hidden when nothing waits.
+  column: the closest to a meeting first. Hidden when nothing waits. A `CHECK_FAILED_SEND` card waits for
+  the user but stays out of this order (and of « Suivant », `j` and `k`): the panel has no action that
+  clears it.
 - The last-run line of today's Prospects view, on one line with a « Détail » disclosure for the source
   chips and notes, and « Chercher maintenant » (outline). The Source, Score and Offre filters apply to the
   cards of the board.
@@ -122,6 +127,12 @@ the action is done, by the user or by Bloom. Cards cannot be moved by hand.
 
 A click on a card (or Entrée on it) opens a panel on the right of the board. The board stays visible
 behind it, the selected card is outlined.
+
+Layout as built: the panel is `position: fixed` to the window. Above 900 px the board reserves the panel's
+width while it is open, so no card hides under it; its columns keep at least 220 px and the board scrolls
+sideways when five do not fit, the open card being scrolled into sight. The undo toast can sit over the
+foot of the panel for its 5 seconds. Below 900 px the panel covers the page and the rest of the page is
+inert while it is open.
 
 - **Head.** Account name, score, offer, source, and « Fermer ». Échap closes and gives the focus back to
   the card.
@@ -137,22 +148,31 @@ behind it, the selected card is outlined.
     or « Corriger », « Modifier », « Rejeter »);
   - `IN_SEQUENCE` / `SEND_LINKEDIN_NOTE`: the LinkedIn task card (« Copier la note », « Ouvrir le
     profil », « Fait »);
-  - `IN_SEQUENCE`, waiting: one sentence that says what Bloom is waiting for and when;
+  - `IN_SEQUENCE`, waiting: one sentence that says what Bloom is waiting for and when: `WAIT_SEND`
+    « Email approuvé. Il part dès le prochain créneau, {date}. », `WAIT_REPLY` « Message envoyé. Sans
+    réponse, Bloom prépare l'étape suivante, s'il en reste une, et vous la soumet ici. » (the step sent may
+    be a LinkedIn note, the last step has no follow-up);
+  - `IN_SEQUENCE` / `CHECK_FAILED_SEND`: no action, the sentence « L'envoi a échoué. Vérifiez dans votre
+    boîte d'envoi s'il est parti avant de relancer quoi que ce soit. »;
   - `REPLIED`: the reply card with « Répondre », **« Noter un rendez-vous »** (new) and « Classer »
     (today's « Marquer comme traité »). « Répondre » and « Noter un rendez-vous » are not shown for an
     opposition, a "not interested" or a bounce, nor for a reply with no account;
   - `MEETING`: one sentence, « Rendez-vous noté. La suite se passe hors de Bloom. »
 - **Consequence line.** Under each primary action, one muted sentence says what happens next:
-  - Approuver: « L'email part au prochain créneau, {date}. »
+  - Approuver: « Approuver : l'email part dès le prochain créneau, {date}. » (approved emails leave one at
+    a time, spaced and under a daily cap: the slot is the earliest, not a promise); for a LinkedIn draft
+    « Approuver : la note passe dans En séquence, vous l'envoyez sur LinkedIn. »
   - Ajouter et lancer la séquence: « Bloom rédige le premier email, vous le validez ici. »
   - Noter un rendez-vous: « Le compte passe dans Rendez-vous et compte dans l'objectif. »
   - Classer: « La carte quitte le tableau. Le compte reste dans Pilotage et le Carnet. »
   - Fait (LinkedIn): « La séquence passe à l'étape suivante. »
 - **Foot.** « Suivant : {account}, {action} » and a « Suivant » button that opens the next card waiting
-  for the user, in the order of « Commencer ». After an action the panel moves to that next card by
-  itself; when none is left it closes.
-- **Keyboard.** `j` and `k` move to the next and previous card waiting for the user, `a` approves the
-  draft shown, `e` opens its edit mode, as today.
+  for the user, in the order of « Commencer » (the first one when the open card does not wait for the
+  user). The order does not wrap around: after its last card there is no next card, the foot reads « Plus
+  rien ne vous attend après cette carte. » and has no button. After an action the panel moves to the next
+  card by itself; when none is left it closes.
+- **Keyboard.** Outside a field, `j` and `k` move to the next and previous card waiting for the user.
+  `a` approves the draft shown and `e` opens its edit mode, only while the focus is inside the panel.
 
 Removing actions keep today's rule: the card leaves at once, a toast offers « Annuler » for 5 seconds,
 and the server is told only after that. « Noter un rendez-vous » follows the same rule.
@@ -160,7 +180,7 @@ and the server is told only after that. « Noter un rendez-vous » follows the s
 ### Narrow screens
 
 Below 900 px the board shows one column at a time, chosen by the pill tabs with their counts (the
-component of the tier tabs of Pilotage). The panel takes the whole screen.
+look of the tier tabs of Pilotage, as buttons with `aria-pressed`). The panel takes the whole screen.
 
 ## Navigation
 
@@ -236,6 +256,10 @@ The Claude artifact Bloom is the source of truth and is updated before the code:
   sidebar changes.
 - `README.md`: a "Parcours" section with the rules of this document, the sections on À faire and Prospects
   reworded for the panel, and the list of known differences revised.
+
+Version 13 of the design takes the copy changed during the build (column lines, « dès le prochain
+créneau », the headline kinds, the failed send card, no wrap of « Suivant ») and lists the panel layout
+under its known differences.
 
 No new token: colours, fonts and radii come from Thermos.
 

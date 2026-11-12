@@ -375,8 +375,8 @@ semaines, puis renseigner `MAILBOXES` et vérifier la relève IMAP.
 
 ## Liste noire et carnet de contacts
 
-- **Liste noire** (vue Prospects). Le bouton « Liste noire » d'un prospect ou d'un compte classé l'écarte pour de
-  bon : il sort de toutes les listes, ses séquences en cours s'arrêtent, ses brouillons en attente sont rejetés,
+- **Liste noire** (vue Liste noire). Le bouton « Liste noire » d'un prospect, dans le panneau d'une carte
+  « Trouver la personne » de Parcours, l'écarte pour de bon : il sort de toutes les listes, ses séquences en cours s'arrêtent, ses brouillons en attente sont rejetés,
   et la découverte ne le recrée pas. Un nom peut aussi être ajouté à la main avant que la découverte ne le trouve.
   « Réintégrer » le retire de la liste sans relancer les séquences arrêtées.
 - **Carnet** (vue Carnet). Pour chaque entreprise au-dessus de 45 ou qui a déjà un contact : les contacts choisis
@@ -430,7 +430,7 @@ Limites à connaître :
 
 ## Ta liste en CSV
 
-Onglet « Nouveaux prospects », bouton « Importer ma liste ». Virgule ou point-virgule, en-tête obligatoire :
+Vue Parcours, bouton « Importer (CSV) » (ou « Importer une liste » dans la barre latérale). Virgule ou point-virgule, en-tête obligatoire :
 
 ```
 name;domain;siren;ios_app_id;sector;headcount;warm_path;contact_name;contact_role;contact_email;contact_linkedin
