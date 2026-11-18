@@ -10,7 +10,7 @@ internal object DealsTable : Table("deals") {
     val accountId = long("account_id")
     val offer = text("offer")
     val stage = text("stage")
-    val amountEur = long("amount_eur")
+    val amountEur = long("amount_eur").default(0)
     val sourceSignal = text("source_signal").nullable()
     val expectedClose = date("expected_close").nullable()
     val createdAt = timestamp("created_at").defaultExpression(CurrentTimestamp)

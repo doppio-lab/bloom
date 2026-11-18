@@ -34,16 +34,18 @@ class SchemaTest {
     )
 
     /**
-     * Exposed proposes ALTER COLUMN statements for every timestamptz column (it expects TIMESTAMP), for
-     * defaults written as now() and for a few NOT NULL defaults. Those are comparison noise, not drift.
-     * What matters is a table, column or index declared in Kotlin that the Flyway migrations do not create.
+     * The migrations store every timestamp as TIMESTAMPTZ DEFAULT now(), which the table objects read as
+     * Instant through timestamp(). Exposed would create TIMESTAMP DEFAULT CURRENT_TIMESTAMP instead and
+     * reports the difference; the JDBC driver maps both to the same instant, so that one is accepted.
+     * Anything else (a column, a type, a nullability or a default that differs) is drift.
      */
+    private val acceptedTimestampDrift = Regex("""ALTER TABLE \w+ ALTER COLUMN \w+ TYPE TIMESTAMP, ALTER COLUMN \w+ SET DEFAULT CURRENT_TIMESTAMP""")
+
     @Test
     @Suppress("DEPRECATION")
-    fun `chaque table et colonne Exposed existe dans le schéma créé par Flyway`() {
+    fun `les tables Exposed décrivent exactement le schéma des migrations`() {
         TestDatabase.reset()
         val statements = transaction { SchemaUtils.statementsRequiredToActualizeScheme(*tables.toTypedArray()) }
-        val drift = statements.filterNot { it.contains(" ALTER COLUMN ") }
-        assertEquals(emptyList(), drift, "an Exposed table declares something the Flyway migrations do not create")
+        assertEquals(emptyList(), statements.filterNot { acceptedTimestampDrift.matches(it) }, "an Exposed table differs from what the Flyway migrations create")
     }
 }

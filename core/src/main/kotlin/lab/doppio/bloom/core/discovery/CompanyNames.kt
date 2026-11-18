@@ -13,7 +13,10 @@ object CompanyNames {
         "the", "et", "and", "de", "du", "des", "la", "le", "les",
     )
 
-    /** "Vélomoov SAS" et "VELOMOOV" donnent tous deux "velomoov". */
+    /**
+     * "Vélomoov SAS" et "VELOMOOV" donnent tous deux "velomoov". C'est la règle des slugs écrits par l'application :
+     * le remplissage SQL de V2__discovery.sql ne la reproduit pas (accents, formes juridiques), il supposait une table vide.
+     */
     fun normalize(name: String): String = tokens(name).joinToString("-")
 
     fun tokens(name: String): List<String> =
