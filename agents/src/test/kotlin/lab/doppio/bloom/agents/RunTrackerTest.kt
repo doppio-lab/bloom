@@ -64,4 +64,46 @@ class RunTrackerTest {
         assertEquals("JSON invalide", run.error)
         assertEquals("reply-classifier", run.agent)
     }
+
+    @Test
+    fun `a failed run still records the tokens the model consumed`() = runTest {
+        assertFailsWith<IllegalStateException> {
+            tracker(0).track<Unit>("writer", 1, testModel) {
+                // What the metered executor reports when the model answered but the answer could not be parsed
+                TokenCounter.current()?.add(80, 40)
+                error("réponse illisible")
+            }
+        }
+        val run = repo.runs.single()
+        assertEquals(false, run.success)
+        assertEquals(80, run.inTok)
+        assertEquals(40, run.outTok)
+    }
+
+    @Test
+    fun `a successful run logs every call of the run, not only the last one`() = runTest {
+        tracker(0).track("writer", 1, testModel) {
+            TokenCounter.current()?.add(10, 5)
+            TokenCounter.current()?.add(7, 3)
+            "ok" to null
+        }
+        val run = repo.runs.single()
+        assertEquals(17, run.inTok)
+        assertEquals(8, run.outTok)
+    }
+
+    @Test
+    fun `the metered executor reports each call to the counter of the run in progress`() = runTest {
+        val metered = MeteredExecutor(CannedExecutor("a", "b"))
+        val prompt = ai.koog.prompt.dsl.prompt("p") { user("x") }
+        tracker(0).track("writer", 1, testModel) {
+            metered.execute(prompt, testModel, emptyList())
+            metered.execute(prompt, testModel, emptyList())
+            "ok" to null
+        }
+        // CannedExecutor answers with 10 tokens in and 5 out per call
+        val run = repo.runs.single()
+        assertEquals(20, run.inTok)
+        assertEquals(10, run.outTok)
+    }
 }

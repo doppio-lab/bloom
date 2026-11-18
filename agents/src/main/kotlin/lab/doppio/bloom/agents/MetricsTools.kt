@@ -9,6 +9,7 @@ import lab.doppio.bloom.core.port.AccountRepository
 import lab.doppio.bloom.core.port.AgentRunRepository
 import lab.doppio.bloom.core.port.DealRepository
 import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.port.FactRepository
 import java.time.Clock
 import java.time.temporal.ChronoUnit
 
@@ -18,6 +19,7 @@ class MetricsTools(
     private val eventRepo: EventRepository,
     private val accountRepo: AccountRepository,
     private val dealRepo: DealRepository,
+    private val factRepo: FactRepository,
     private val agentRunRepo: AgentRunRepository,
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : ToolSet {
@@ -53,9 +55,10 @@ class MetricsTools(
         val sentByAccount = events.filter { it.first == EventType.EMAIL_SENT }.mapNotNull { it.second }.toSet()
         val positiveByAccount = events.filter { it.first == EventType.REPLY_POSITIVE }.mapNotNull { it.second }.toSet()
         val rows = accountRepo.accountsByScore(Limits.ALL_ACCOUNTS).filter { it.account.id in sentByAccount }
-        return rows.groupBy { it.recommendedOffer }.entries.joinToString("\n") { (offer, list) ->
+        // Grouped by the strongest signal of the account, as the tool promises, not by the recommended offer
+        return rows.groupBy { factRepo.dominantSignal(it.account.id) }.entries.joinToString("\n") { (signal, list) ->
             val pos = list.count { it.account.id in positiveByAccount }
-            MetricsToolTexts.replyRate(offer ?: MetricsToolTexts.NO_OFFER, list.size, pos)
+            MetricsToolTexts.replyRate(signal?.name ?: MetricsToolTexts.NO_SIGNAL, list.size, pos)
         }.ifBlank { MetricsToolTexts.NO_DATA_YET }
     }
 

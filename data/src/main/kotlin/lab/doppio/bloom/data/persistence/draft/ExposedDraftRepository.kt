@@ -84,8 +84,21 @@ class ExposedDraftRepository(private val clock: Clock = Clock.systemDefaultZone(
         val at = now ?: clock.instant()
         DraftsTable.selectAll().where {
             (DraftsTable.status eq DraftStatus.APPROVED.name) and (DraftsTable.channel eq Channel.EMAIL.name) and
-                (DraftsTable.nextAttemptAt.isNull() or DraftsTable.nextAttemptAt.lessEq(at))
+                (DraftsTable.nextAttemptAt.isNull() or DraftsTable.nextAttemptAt.lessEq(at)) and
+                (DraftsTable.sendAfter.isNull() or DraftsTable.sendAfter.lessEq(at))
         }.orderBy(DraftsTable.createdAt).limit(1).firstOrNull()?.toDraft()
+    }
+
+    override suspend fun holdOpenDrafts(enrollmentId: Long, sendAfter: Instant) {
+        dbQuery {
+            DraftsTable.update({ (DraftsTable.enrollmentId eq enrollmentId) and (DraftsTable.status inList listOf(DraftStatus.PENDING_REVIEW.name, DraftStatus.APPROVED.name)) }) {
+                it[this.sendAfter] = sendAfter
+            }
+        }
+    }
+
+    override suspend fun setSendAfter(id: Long, sendAfter: Instant) {
+        dbQuery { DraftsTable.update({ DraftsTable.id eq id }) { it[this.sendAfter] = sendAfter } }
     }
 
     override suspend fun claimForSending(id: Long, messageId: String, mailbox: String): Boolean = dbQuery {
@@ -108,10 +121,10 @@ class ExposedDraftRepository(private val clock: Clock = Clock.systemDefaultZone(
         }
     }
 
-    override suspend fun recordSendFailure(id: Long, error: String, now: Instant?, maxAttempts: Int): DraftStatus = dbQuery {
+    override suspend fun recordSendFailure(id: Long, error: String, now: Instant?, maxAttempts: Int, retryable: Boolean): DraftStatus = dbQuery {
         val at = now ?: clock.instant()
         val attempts = (DraftsTable.selectAll().where { DraftsTable.id eq id }.firstOrNull()?.get(DraftsTable.sendAttempts) ?: 0) + 1
-        val next = if (attempts >= maxAttempts) DraftStatus.FAILED else DraftStatus.APPROVED
+        val next = if (!retryable || attempts >= maxAttempts) DraftStatus.FAILED else DraftStatus.APPROVED
         DraftsTable.update({ (DraftsTable.id eq id) and (DraftsTable.status eq DraftStatus.SENDING.name) }) {
             it[status] = next.name
             it[sendAttempts] = attempts

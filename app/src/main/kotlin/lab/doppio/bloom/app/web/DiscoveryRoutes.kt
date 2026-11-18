@@ -12,6 +12,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import lab.doppio.bloom.app.outreach.LeaderGate
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.model.DiscoveryReport
 import lab.doppio.bloom.core.model.EventType
@@ -32,17 +33,27 @@ private val log = LoggerFactory.getLogger("DiscoveryRoutes")
 
 private val lenientJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
+/**
+ * A quoted CSV cell. A value starting with =, +, -, @, tab or CR would be run as a formula by a spreadsheet
+ * (a company name or a role is typed by anyone): a leading quote makes it text.
+ */
+internal fun csvCell(value: String): String {
+    val safe = if (value.isNotEmpty() && value[0] in "=+-@\t\r") "'$value" else value
+    return "\"" + safe.replace("\"", "\"\"") + "\""
+}
+
 private fun bookCsv(book: List<BookEntry>): String {
     val lines = listOf(ApiMessages.CSV_HEADER) + book.flatMap { e ->
         e.contacts.map { c -> listOf(e.name, c.contact.fullName, c.contact.role, c.contact.email.orEmpty(), c.contact.linkedinUrl.orEmpty(), ApiMessages.CSV_STATUS_CONTACT, c.contact.dataSource) } +
             e.officers.map { o -> listOf(e.name, o.fullName, o.role, "", "", ApiMessages.CSV_STATUS_SUGGESTION, o.sourceUrl) }
-    }.map { cells -> cells.joinToString(";") { "\"" + it.replace("\"", "\"\"") + "\"" } }
+    }.map { cells -> cells.joinToString(";") { csvCell(it) } }
     return "﻿" + lines.joinToString("\r\n")
 }
 
 /** Discovery, contact book and blacklist endpoints. Built by Koin (see webModule). */
 class DiscoveryRoutes(
     private val runDiscovery: RunDiscovery,
+    private val leader: LeaderGate,
     private val researchBatch: ResearchBatch,
     private val eventRepo: EventRepository,
     private val toComplete: ListToComplete,
@@ -60,6 +71,8 @@ class DiscoveryRoutes(
 
         /** Lancer la découverte sans attendre la nuit. Elle tourne en tâche de fond (plusieurs minutes). */
         post("/discovery/run") {
+            // Only the instance that runs the loops discovers: two runs at once would merge the same accounts twice
+            if (!leader.isLeader) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to ApiMessages.NOT_LEADER))
             if (runDiscovery.running) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to ApiMessages.ALREADY_RUNNING))
             background.launch {
                 runCatching { runDiscovery(); researchBatch() }
@@ -107,7 +120,7 @@ class DiscoveryRoutes(
         /** Blacklist an account: it leaves every list, its sequences stop, and discovery never brings it back. */
         post("/accounts/{id}/exclude") {
             val id = call.parameters["id"]!!.toLong()
-            val reason = runCatching { call.receive<ExcludeRequest>().reason }.getOrDefault("").ifBlank { ApiMessages.EXCLUDED_BY_HAND }
+            val reason = call.receiveOrDefault(ExcludeRequest("")).reason.ifBlank { ApiMessages.EXCLUDED_BY_HAND }
             accountRepo.excludeAccount(id, reason)
             eventRepo.logEvent(EventType.ACCOUNT_EXCLUDED, id)
             call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.ACCOUNT_EXCLUDED))

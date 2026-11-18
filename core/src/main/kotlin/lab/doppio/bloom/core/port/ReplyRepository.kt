@@ -20,6 +20,9 @@ interface ReplyRepository {
 
     suspend fun markReplyHandled(id: Long)
 
+    /** RGPD : blanks the text of replies older than [lab.doppio.bloom.core.model.Retention.REPLY_BODY_DAYS], keeping intent and summary. [now] defaults to the clock. */
+    suspend fun purgeOldReplyBodies(now: Instant? = null): Int
+
     suspend fun isSuppressed(email: String): Boolean
 
     suspend fun suppress(value: String, reason: String)

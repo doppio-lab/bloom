@@ -6,6 +6,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.server.application.install
 import io.ktor.server.testing.ApplicationTestBuilder
 import io.ktor.server.testing.testApplication
+import lab.doppio.bloom.app.outreach.LeaderGate
 import lab.doppio.bloom.app.config.BloomConfig
 import lab.doppio.bloom.app.di.configModule
 import lab.doppio.bloom.app.di.schedulerModule
@@ -32,10 +33,12 @@ import lab.doppio.bloom.core.port.ReplyClassifier
 import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.port.Researcher
 import lab.doppio.bloom.core.port.SequenceRepository
+import lab.doppio.bloom.core.port.Transactions
 import lab.doppio.bloom.core.usecase.FakeAccountRepository
 import lab.doppio.bloom.core.usecase.FakeAgentRunRepository
 import lab.doppio.bloom.core.usecase.FakeDealRepository
 import lab.doppio.bloom.core.usecase.FakeInstanceLock
+import lab.doppio.bloom.core.usecase.FakeTransactions
 import lab.doppio.bloom.core.usecase.FakeClassifier
 import lab.doppio.bloom.core.usecase.FakeCoach
 import lab.doppio.bloom.core.usecase.FakeContactRepository
@@ -57,6 +60,7 @@ import lab.doppio.bloom.core.usecase.clockAt
 import lab.doppio.bloom.core.usecase.emailSequence
 import org.koin.core.module.Module
 import org.koin.dsl.module
+import org.koin.ktor.ext.get
 import org.koin.ktor.plugin.Koin
 import java.util.Base64
 
@@ -79,6 +83,10 @@ class TestPorts {
     val deals = FakeDealRepository()
     val events = FakeEventRepository()
     val tokens = UnsubscribeTokens(UNSUBSCRIBE_SECRET)
+    val instanceLock = FakeInstanceLock()
+
+    /** The gate the loops and the manual discovery route share, set once the application is up. */
+    lateinit var leader: LeaderGate
 
     /** Binds every port the use cases and the routes need to its fake. Declared after the real modules, it wins. */
     fun module(): Module = module {
@@ -94,7 +102,8 @@ class TestPorts {
         single<AgentRunRepository> { FakeAgentRunRepository() }
         single<JobRunRepository> { FakeJobRunRepository() }
         single<DiscoveryStateRepository> { FakeDiscoveryStateRepository() }
-        single<InstanceLock> { FakeInstanceLock() }
+        single<InstanceLock> { instanceLock }
+        single<Transactions> { FakeTransactions() }
         single<Drafter> { FakeDrafter() }
         single<Researcher> { FakeResearcher() }
         single<ReplyClassifier> { FakeClassifier() }
@@ -116,6 +125,9 @@ fun routeTest(block: suspend ApplicationTestBuilder.(TestPorts) -> Unit) = testA
         install(Koin) {
             modules(configModule(testConfig(), clockAt(WEDNESDAY_MORNING)), ports.module(), useCasesModule, schedulerModule, webModule)
         }
+        // Scheduler.start is not called in tests: this instance holds the loops' lock, as in a single-instance deployment
+        ports.leader = get<LeaderGate>()
+        ports.leader.becomeLeader()
         module()
     }
     block(ports)

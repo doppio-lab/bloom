@@ -24,5 +24,8 @@ internal object ScoreReasons {
 
     fun signal(points: Int, type: SignalType) = "+$points signal ${type.name.lowercase()}"
 
+    /** The signal lines must add up to the intent shown, so say when the cap took over. */
+    fun intentCapped(cap: Int, raw: Int) = "Signaux plafonnés à $cap ($raw avant plafond)"
+
     fun warmPath(points: Int, path: String?) = "+$points lien chaud : $path"
 }

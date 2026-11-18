@@ -75,6 +75,14 @@ class RoutesTest {
     }
 
     @Test
+    fun `an unreadable decision body is a 400, never the original draft approved`() = routeTest { ports ->
+        val id = ports.pendingDraft()
+        val response = client.post("/api/drafts/$id/approve") { admin(); contentType(ContentType.Application.Json); setBody("{\"subject\": ") }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertEquals(DraftStatus.PENDING_REVIEW, ports.drafts.status(id))
+    }
+
+    @Test
     fun `rejecting a draft answers 200`() = routeTest { ports ->
         val id = ports.pendingDraft()
         val response = client.post("/api/drafts/$id/reject") { admin() }
@@ -261,5 +269,35 @@ class RoutesTest {
         assertEquals(HttpStatusCode.BadRequest, response.status)
         assertTrue("\"error\"" in response.bodyAsText(), response.bodyAsText())
         assertTrue(ports.sequences.enrollments.isEmpty())
+    }
+
+    // --- Email input ---------------------------------------------------------------------------
+
+    @Test
+    fun `a contact whose email is a list is refused with a 400 before anything is written`() = routeTest { ports ->
+        val body = """{"accountId":10,"fullName":"Jane Doe","role":"CTO","persona":"CTO","email":"a@x.fr, b@y.fr","dataSource":"test"}"""
+        val response = client.post("/api/contacts") { admin(); contentType(ContentType.Application.Json); setBody(body) }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertEquals("""{"error":"Adresse email invalide : « a@x.fr, b@y.fr »"}""", response.bodyAsText())
+        assertTrue(ports.contacts.contacts.isEmpty())
+    }
+
+    @Test
+    fun `an account whose contact has an invalid email is refused before the account is created`() = routeTest {
+        // upsertAccount is not implemented by the fake: reaching it would answer 500, not 400
+        val body = """{"account":{"name":"Acme"},"contacts":[{"accountId":0,"fullName":"Jane","role":"CTO","persona":"CTO","email":"nope","dataSource":"test"}],"researchNow":false}"""
+        val response = client.post("/api/accounts") { admin(); contentType(ContentType.Application.Json); setBody(body) }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
+
+    @Test
+    fun `a manual discovery is refused on an instance that does not run the loops`() = routeTest { ports ->
+        client.get("/health") // the application starts with the first call
+        ports.instanceLock.held = false
+        ports.instanceLock.free = false
+        ports.leader.ensureLeader()
+        val response = client.post("/api/discovery/run") { admin() }
+        assertEquals(HttpStatusCode.Conflict, response.status)
+        assertEquals("""{"status":"cette instance ne tient pas les tâches de fond, réessayer dans une minute"}""", response.bodyAsText())
     }
 }

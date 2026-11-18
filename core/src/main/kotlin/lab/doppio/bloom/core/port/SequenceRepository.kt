@@ -1,5 +1,6 @@
 package lab.doppio.bloom.core.port
 
+import java.time.Instant
 import lab.doppio.bloom.core.model.ContactId
 import lab.doppio.bloom.core.model.Enrollment
 import lab.doppio.bloom.core.model.EnrollmentStatus
@@ -30,4 +31,10 @@ interface SequenceRepository {
     suspend fun threadMessageId(enrollmentId: Long): String?
 
     suspend fun setEnrollmentStatus(enrollmentId: Long, status: EnrollmentStatus)
+
+    /**
+     * The contact is away until [until]: the enrollment stays (or goes back to) ACTIVE and its next step is counted
+     * from that date, since the sequence engine anchors a step's delay on the last action.
+     */
+    suspend fun postponeEnrollment(enrollmentId: Long, until: Instant)
 }

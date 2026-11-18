@@ -6,7 +6,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import lab.doppio.bloom.core.port.DraftRepository
-import lab.doppio.bloom.core.port.InstanceLock
 import lab.doppio.bloom.core.usecase.PlanDrafts
 import lab.doppio.bloom.core.usecase.ProcessReplies
 import lab.doppio.bloom.core.usecase.RunPeriodicJobs
@@ -40,7 +39,7 @@ data class LoopIntervals(
  *  - nuit : tâches périodiques (découverte, recherche, coach, purge).
  */
 class Scheduler(
-    private val instanceLock: InstanceLock,
+    private val gate: LeaderGate,
     private val draftRepo: DraftRepository,
     private val planDrafts: PlanDrafts,
     private val sendNextApproved: SendNextApproved,
@@ -58,18 +57,14 @@ class Scheduler(
     /** Long jobs (discovery, research, coach) run here so they never hold up each other or the loops. */
     private var jobs: CoroutineScope? = null
 
-    /** True once this instance holds the loops' lock. */
-    @Volatile private var leader = false
-
     fun start(scope: CoroutineScope) {
         jobs = scope
         scope.launch {
             // Une seule instance fait tourner les boucles : sinon chaque email partirait deux fois
-            while (!runCatching { instanceLock.tryHold() }.getOrDefault(false)) {
+            while (!gate.becomeLeader()) {
                 log.warn("Une autre instance de Bloom tient les boucles de fond : nouvel essai dans $LOCK_RETRY_SECONDS s")
                 delay(LOCK_RETRY_SECONDS * 1_000)
             }
-            leader = true
             // Avant toute boucle : un brouillon resté SENDING date d'avant le redémarrage
             val interrupted = draftRepo.reconcileInterruptedSends()
             if (interrupted > 0) log.warn("$interrupted email(s) interrompu(s) pendant l'envoi, passés en FAILED : vérifier la boîte d'envoi")
@@ -82,6 +77,10 @@ class Scheduler(
 
     private fun CoroutineScope.loop(name: String, every: Duration, block: suspend () -> Unit) = launch {
         while (isActive) {
+            if (!gate.ensureLeader()) {
+                delay(every)
+                continue
+            }
             try {
                 block()
             } catch (e: CancellationException) {
@@ -95,7 +94,7 @@ class Scheduler(
 
     /** Plans right away, in the background: an HTTP request never waits for the writer. */
     fun planSoon() {
-        if (!leader) return // another instance runs the loops and will plan on its next pass
+        if (!gate.isLeader) return // another instance runs the loops and will plan on its next pass
         jobs?.launch {
             try { planDrafts() } catch (e: CancellationException) { throw e } catch (e: Exception) { log.error("Planification en échec", e) }
         }

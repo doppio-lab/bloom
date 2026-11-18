@@ -9,7 +9,8 @@ subprojects {
         extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
             jvmToolchain(21)
             compilerOptions {
-                allWarningsAsErrors.set(false)
+                allWarningsAsErrors.set(true)
+                extraWarnings.set(true)
                 freeCompilerArgs.add("-Xjsr305=strict")
             }
         }

@@ -51,6 +51,7 @@ import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.port.ReplyRow
 import lab.doppio.bloom.core.port.Researcher
 import lab.doppio.bloom.core.port.SequenceRepository
+import lab.doppio.bloom.core.port.Transactions
 import lab.doppio.bloom.core.scoring.ScoreBreakdown
 import java.time.Clock
 import java.time.Instant
@@ -93,6 +94,9 @@ class FakeSequenceRepository : SequenceRepository {
     override suspend fun threadMessageId(enrollmentId: Long): String? = threads[enrollmentId]
     override suspend fun setEnrollmentStatus(enrollmentId: Long, status: EnrollmentStatus) {
         enrollments[enrollmentId] = enrollments.getValue(enrollmentId).copy(status = status)
+    }
+    override suspend fun postponeEnrollment(enrollmentId: Long, until: Instant) {
+        enrollments[enrollmentId] = enrollments.getValue(enrollmentId).copy(status = EnrollmentStatus.ACTIVE, lastActionAt = until.toString())
     }
 }
 
@@ -149,6 +153,12 @@ class FakeDraftRepository : DraftRepository {
         drafts[id] = drafts.getValue(id).copy(status = status, subject = editedSubject ?: drafts.getValue(id).subject, body = editedBody ?: drafts.getValue(id).body)
     }
     override suspend fun humanEditedExamples(limit: Int): List<Draft> = emptyList()
+    /** The due day of each draft, set by the planner. */
+    val sendAfter = mutableMapOf<Long, Instant>()
+    override suspend fun setSendAfter(id: Long, sendAfter: Instant) { this.sendAfter[id] = sendAfter }
+    override suspend fun holdOpenDrafts(enrollmentId: Long, sendAfter: Instant) {
+        drafts.values.filter { it.enrollmentId == enrollmentId && it.status in setOf(DraftStatus.PENDING_REVIEW, DraftStatus.APPROVED) }.forEach { this.sendAfter[it.id] = sendAfter }
+    }
     override suspend fun nextToSend(now: Instant?): Draft? = drafts.values.firstOrNull { it.status == DraftStatus.APPROVED && it.channel == Channel.EMAIL }
     override suspend fun claimForSending(id: Long, messageId: String, mailbox: String): Boolean {
         if (!claimWins) return false
@@ -160,8 +170,11 @@ class FakeDraftRepository : DraftRepository {
         sent += draft to threadMessageId
         drafts[draft.id] = draft.copy(status = DraftStatus.SENT)
     }
-    override suspend fun recordSendFailure(id: Long, error: String, now: Instant?, maxAttempts: Int): DraftStatus {
+    /** The [retryable] flag of each recorded failure, in order. */
+    val retryableFlags = mutableListOf<Boolean>()
+    override suspend fun recordSendFailure(id: Long, error: String, now: Instant?, maxAttempts: Int, retryable: Boolean): DraftStatus {
         failures += id to error
+        retryableFlags += retryable
         drafts[id] = drafts.getValue(id).copy(status = failureStatus)
         return failureStatus
     }
@@ -188,6 +201,7 @@ class FakeReplyRepository : ReplyRepository {
     override suspend fun openReplies(): List<ReplyRow> = open.filter { it.id !in handled }
     override suspend fun countOpenReplies(): Long = openReplies().size.toLong()
     override suspend fun markReplyHandled(id: Long) { handled += id }
+    override suspend fun purgeOldReplyBodies(now: Instant?): Int = 4
     override suspend fun isSuppressed(email: String): Boolean = email in suppressed
     override suspend fun suppress(value: String, reason: String) { suppressed[value] = reason }
 }
@@ -218,6 +232,7 @@ class FakeFactRepository(var dossier: Dossier? = null) : FactRepository {
     override suspend fun factsOf(accountId: AccountId, maxAgeDays: Long): List<Fact> = facts.filter { it.accountId == accountId }
     override suspend fun saveSignals(signals: List<Signal>) {}
     override suspend fun signalsOf(accountId: AccountId, maxAgeDays: Long): List<Signal> = signals.filter { it.accountId == accountId }
+    override suspend fun purgeOldSignals(now: Instant?): Int = 5
     override suspend fun dominantSignal(accountId: AccountId): SignalType? = null
     override suspend fun saveDossier(d: Dossier) { dossier = d }
     override suspend fun dossier(accountId: AccountId): Dossier? = dossier
@@ -258,6 +273,7 @@ class FakeDiscoveryStateRepository : DiscoveryStateRepository {
     override suspend fun openDemands(limit: Int): List<Demand> = emptyList()
     override suspend fun dismissDemand(key: String): Boolean = true
     override suspend fun purgeOldDemands(now: Instant?): Int = 3
+    override suspend fun purgeOldSeen(now: Instant?): Int = 6
     override suspend fun jobBoard(accountId: AccountId): Pair<BoardRef?, Instant>? = null
     override suspend fun saveJobBoard(accountId: AccountId, ref: BoardRef?) {}
 }
@@ -287,10 +303,10 @@ class FakeInbox(var mails: List<InboundMail> = emptyList()) : Inbox {
 fun inbound(uid: Long, from: String = "jane@client.test", body: String = "Merci", bounce: Boolean = false, inReplyTo: List<String> = emptyList()) =
     InboundMail("a@doppio.test", from, "Re: Sujet", body, inReplyTo, WEDNESDAY_MORNING, bounce, uid, "<m$uid@client.test>")
 
-class FakeClassifier(var intent: ReplyIntent = ReplyIntent.NOT_INTERESTED, var failure: Exception? = null) : ReplyClassifier {
+class FakeClassifier(var intent: ReplyIntent = ReplyIntent.NOT_INTERESTED, var failure: Exception? = null, var followUpOn: LocalDate? = null) : ReplyClassifier {
     override suspend fun classify(subject: String?, body: String, accountId: Long?): ReplyClassification {
         failure?.let { throw it }
-        return ReplyClassification(intent, 0.9, null, null, "résumé", null)
+        return ReplyClassification(intent, 0.9, followUpOn, null, "résumé", null)
     }
 }
 
@@ -342,6 +358,17 @@ class FakeAgentRunRepository : AgentRunRepository {
     override suspend fun agentStats(since: Instant): List<AgentStats> = emptyList()
 }
 
-class FakeInstanceLock(var held: Boolean = true) : InstanceLock {
-    override fun tryHold(): Boolean = held
+/** [held]: this instance holds the lock now. [free]: the lock can be taken when it is not held. */
+class FakeInstanceLock(var held: Boolean = true, var free: Boolean = true) : InstanceLock {
+    override fun tryHold(): Boolean {
+        if (!held && free) held = true
+        return held
+    }
+
+    override fun isHeld(): Boolean = held
+}
+
+/** No database to roll back: the block just runs. A test that needs a rollback uses the real repositories. */
+class FakeTransactions : Transactions {
+    override suspend fun <T> atomically(block: suspend () -> T): T = block()
 }

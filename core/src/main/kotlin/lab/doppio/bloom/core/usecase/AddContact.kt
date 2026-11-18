@@ -3,6 +3,7 @@ package lab.doppio.bloom.core.usecase
 import lab.doppio.bloom.core.discovery.Targeting
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.Contact
+import lab.doppio.bloom.core.model.EmailAddress
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.ReplyRepository
 
@@ -22,14 +23,15 @@ class AddContact(
 
     suspend operator fun invoke(account: Account, req: Request): Added {
         require(req.fullName.isNotBlank() && req.role.isNotBlank()) { UseCaseMessages.NAME_AND_ROLE_REQUIRED }
-        req.email?.let { require(!replyRepo.isSuppressed(it)) { UseCaseMessages.PERSON_OPTED_OUT } }
+        val email = EmailAddress.orNull(req.email)
+        email?.let { require(!replyRepo.isSuppressed(it)) { UseCaseMessages.PERSON_OPTED_OUT } }
 
         val contact = Contact(
             accountId = account.id,
             fullName = req.fullName.trim(),
             role = req.role.trim(),
             persona = Targeting.personaFromRole(req.role),
-            email = req.email?.trim()?.takeIf { it.contains('@') },
+            email = email,
             linkedinUrl = req.linkedinUrl?.trim()?.takeIf { it.startsWith("https://") },
             dataSource = if (req.fromRegistry) UseCaseMessages.SOURCE_REGISTRY_OFFICER else UseCaseMessages.SOURCE_MANUAL_ENTRY,
         )

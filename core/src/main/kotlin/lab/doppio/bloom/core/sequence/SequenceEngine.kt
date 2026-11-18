@@ -48,8 +48,16 @@ object SequenceEngine {
         }
         val slot = nextSendingSlot(maxOf(now, dueDate.atStartOfDay(zone).toInstant()), policy)
         // On prépare le brouillon un jour ouvré avant le créneau, pour laisser le temps de valider.
-        val prepareFrom = slot.atZone(zone).minusDays(1).toInstant()
+        val slotLocal = slot.atZone(zone)
+        val prepareFrom = previousBusinessDay(slotLocal.toLocalDate(), policy).atTime(slotLocal.toLocalTime()).atZone(zone).toInstant()
         return if (now >= prepareFrom) NextAction.PrepareDraft(step) else NextAction.WaitUntil(prepareFrom)
+    }
+
+    /** Start of the day a step is due: its delay in business days from the previous action. A draft never leaves before it. */
+    fun dueAt(enrollment: Enrollment, step: SequenceStep, policy: SendingPolicy): Instant {
+        val zone = ZoneId.of(policy.timezone)
+        val anchor = enrollment.lastActionAt?.let(Instant::parse) ?: Instant.parse(enrollment.enrolledAt)
+        return addBusinessDays(anchor.atZone(zone).toLocalDate(), step.delayBusinessDays, policy).atStartOfDay(zone).toInstant()
     }
 
     /** Effet d'une réponse entrante sur l'inscription. Toute réponse humaine arrête la séquence automatique. */
@@ -70,6 +78,12 @@ object SequenceEngine {
             d = d.plusDays(1)
             if (isBusinessDay(d, policy)) remaining--
         }
+        return d
+    }
+
+    fun previousBusinessDay(from: LocalDate, policy: SendingPolicy): LocalDate {
+        var d = from.minusDays(1)
+        while (!isBusinessDay(d, policy)) d = d.minusDays(1)
         return d
     }
 

@@ -1,11 +1,13 @@
 package lab.doppio.bloom.core.usecase
 
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.InboundMail
 import lab.doppio.bloom.core.model.ReplyClassification
 import lab.doppio.bloom.core.model.ReplyIntent
 import lab.doppio.bloom.core.model.ReplyReceivedPayload
+import lab.doppio.bloom.core.model.ReplyUnreadablePayload
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.DraftRepository
 import lab.doppio.bloom.core.port.EventRepository
@@ -19,7 +21,8 @@ import org.slf4j.LoggerFactory
 /**
  * Reads the inbox, classifies each reply, stops the sequences of the contact and records opt-outs and bounces.
  * Each message is marked seen only once processed. One that fails stays unread and is retried at the
- * next pass; one already recorded (marking it seen failed last time) is skipped.
+ * next pass, up to [MAX_ATTEMPTS] times, then it is marked seen and logged so it stops blocking the pass;
+ * one already recorded (marking it seen failed last time) is skipped.
  */
 class ProcessReplies(
     private val inbox: Inbox,
@@ -30,8 +33,12 @@ class ProcessReplies(
     private val contactRepo: ContactRepository,
     private val eventRepo: EventRepository,
     private val stop: StopContactSequences,
+    private val postpone: PostponeContactSequences,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
+
+    /** Failed attempts per inbound message; forgotten on restart, which only retries. */
+    private val failures = ConcurrentHashMap<String, Int>()
 
     suspend operator fun invoke() {
         val processed = mutableMapOf<String, MutableList<Long>>()
@@ -39,15 +46,30 @@ class ProcessReplies(
             try {
                 if (!replyRepo.replyRecorded(mail.key)) process(mail)
                 processed.getOrPut(mail.mailbox) { mutableListOf() } += mail.uid
+                failures.remove(mail.key)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                log.warn("Réponse non traitée, relue à la prochaine passe : ${mail.key}", e)
+                val attempts = failures.merge(mail.key, 1, Int::plus) ?: 1
+                if (attempts < MAX_ATTEMPTS) {
+                    log.warn("Réponse non traitée ($attempts), relue à la prochaine passe : ${mail.key}", e)
+                } else {
+                    // Given up: marked seen so it stops being fetched, classified and logged at every pass
+                    log.error("Réponse illisible après $attempts essais, marquée lue : ${mail.key}", e)
+                    eventRepo.logEvent(EventType.REPLY_UNREADABLE, payload = ReplyUnreadablePayload(mail.key, mail.from).toJson())
+                    processed.getOrPut(mail.mailbox) { mutableListOf() } += mail.uid
+                    failures.remove(mail.key)
+                }
             }
         }
         processed.forEach { (mailbox, uids) ->
             runCatching { inbox.markSeen(mailbox, uids) }.onFailure { log.warn("Impossible de marquer lus les messages de $mailbox", it) }
         }
+    }
+
+    private companion object {
+        /** Passes after which a reply that keeps failing is marked seen and given up. */
+        const val MAX_ATTEMPTS = 3
     }
 
     private suspend fun process(mail: InboundMail) {
@@ -62,10 +84,19 @@ class ProcessReplies(
             classifier.classify(mail.subject, mail.body, accountId)
         }
 
-        // Arrêt de toutes les séquences du contact, quelle que soit l'intention
-        contact?.let { stop(it.id, SequenceEngine.onReply(result.intent)) }
+        // Arrêt de toutes les séquences du contact, quelle que soit l'intention ; une absence ne fait que repousser la suite
+        if (result.intent == ReplyIntent.OUT_OF_OFFICE) {
+            contact?.let { postpone(it.id, result.followUpOn, mail.receivedAt) }
+        } else {
+            contact?.let { stop(it.id, SequenceEngine.onReply(result.intent)) }
+        }
         when (result.intent) {
-            ReplyIntent.UNSUBSCRIBE -> replyRepo.suppress(mail.from, UseCaseMessages.suppressedByReply(result.summary))
+            ReplyIntent.UNSUBSCRIBE -> {
+                replyRepo.suppress(mail.from, UseCaseMessages.suppressedByReply(result.summary))
+                // The reply may come from an alias or an assistant: the address we wrote to must be closed too
+                contact?.email?.takeIf { !it.equals(mail.from, ignoreCase = true) }
+                    ?.let { replyRepo.suppress(it, UseCaseMessages.suppressedByReply(result.summary)) }
+            }
             ReplyIntent.BOUNCE -> contact?.email?.let { replyRepo.suppress(it, UseCaseMessages.SUPPRESSED_BOUNCE) }
             else -> {}
         }
@@ -78,6 +109,7 @@ class ProcessReplies(
             ReplyIntent.UNSUBSCRIBE -> eventRepo.logEvent(EventType.UNSUBSCRIBED, accountId, contact?.id)
             ReplyIntent.BOUNCE -> eventRepo.logEvent(EventType.BOUNCED, accountId, contact?.id)
             ReplyIntent.INTERESTED, ReplyIntent.MEETING_REQUEST, ReplyIntent.REFERRAL -> eventRepo.logEvent(EventType.REPLY_POSITIVE, accountId, contact?.id)
+            ReplyIntent.OUT_OF_OFFICE -> eventRepo.logEvent(EventType.REPLY_OUT_OF_OFFICE, accountId, contact?.id)
             else -> {}
         }
         eventRepo.logEvent(EventType.REPLY_RECEIVED, accountId, contact?.id, payload = ReplyReceivedPayload(result.intent).toJson())

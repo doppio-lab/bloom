@@ -13,7 +13,10 @@ object CompanyNames {
         "the", "et", "and", "de", "du", "des", "la", "le", "les",
     )
 
-    /** "Vélomoov SAS" et "VELOMOOV" donnent tous deux "velomoov". */
+    /**
+     * "Vélomoov SAS" et "VELOMOOV" donnent tous deux "velomoov". C'est la règle des slugs écrits par l'application :
+     * le remplissage SQL de V2__discovery.sql ne la reproduit pas (accents, formes juridiques), il supposait une table vide.
+     */
     fun normalize(name: String): String = tokens(name).joinToString("-")
 
     fun tokens(name: String): List<String> =
@@ -25,18 +28,24 @@ object CompanyNames {
             .split(' ')
             .filter { it.isNotBlank() && it !in legalForms }
 
-    /** Même entreprise ? Jaccard des mots >= 0,6, ou un nom contenu dans l'autre (4 lettres minimum). */
+    /**
+     * Même entreprise ? Jaccard des mots >= 0,6, ou le nom court est le début du nom long, mot à mot
+     * (4 lettres minimum, et au moins la moitié des mots du nom long) : "Qonto" vaut "Qonto SAS (Olinda)",
+     * mais "Free" n'est pas "Freebox" et "Alan" n'est pas "Alan Allman Associates".
+     */
     fun sameCompany(a: String, b: String): Boolean {
-        val ta = tokens(a).toSet()
-        val tb = tokens(b).toSet()
+        val la = tokens(a)
+        val lb = tokens(b)
+        val ta = la.toSet()
+        val tb = lb.toSet()
         if (ta.isEmpty() || tb.isEmpty()) return false
         val jaccard = (ta intersect tb).size.toDouble() / (ta union tb).size
         if (jaccard >= 0.6) return true
-        val ja = ta.joinToString("")
-        val jb = tb.joinToString("")
-        val shorter = if (ja.length <= jb.length) ja else jb
-        val longer = if (shorter === ja) jb else ja
-        return shorter.length >= 4 && longer.startsWith(shorter)
+        val shorter = if (la.size <= lb.size) la else lb
+        val longer = if (shorter === la) lb else la
+        return shorter.joinToString("").length >= 4 &&
+            shorter.size * 2 >= longer.size &&
+            longer.take(shorter.size) == shorter
     }
 
     /**

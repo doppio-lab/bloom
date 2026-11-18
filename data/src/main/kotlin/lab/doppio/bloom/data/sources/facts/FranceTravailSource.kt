@@ -8,6 +8,10 @@ import io.ktor.client.request.header
 import io.ktor.client.request.parameter
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.Parameters
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import org.slf4j.LoggerFactory
 import java.time.Clock
 import java.time.Duration
 import java.time.Instant
@@ -39,6 +43,8 @@ class FranceTravailSource(
     private val clientSecret: String,
     private val clock: Clock = Clock.systemDefaultZone(),
 ) : JobOfferFacts {
+    private val log = LoggerFactory.getLogger(javaClass)
+    private val tokenMutex = Mutex()
     private var token: String? = null
     private var tokenExpiry: Instant = Instant.EPOCH
 
@@ -59,6 +65,9 @@ class FranceTravailSource(
         /** The API caps a page at 150 results (and 1 150 per request). */
         private const val PAGE_SIZE = 150
 
+        /** A throttled page (429) is asked again after the delay the API gives, at most this long. */
+        private const val RETRY_AFTER_MAX_SECONDS = 5L
+
         /** Pages read per search. */
         private const val MAX_PAGES = 3
 
@@ -66,7 +75,8 @@ class FranceTravailSource(
         private const val EXCERPT_CHARS = 400
     }
 
-    private suspend fun accessToken(): String {
+    /** Searches run concurrently: the lock makes them share one token instead of each asking for its own. */
+    private suspend fun accessToken(): String = tokenMutex.withLock {
         token?.takeIf { clock.instant().isBefore(tokenExpiry) }?.let { return it }
         val res = http.submitForm(
             url = TOKEN_URL,
@@ -90,11 +100,19 @@ class FranceTravailSource(
      */
     suspend fun search(motsCles: String, publieeDepuis: Int? = null, maxPages: Int = MAX_PAGES): List<JsonObject> = buildList {
         for (page in 0 until maxPages) {
-            val res = http.get(SEARCH_URL) {
+            suspend fun request() = http.get(SEARCH_URL) {
                 header("Authorization", "Bearer ${accessToken()}")
                 parameter("motsCles", motsCles)
                 publieeDepuis?.let { parameter("publieeDepuis", it) }
                 parameter("range", "${page * PAGE_SIZE}-${page * PAGE_SIZE + PAGE_SIZE - 1}")
+            }
+            var res = request()
+            // Throttled: wait what the API asks (a few seconds at most) and try the page once more instead of dropping it
+            if (res.status.value == 429) {
+                val wait = res.headers["Retry-After"]?.toLongOrNull()?.coerceIn(0, RETRY_AFTER_MAX_SECONDS) ?: RETRY_AFTER_MAX_SECONDS
+                log.warn("France Travail limite le débit (429), nouvel essai dans {} s", wait)
+                delay(wait * 1_000)
+                res = request()
             }
             // Rejected credentials must be visible: silently reading zero offers hid a misconfiguration
             if (res.status.value == 401 || res.status.value == 403) error("France Travail a refusé les identifiants (HTTP ${res.status.value})")

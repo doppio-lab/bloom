@@ -50,11 +50,26 @@ class AddContactTest {
     }
 
     @Test
-    fun `name and role are required, and a bad email or LinkedIn url is dropped`() = runTest {
+    fun `name and role are required, a LinkedIn url that is not https is dropped, a blank email is no email`() = runTest {
         assertFailsWith<IllegalArgumentException> { add(account, AddContact.Request("", "CTO")) }
         assertFailsWith<IllegalArgumentException> { add(account, AddContact.Request("Jane", " ")) }
-        val added = add(account, AddContact.Request("Jane", "CTO", email = "not-an-email", linkedinUrl = "http://linkedin.com/in/x"))
+        val added = add(account, AddContact.Request("Jane", "CTO", email = "  ", linkedinUrl = "http://linkedin.com/in/x"))
         assertNull(added.contact.email)
         assertNull(added.contact.linkedinUrl)
+    }
+
+    @Test
+    fun `an email that is not one plain address is refused and nothing is saved`() = runTest {
+        // A list would send to two people, and the second one would escape the suppression list
+        for (bad in listOf("not-an-email", "jane@acme.test, other@acme.test", "Jane <jane@acme.test>", "jane@acme.test\r\nBcc: x@y.fr")) {
+            assertFailsWith<IllegalArgumentException>(bad) { add(account, AddContact.Request("Jane", "CTO", email = bad)) }
+        }
+        assertTrue(contacts.contacts.isEmpty())
+    }
+
+    @Test
+    fun `the opt-out check sees the normalized address`() = runTest {
+        replies.suppressed["jane@acme.test"] = "opposition"
+        assertFailsWith<IllegalArgumentException> { add(account, AddContact.Request("Jane Doe", "CTO", email = " Jane@Acme.TEST ")) }
     }
 }

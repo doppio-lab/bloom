@@ -7,3 +7,5 @@ build/
 restic.env
 backups/
 .superpowers/
+.DS_Store
+.worktrees/

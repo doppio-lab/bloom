@@ -25,5 +25,6 @@ internal object DraftsTable : Table("drafts") {
     val sendAttempts = integer("send_attempts").default(0)
     val nextAttemptAt = timestamp("next_attempt_at").nullable()
     val lastError = text("last_error").nullable()
+    val sendAfter = timestamp("send_after").nullable()
     override val primaryKey = PrimaryKey(id)
 }

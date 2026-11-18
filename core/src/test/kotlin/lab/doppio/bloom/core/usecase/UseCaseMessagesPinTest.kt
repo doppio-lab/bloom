@@ -1,6 +1,7 @@
 package lab.doppio.bloom.core.usecase
 
 import kotlinx.coroutines.test.runTest
+import lab.doppio.bloom.core.model.SendingPolicy
 import lab.doppio.bloom.core.discovery.Exclusions
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.AccountId
@@ -34,6 +35,10 @@ class UseCaseMessagesPinTest {
         assertEquals(
             "Cette personne s'est opposée à la prospection",
             assertFailsWith<IllegalArgumentException> { add(account, AddContact.Request("Jane", "CTO", email = "jane@acme.test")) }.message,
+        )
+        assertEquals(
+            "Adresse email invalide : « a@b.fr, c@d.fr »",
+            assertFailsWith<IllegalArgumentException> { add(account, AddContact.Request("Jane", "CTO", email = "a@b.fr, c@d.fr")) }.message,
         )
         assertEquals("saisie manuelle (profil public LinkedIn ou site de l'entreprise)", add(account, AddContact.Request("Jane", "CTO")).contact.dataSource)
         assertEquals(
@@ -84,7 +89,7 @@ class UseCaseMessagesPinTest {
 
         val classifier = FakeClassifier(ReplyIntent.UNSUBSCRIBE)
         val inbox = FakeInbox().apply { mails = listOf(inbound(1)) }
-        ProcessReplies(inbox, classifier, replies, FakeDraftRepository(), sequences, contacts, FakeEventRepository(), stop)()
+        ProcessReplies(inbox, classifier, replies, FakeDraftRepository(), sequences, contacts, FakeEventRepository(), stop, PostponeContactSequences(sequences, FakeDraftRepository(), SendingPolicy()))()
         assertEquals("réponse : résumé", replies.suppressed[contact.email])
     }
 
@@ -102,7 +107,7 @@ class UseCaseMessagesPinTest {
         val enrollment = sequences.addEnrollment(contact.id)
         drafts.messageIdToEnrollment["<orig@doppio.test>"] = enrollment.id
         val inbox = FakeInbox().apply { mails = listOf(inbound(1, from = "mailer-daemon@mx.test", bounce = true, inReplyTo = listOf("<orig@doppio.test>"))) }
-        ProcessReplies(inbox, FakeClassifier(), repo, drafts, sequences, contacts, FakeEventRepository(), StopContactSequences(sequences))()
+        ProcessReplies(inbox, FakeClassifier(), repo, drafts, sequences, contacts, FakeEventRepository(), StopContactSequences(sequences), PostponeContactSequences(sequences, drafts, SendingPolicy()))()
         assertEquals(listOf("Rebond : adresse invalide"), summaries)
         assertEquals("rebond", replies.suppressed["bounced@client.test"])
     }

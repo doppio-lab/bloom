@@ -20,6 +20,7 @@ class UnsubscribeTokens(private val secret: String) {
 
     fun verify(token: String): Long? {
         val id = token.substringBefore('.').toLongOrNull() ?: return null
-        return id.takeIf { tokenFor(id) == token }
+        // Constant time: the response time must not say how many characters of the signature were right
+        return id.takeIf { java.security.MessageDigest.isEqual(tokenFor(id).toByteArray(), token.toByteArray()) }
     }
 }

@@ -12,7 +12,7 @@ import org.koin.dsl.module
 val webModule: Module = module {
     single {
         ApiRoutes(
-            overview = get(), accountRepo = get(), contactRepo = get(), factRepo = get(), enrollContact = get(),
+            overview = get(), accountRepo = get(), contactRepo = get(), factRepo = get(), enrollContact = get(), createAccount = get(),
             reviewQueue = get(), decideDraft = get(), completeTask = get(),
             getBoard = get(), bookMeeting = get(), completeContactEmail = get(),
             replyRepo = get(), dealRepo = get(),
@@ -21,7 +21,7 @@ val webModule: Module = module {
     }
     single {
         DiscoveryRoutes(
-            runDiscovery = get(), researchBatch = get(), eventRepo = get(), toComplete = get(), addContact = get(),
+            runDiscovery = get(), leader = get(), researchBatch = get(), eventRepo = get(), toComplete = get(), addContact = get(),
             accountRepo = get(), discoveryState = get(), contactBook = get(), importAccounts = get(),
             // Declared only when a Dropcontact key is configured
             findContactEmail = getOrNull<FindContactEmail>(),

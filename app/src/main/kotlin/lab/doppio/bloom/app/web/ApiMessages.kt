@@ -6,6 +6,7 @@ internal object ApiMessages {
     const val STARTED = "lancée"
     const val NOT_REQUESTED = "non demandée"
     const val ALREADY_RUNNING = "déjà en cours"
+    const val NOT_LEADER = "cette instance ne tient pas les tâches de fond, réessayer dans une minute"
     const val DEMAND_DISMISSED = "écartée"
     const val ACCOUNT_EXCLUDED = "écarté"
     const val ACCOUNT_RESTORED = "réintégré"
@@ -14,6 +15,8 @@ internal object ApiMessages {
 
     // --- Errors ---------------------------------------------------------------------------------------
     const val INTERNAL_ERROR = "erreur interne"
+    const val INVALID_REQUEST = "requête invalide"
+    const val ALREADY_PRESENT = "déjà présent"
     const val CROSS_SITE_REFUSED = "requête refusée : elle ne vient pas du dashboard"
     const val DRAFT_NOT_PENDING = "ce brouillon n'est plus à valider"
     const val TASK_NOT_PENDING = "cette tâche n'est plus à faire"

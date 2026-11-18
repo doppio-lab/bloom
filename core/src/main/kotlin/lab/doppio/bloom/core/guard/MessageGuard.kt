@@ -52,7 +52,9 @@ object MessageGuard {
     )
     private val emojiRegex = Regex("[\\x{1F300}-\\x{1FAFF}\\x{2600}-\\x{27BF}\\x{1F000}-\\x{1F2FF}]")
     private val urlRegex = Regex("""https?://\S+|www\.\S+""")
-    private val numberRegex = Regex("""\d+(?:[  .,]\d+)*""")
+    // Thousands separators: space, no-break space (U+00A0, French quotes), narrow no-break space (U+202F), dot, comma.
+    private val numberSeparators = "[ \u00A0\u202F.,]"
+    private val numberRegex = Regex("\\d+(?:$numberSeparators\\d+)*")
 
     private val ambiguousNames = setOf("routine", "proton")
 
@@ -71,13 +73,18 @@ object MessageGuard {
     )
     private val numberWordRegex = Regex("""(?<![\p{L}-])(?:${numberWords.keys.joinToString("|")})(?![\p{L}-])""")
 
+    /** Marker plus the space that precedes it, so "paiement [F:a2]." gives "paiement." and "minutes ? [F:a2]" keeps its space. */
+    private val citationWithSpaceRegex = Regex(" ?" + citationRegex.pattern)
+
     fun stripCitations(text: String): String =
-        citationRegex.replace(text, "").replace(Regex(" {2,}"), " ").replace(Regex(" +([.,;:!?])"), "$1").trim()
+        citationWithSpaceRegex.replace(text, "").replace(Regex(" {2,}"), " ").trim()
 
     fun check(input: GuardInput): List<Violation> {
         val v = mutableListOf<Violation>()
         val plain = stripCitations(input.body)
-        val lower = (input.subject.orEmpty() + "\n" + plain).lowercase()
+        // Subject and body together: a number or a link in the subject reaches the prospect just the same.
+        val full = input.subject.orEmpty() + "\n" + plain
+        val lower = full.lowercase()
 
         // 1. Typographie et ton
         if ('—' in lower || " – " in lower) {
@@ -131,7 +138,7 @@ object MessageGuard {
         // ("5.2" as 52), as each of its digit runs (5 and 2), and without leading zeros (05 as 5).
         val knownNumbers = (digitRun.findAll(provenanceText.normalizeNumbers()) + digitRun.findAll(provenanceText))
             .flatMap { sequenceOf(it.value, it.value.trimStart('0')) }.toSet()
-        val written = numberRegex.findAll(plain).map { it.value.normalizeNumber() } +
+        val written = numberRegex.findAll(full).map { it.value.normalizeNumber() } +
             numberWordRegex.findAll(plain.lowercase()).map { numberWords.getValue(it.value) }
         written.distinct()
             .filter { it !in GuardLimits.ALWAYS_ALLOWED_NUMBERS && it !in knownNumbers }
@@ -157,10 +164,10 @@ object MessageGuard {
         }
 
         // 6. Délivrabilité
-        if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(plain)) {
+        if (input.channel == Channel.EMAIL && input.stepIndex == 0 && urlRegex.containsMatchIn(full)) {
             v += Violation("lien", Severity.BLOCK, GuardMessages.NO_LINK_IN_FIRST_EMAIL)
         }
-        urlRegex.findAll(plain).map { it.value }.filterNot { Brand.DOMAIN in it }.forEach {
+        urlRegex.findAll(full).map { it.value }.filterNot { isOwnDomain(it) }.forEach {
             v += Violation("lien", Severity.BLOCK, GuardMessages.externalLink(it))
         }
 
@@ -176,6 +183,15 @@ object MessageGuard {
 
     fun isPublishable(violations: List<Violation>): Boolean = violations.none { it.severity == Severity.BLOCK }
 
-    private fun String.normalizeNumber(): String = replace(Regex("[  .,]"), "")
+    /** True only when the host of the URL is [Brand.DOMAIN] or one of its subdomains, whatever the path or query says. */
+    private fun isOwnDomain(url: String): Boolean {
+        val host = url.lowercase()
+            .replaceFirst(Regex("^https?://"), "")
+            .substringBefore('/').substringBefore('?').substringBefore('#')
+            .substringAfterLast('@').substringBefore(':')
+        return host == Brand.DOMAIN || host.endsWith(".${Brand.DOMAIN}")
+    }
+
+    private fun String.normalizeNumber(): String = replace(Regex(numberSeparators), "")
     private fun String.normalizeNumbers(): String = numberRegex.replace(this) { it.value.normalizeNumber() }
 }

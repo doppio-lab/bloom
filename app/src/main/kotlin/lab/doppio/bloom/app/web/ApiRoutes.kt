@@ -11,6 +11,7 @@ import io.ktor.server.routing.route
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import lab.doppio.bloom.core.model.Contact
+import lab.doppio.bloom.core.model.EmailAddress
 import lab.doppio.bloom.core.model.Deal
 import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.DraftStatus
@@ -26,6 +27,7 @@ import lab.doppio.bloom.core.port.ReplyRow
 import lab.doppio.bloom.core.port.Researcher
 import lab.doppio.bloom.core.usecase.BookMeeting
 import lab.doppio.bloom.core.usecase.CompleteContactEmail
+import lab.doppio.bloom.core.usecase.CreateAccount
 import lab.doppio.bloom.core.usecase.CompleteTask
 import lab.doppio.bloom.core.usecase.DecideDraft
 import lab.doppio.bloom.core.usecase.EnrollContact
@@ -45,6 +47,7 @@ class ApiRoutes(
     private val contactRepo: ContactRepository,
     private val factRepo: FactRepository,
     private val enrollContact: EnrollContact,
+    private val createAccount: CreateAccount,
     private val reviewQueue: ReviewQueue,
     private val decideDraft: DecideDraft,
     private val completeTask: CompleteTask,
@@ -76,8 +79,7 @@ class ApiRoutes(
 
         post("/accounts") {
             val req = call.receive<NewAccount>()
-            val id = accountRepo.upsertAccount(req.account)
-            req.contacts.forEach { contactRepo.addContact(it.copy(accountId = id)) }
+            val id = createAccount(req.account, req.contacts)
             // The research takes minutes: it runs in the background, the dossier appears when it is done
             if (req.researchNow) launchResearch(id)
             call.respond(HttpStatusCode.Created, mapOf("id" to id.toString(), "research" to if (req.researchNow) ApiMessages.STARTED else ApiMessages.NOT_REQUESTED))
@@ -97,7 +99,7 @@ class ApiRoutes(
         }
 
         post("/contacts") {
-            val c = call.receive<Contact>()
+            val c = call.receive<Contact>().let { it.copy(email = EmailAddress.orNull(it.email)) }
             call.respond(HttpStatusCode.Created, mapOf("id" to contactRepo.addContact(c)))
         }
 
@@ -130,7 +132,7 @@ class ApiRoutes(
         get("/board") { call.respond(getBoard()) }
 
         post("/accounts/{id}/meeting") {
-            val req = runCatching { call.receive<MeetingRequest>() }.getOrDefault(MeetingRequest())
+            val req = call.receiveOrDefault(MeetingRequest())
             when (bookMeeting(call.parameters["id"]!!.toLong(), req.replyId)) {
                 BookMeeting.Result.Booked -> call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.MEETING_BOOKED))
                 BookMeeting.Result.AlreadyBooked -> call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.MEETING_ALREADY_BOOKED))
@@ -144,7 +146,7 @@ class ApiRoutes(
         }
 
         post("/drafts/{id}/approve") {
-            val req = runCatching { call.receive<DecisionRequest>() }.getOrDefault(DecisionRequest())
+            val req = call.receiveOrDefault(DecisionRequest())
             when (val result = decideDraft.approve(call.parameters["id"]!!.toLong(), req.subject, req.body)) {
                 DecideDraft.Result.Done -> call.respond(HttpStatusCode.OK, mapOf("status" to DraftStatus.APPROVED.name))
                 DecideDraft.Result.NotFound -> call.respond(HttpStatusCode.NotFound)

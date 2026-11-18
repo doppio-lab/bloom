@@ -22,8 +22,14 @@ interface DraftRepository {
     /** Exemples de messages corrigés à la main : servent d'exemples de style à l'agent rédacteur. */
     suspend fun humanEditedExamples(limit: Int = 5): List<Draft>
 
-    /** Oldest approved email whose retry delay has passed. [now] defaults to the clock. */
+    /** Oldest approved email whose day has come and whose retry delay has passed. [now] defaults to the clock. */
     suspend fun nextToSend(now: Instant? = null): Draft?
+
+    /** Drafts of the enrollment still waiting for review or for their send (not yet claimed) leave no sooner than [sendAfter]. */
+    suspend fun holdOpenDrafts(enrollmentId: Long, sendAfter: Instant)
+
+    /** The step's due day: a draft prepared (and approved) earlier waits for it before it can leave. */
+    suspend fun setSendAfter(id: Long, sendAfter: Instant)
 
     /**
      * Claims an approved draft before SMTP is called, with the Message-ID it will carry. Committed on its own,
@@ -36,10 +42,12 @@ interface DraftRepository {
     suspend fun recordSent(draft: Draft, threadMessageId: String, now: Instant? = null)
 
     /**
-     * SMTP refused the message. It goes back to the queue after a growing delay (15, 30 min...) so the
-     * other emails keep going out, and becomes FAILED after [maxAttempts]. Returns the new status.
+     * The send did not go through. When [retryable] (SMTP refused the message before accepting it), it goes back to
+     * the queue after a growing delay (15, 30 min...) so the other emails keep going out, and becomes FAILED after
+     * [maxAttempts]. Otherwise (timeout, lost connection: the message may have left) it is FAILED at once and a human
+     * checks the sent folder. Returns the new status.
      */
-    suspend fun recordSendFailure(id: Long, error: String, now: Instant? = null, maxAttempts: Int = MAX_SEND_ATTEMPTS): DraftStatus
+    suspend fun recordSendFailure(id: Long, error: String, now: Instant? = null, maxAttempts: Int = MAX_SEND_ATTEMPTS, retryable: Boolean = true): DraftStatus
 
     /**
      * At startup: drafts still SENDING were interrupted mid-send. Whether they left is unknown, so they are

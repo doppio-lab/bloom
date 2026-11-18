@@ -178,7 +178,10 @@ class BloomConfigTest {
         )
         assertEquals(listOf("pw1", "pw2"), c.mail.mailboxes.map { it.password })
         assertTrue(BloomConfig.from(env("MAILBOXES" to "")).mail.mailboxes.isEmpty())
-        assertFailsWith<IndexOutOfBoundsException> { BloomConfig.from(env("MAILBOXES" to "a@x.fr:pw")) }
+        for (bad in listOf("a@x.fr:pw", "a@x.fr", "a@x.fr:pw:")) {
+            val e = assertFailsWith<IllegalStateException>(bad) { BloomConfig.from(env("MAILBOXES" to bad)) }
+            assertTrue("MAILBOXES" in e.message.orEmpty() && "adresse:mot-de-passe:Nom" in e.message.orEmpty(), e.message)
+        }
     }
 
     @Test

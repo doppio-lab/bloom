@@ -8,6 +8,7 @@ import lab.doppio.bloom.core.model.Dossier
 import lab.doppio.bloom.core.model.Fact
 import lab.doppio.bloom.core.model.FactKind
 import lab.doppio.bloom.core.model.Offer
+import lab.doppio.bloom.core.model.Retention
 import lab.doppio.bloom.core.model.Signal
 import lab.doppio.bloom.core.model.SignalType
 import lab.doppio.bloom.core.model.isState
@@ -69,6 +70,11 @@ class ExposedFactRepository(private val clock: Clock = Clock.systemDefaultZone()
         SignalsTable.selectAll().where { (SignalsTable.accountId eq accountId) and (SignalsTable.observedAt greaterEq since) }.map {
             Signal(it[SignalsTable.accountId], SignalType.valueOf(it[SignalsTable.type]), it[SignalsTable.strength], it[SignalsTable.observedAt].toString(), it[SignalsTable.factIds].decodeList())
         }
+    }
+
+    override suspend fun purgeOldSignals(now: Instant?): Int = dbQuery {
+        val limit = (now ?: clock.instant()).minus(Retention.SIGNAL_DAYS, ChronoUnit.DAYS)
+        SignalsTable.deleteWhere { SignalsTable.observedAt.less(limit) }
     }
 
     override suspend fun dominantSignal(accountId: AccountId): SignalType? = signalsOf(accountId)

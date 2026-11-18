@@ -8,6 +8,7 @@ import lab.doppio.bloom.core.discovery.Targeting
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.CompanyIds
 import lab.doppio.bloom.core.model.Contact
+import lab.doppio.bloom.core.model.EmailAddress
 import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.ImportPayload
 import lab.doppio.bloom.core.model.Limits
@@ -61,7 +62,7 @@ class ImportAccounts(
                 accountRepo.saveScore(Scoring.score(account.copy(id = id), factRepo.signalsOf(id), clock.instant(), factRepo.factsOf(id)))
                 val contactName = r["contact_name"].orEmpty()
                 if (contactName.isNotBlank()) {
-                    val email = r["contact_email"]?.trim()?.takeIf { it.contains('@') }
+                    val email = EmailAddress.orNull(r["contact_email"])
                     if (email != null && replyRepo.isSuppressed(email)) {
                         errors += UseCaseMessages.importContactOptedOut(line, email)
                     } else {

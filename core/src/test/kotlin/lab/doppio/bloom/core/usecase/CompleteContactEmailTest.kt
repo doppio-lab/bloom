@@ -29,7 +29,9 @@ class CompleteContactEmailTest {
     @Test
     fun `une adresse invalide est refusée et rien ne change`() = runTest {
         val jane = contacts.add(email = null)
-        assertFailsWith<IllegalArgumentException> { complete(jane.id, "jane at acme") }
+        for (bad in listOf("jane at acme", "jane@acme.test, other@acme.test", "jane,x@acme.test")) {
+            assertFailsWith<IllegalArgumentException>(bad) { complete(jane.id, bad) }
+        }
         assertNull(contacts.contacts.getValue(jane.id).email)
     }
 

@@ -1,14 +1,17 @@
 package lab.doppio.bloom.app.outreach
 
 import jakarta.mail.Message
+import jakarta.mail.SendFailedException
 import jakarta.mail.Session
 import jakarta.mail.Transport
 import jakarta.mail.internet.InternetAddress
 import jakarta.mail.internet.MimeMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import lab.doppio.bloom.core.model.EmailAddress
 import lab.doppio.bloom.core.model.Mailbox
 import lab.doppio.bloom.core.port.MailSender
+import lab.doppio.bloom.core.port.SendRefused
 import org.slf4j.LoggerFactory
 import java.util.Properties
 import java.util.UUID
@@ -16,14 +19,19 @@ import java.util.UUID
 class EmailGateway(private val config: MailConfig, private val tokens: UnsubscribeTokens) : MailSender {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    internal fun smtpProperties(): Properties = Properties().apply {
+        put("mail.smtp.host", config.smtpHost)
+        put("mail.smtp.port", config.smtpPort.toString())
+        put("mail.smtp.auth", "true")
+        put("mail.smtp.starttls.enable", "true")
+        put("mail.smtp.starttls.required", "true")
+        put("mail.smtp.connectiontimeout", MAIL_SOCKET_TIMEOUT_MS)
+        put("mail.smtp.timeout", MAIL_SOCKET_TIMEOUT_MS)
+        put("mail.smtp.writetimeout", MAIL_SOCKET_TIMEOUT_MS)
+    }
+
     private fun session(mailbox: Mailbox): Session = Session.getInstance(
-        Properties().apply {
-            put("mail.smtp.host", config.smtpHost)
-            put("mail.smtp.port", config.smtpPort.toString())
-            put("mail.smtp.auth", "true")
-            put("mail.smtp.starttls.enable", "true")
-            put("mail.smtp.starttls.required", "true")
-        },
+        smtpProperties(),
         object : jakarta.mail.Authenticator() {
             override fun getPasswordAuthentication() = jakarta.mail.PasswordAuthentication(mailbox.address, mailbox.password)
         },
@@ -53,19 +61,24 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
         inReplyTo: String?,
         messageId: String,
     ): String = withContext(Dispatchers.IO) {
+        // One valid address: a list would send to several people and a line break would inject a header
+        val recipient = EmailAddress.normalize(to) ?: throw IllegalArgumentException(EmailAddress.invalidMessage(to))
         val unsubscribeUrl = unsubscribeUrl(contactId)
         val fullBody = body + footer(contactId, language)
+        val cleanSubject = EmailAddress.singleLine(if (inReplyTo != null && !subject.startsWith("Re:")) "Re: $subject" else subject)
 
         if (config.dryRun) {
-            log.info("[DRY RUN] {} -> {} | {}\n{}", mailbox.address, to, subject, fullBody)
+            // INFO keeps personal data out of the logs: the recipient and the body only show at DEBUG
+            log.info("[DRY RUN] {} -> contact {} | {}", mailbox.address, contactId, cleanSubject)
+            log.debug("[DRY RUN] to {}\n{}", recipient, fullBody)
             return@withContext messageId
         }
         val msg = object : MimeMessage(session(mailbox)) {
             override fun updateMessageID() { setHeader("Message-ID", messageId) }
         }
         msg.setFrom(InternetAddress(mailbox.address, mailbox.displayName, "UTF-8"))
-        msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to))
-        msg.setSubject(if (inReplyTo != null && !subject.startsWith("Re:")) "Re: $subject" else subject, "UTF-8")
+        msg.setRecipient(Message.RecipientType.TO, InternetAddress(recipient))
+        msg.setSubject(cleanSubject, "UTF-8")
         msg.setText(fullBody, "UTF-8", "plain")
         // RFC 8058 : désinscription en un clic, exigée par Gmail et Yahoo pour les expéditeurs en volume
         msg.setHeader("List-Unsubscribe", "<$unsubscribeUrl>, <mailto:${mailbox.address}?subject=unsubscribe>")
@@ -74,7 +87,18 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
             msg.setHeader("In-Reply-To", inReplyTo)
             msg.setHeader("References", inReplyTo)
         }
-        Transport.send(msg)
+        try {
+            Transport.send(msg)
+        } catch (e: SendFailedException) {
+            throw if (isRefusedBeforeAcceptance(e)) SendRefused(e.message, e) else e
+        }
         messageId
     }
 }
+
+/**
+ * True only when the SMTP server refused the message before accepting it: a SendFailedException with no
+ * address it was sent to (SMTPSendFailedException, SMTPAddressFailedException). Any other error, a timeout
+ * after DATA was accepted among them, may already have delivered the message.
+ */
+internal fun isRefusedBeforeAcceptance(e: Throwable): Boolean = e is SendFailedException && e.validSentAddresses.isNullOrEmpty()

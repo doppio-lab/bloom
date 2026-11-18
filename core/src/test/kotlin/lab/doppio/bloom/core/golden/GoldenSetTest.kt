@@ -122,6 +122,7 @@ class GoldenSetTest {
         override suspend fun factsOf(accountId: AccountId, maxAgeDays: Long) = facts[accountId].orEmpty()
         override suspend fun saveSignals(signals: List<Signal>) {}
         override suspend fun signalsOf(accountId: AccountId, maxAgeDays: Long) = signals[accountId].orEmpty()
+        override suspend fun purgeOldSignals(now: Instant?): Int = 0
         override suspend fun dominantSignal(accountId: AccountId): SignalType? = null
         override suspend fun saveDossier(d: Dossier) {}
         override suspend fun dossier(accountId: AccountId) = dossiers[accountId]

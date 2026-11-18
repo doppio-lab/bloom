@@ -18,4 +18,10 @@ object Retention {
 
     /** Signals older than this no longer count in the score (the slowest half-life is 120 days). */
     const val SIGNAL_DAYS = 180L
+
+    /** The text of a reply is only needed to classify it: after this long only its intent and summary stay. */
+    const val REPLY_BODY_DAYS = 365L
+
+    /** Discovery keys checked longer ago than the longest recheck window are never consulted again. */
+    const val SEEN_KEY_DAYS = 365L
 }

@@ -48,6 +48,39 @@ class DiscoveryRulesTest {
     }
 
     @Test
+    fun `un nom court n'absorbe pas un nom qui le prolonge`() {
+        assertTrue(CompanyNames.sameCompany("Doctolib", "Doctolib SAS"))
+        assertFalse(CompanyNames.sameCompany("Alan", "Alan Allman Associates"))
+        assertFalse(CompanyNames.sameCompany("Free", "Freebox"))
+    }
+
+    @Test
+    fun `la liste d'exclusion est comparée après normalisation du nom`() {
+        // "groupe", "de" and "la" are stripped from the account name, so the list must be stripped the same way.
+        assertNotNull(Exclusions.reason("Groupe Open"))
+        assertNotNull(Exclusions.reason("Crème de la Crème SAS"))
+    }
+
+    @Test
+    fun `une entrée courte de la liste d'exclusion ne s'applique qu'au nom entier`() {
+        // "groupe open" normalizes to "open": it must not swallow every company whose name starts with Open.
+        assertNotNull(Exclusions.reason("Groupe Open"))
+        assertNotNull(Exclusions.reason("Groupe Open SA"))
+        assertNull(Exclusions.reason("Open Banking Ltd"))
+        assertNull(Exclusions.reason("Openclassrooms"))
+    }
+
+    @Test
+    fun `les mots-clés d'exclusion se comparent mot à mot`() {
+        assertNull(Exclusions.reason("Fresnel"))
+        assertNull(Exclusions.reason("Talentsoft"))
+        assertNotNull(Exclusions.reason("Esn Lyon"))
+        assertNotNull(Exclusions.reason("Agence Digitale Nantes"))
+        // "conseil" as a whole word still matches: a local authority is not a prospect either.
+        assertNotNull(Exclusions.reason("Conseil départemental"))
+    }
+
+    @Test
     fun `le secteur vient du code NAF ou du genre App Store`() {
         assertEquals(Sector.BANK_INSURANCE, SectorMapping.fromNaf("64.19Z"))
         assertEquals(Sector.RETAIL, SectorMapping.fromNaf("47.64Z"))
