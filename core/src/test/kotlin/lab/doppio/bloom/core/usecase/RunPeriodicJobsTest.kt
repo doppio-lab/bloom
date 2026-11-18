@@ -2,7 +2,7 @@ package lab.doppio.bloom.core.usecase
 
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.test.runCurrent
+import kotlinx.coroutines.yield
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.SendingPolicy
@@ -56,7 +56,7 @@ class RunPeriodicJobsTest {
             FakeReplyRepository(), FakeFactRepository(), SendingPolicy(), clock,
         )
         val handClick = launch { manual() }
-        runCurrent()
+        yield() // lets the manual run start and take its flag
         assertTrue(manual.running)
 
         periodic(at("2026-11-04", 3))

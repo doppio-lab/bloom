@@ -32,7 +32,7 @@ class WebPageSource(client: HttpClient, private val clock: Clock = Clock.systemD
         val doc = Jsoup.parse(html, url)
         doc.select("script, style, nav, footer, noscript, svg").remove()
         val title = doc.title().ifBlank { url }
-        val text = doc.body().text().orEmpty().take(maxChars)
+        val text = doc.body().text().take(maxChars)
         val f = fact(accountId, FactKind.WEB_PAGE, FactTemplates.webPage(title), url, excerpt = text.take(Limits.FACT_EXCERPT_CHARS), at = clock.instant())
         return f to text
     }
