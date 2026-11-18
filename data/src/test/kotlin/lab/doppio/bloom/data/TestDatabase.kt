@@ -29,4 +29,18 @@ object TestDatabase {
         java.sql.DriverManager.getConnection(container.jdbcUrl, container.username, container.password).use { conn ->
             conn.createStatement().use { st -> st.executeQuery("SELECT pg_try_advisory_lock(${0x626c6f6f6dL})").use { it.next() && it.getBoolean(1) } }
         }
+
+    /** Kills the session holding the instance lock, as a server restart or a network cut would. */
+    fun killInstanceLockHolder() {
+        // A 64-bit advisory key shows in pg_locks as classid (high 32 bits) and objid (low 32 bits)
+        val key = 0x626c6f6f6dL
+        java.sql.DriverManager.getConnection(container.jdbcUrl, container.username, container.password).use { conn ->
+            conn.createStatement().use { st ->
+                st.execute(
+                    "SELECT pg_terminate_backend(pid) FROM pg_locks WHERE locktype = 'advisory' AND granted " +
+                        "AND classid = ${key ushr 32} AND objid = ${key and 0xffffffffL}",
+                )
+            }
+        }
+    }
 }

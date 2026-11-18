@@ -342,6 +342,12 @@ class FakeAgentRunRepository : AgentRunRepository {
     override suspend fun agentStats(since: Instant): List<AgentStats> = emptyList()
 }
 
-class FakeInstanceLock(var held: Boolean = true) : InstanceLock {
-    override fun tryHold(): Boolean = held
+/** [held]: this instance holds the lock now. [free]: the lock can be taken when it is not held. */
+class FakeInstanceLock(var held: Boolean = true, var free: Boolean = true) : InstanceLock {
+    override fun tryHold(): Boolean {
+        if (!held && free) held = true
+        return held
+    }
+
+    override fun isHeld(): Boolean = held
 }
