@@ -175,6 +175,7 @@ object Scoring {
         bestByType.entries.sortedByDescending { it.value }.forEach { (type, v) ->
             reasons += ScoreReasons.signal(v.roundToInt(), type)
         }
+        if (intentRaw > INTENT_CAP) reasons += ScoreReasons.intentCapped(INTENT_CAP.roundToInt(), intentRaw.roundToInt())
 
         val warm = if (account.warmPath != null) WARM_PATH_POINTS else 0
         if (warm > 0) reasons += ScoreReasons.warmPath(WARM_PATH_POINTS, account.warmPath)

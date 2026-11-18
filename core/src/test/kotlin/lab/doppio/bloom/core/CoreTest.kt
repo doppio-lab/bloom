@@ -52,6 +52,18 @@ class ScoringTest {
     }
 
     @Test
+    fun `les signaux au-delà du plafond sont annoncés dans les raisons`() {
+        val signals = listOf(
+            Signal(1, SignalType.PUBLIC_TENDER, 1.0, "2026-10-12T08:00:00Z", listOf("f1")),
+            Signal(1, SignalType.REFERRAL, 1.0, "2026-10-12T08:00:00Z", listOf("f2")),
+            Signal(1, SignalType.HIRING_STUCK, 1.0, "2026-10-12T08:00:00Z", listOf("f3")),
+        )
+        val s = Scoring.score(account, signals, now)
+        assertEquals(50, s.intent)
+        assertTrue(s.reasons.any { it.startsWith("Signaux plafonnés à 50") }, s.reasons.joinToString())
+    }
+
+    @Test
     fun `un signal ancien perd la moitié de son poids à sa demi-vie`() {
         val d = Scoring.decay(Instant.parse("2026-09-12T08:00:00Z"), now, 30.0)
         assertTrue(d in 0.49..0.51)
@@ -172,6 +184,20 @@ class SequenceEngineTest {
         val now = Instant.parse("2026-10-12T07:00:00Z")
         val e = Enrollment(1, 1, 1, EnrollmentStatus.ACTIVE, 0, null, "2026-10-12T06:00:00Z")
         assertIs<NextAction.PrepareDraft>(SequenceEngine.next(e, seq, policy, now))
+    }
+
+    @Test
+    fun `le brouillon est préparé un jour ouvré avant le créneau, pas la veille calendaire`() {
+        // Jeudi 15 octobre 2026, 14h Paris : créneau mardi 20 8h30 ; lundi 19 férié, donc préparation dès vendredi 16 8h30.
+        val holidayMonday = SendingPolicy(holidays = setOf("2026-10-19"))
+        val e = Enrollment(1, 1, 1, EnrollmentStatus.ACTIVE, 0, null, "2026-10-15T06:00:00Z")
+        val next = SequenceEngine.next(e, seq, holidayMonday, Instant.parse("2026-10-15T12:00:00Z"))
+        assertEquals(NextAction.WaitUntil(Instant.parse("2026-10-16T06:30:00Z")), next)
+
+        // Envoi le lundi seulement : créneau lundi 19 8h30, préparation dès vendredi 16 8h30 (pas dimanche).
+        val mondays = SendingPolicy(days = setOf(1))
+        val friday = Enrollment(1, 1, 1, EnrollmentStatus.ACTIVE, 0, null, "2026-10-16T06:00:00Z")
+        assertIs<NextAction.PrepareDraft>(SequenceEngine.next(friday, seq, mondays, Instant.parse("2026-10-16T12:00:00Z")))
     }
 
     @Test

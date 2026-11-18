@@ -74,7 +74,13 @@ class ScoringReasonsTest {
         assertEquals(10, s.warm)
         assertEquals(64, s.total)
         assertEquals(
-            listOf("+4 marché France", "+45 signal public_tender", "+22 signal hiring_stuck", "+10 lien chaud : ancien client"),
+            listOf(
+                "+4 marché France",
+                "+45 signal public_tender",
+                "+22 signal hiring_stuck",
+                "Signaux plafonnés à 50 (67 avant plafond)",
+                "+10 lien chaud : ancien client",
+            ),
             s.reasons,
         )
     }
