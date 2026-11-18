@@ -104,7 +104,8 @@ class Llm(
                     fast = config.fastModel?.let { localModel(LLMProvider.OpenAI, it, config.contextLength, OPENAI_CAPABILITIES) } ?: research
                 }
             }
-            return Llm(config.provider.name.lowercase(), executor, research, fast)
+            // Every call goes through the meter so the tracker sees its tokens, even when the call fails later
+            return Llm(config.provider.name.lowercase(), MeteredExecutor(executor), research, fast)
         }
 
         const val DEFAULT_OLLAMA_URL = "http://localhost:11434"
