@@ -41,7 +41,7 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
         if (pages.size >= ResearchLimits.MAX_PAGES && url !in pages) return SiteToolTexts.pageLimitReached(ResearchLimits.MAX_PAGES)
         val (_, text) = web.read(accountId, url) ?: return SiteToolTexts.unreadablePage(url)
         pages[url] = text
-        return text.take(ResearchLimits.PAGE_CHARS)
+        return SiteToolTexts.pageData(url, text.take(ResearchLimits.PAGE_CHARS))
     }
 
     @Tool
