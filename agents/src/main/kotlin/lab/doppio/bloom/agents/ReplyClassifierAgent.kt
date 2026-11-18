@@ -62,12 +62,33 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
     }
 }
 
-/** Mots qui déclenchent l'opposition sans attendre le LLM, par prudence. */
-private val hardStop = Regex("(?i)(désinscri|unsubscribe|ne plus me contacter|retirez[- ]moi|\\bstop\\b|remove me|opt[- ]out)")
+/**
+ * Mots qui déclenchent l'opposition sans attendre le LLM, par prudence.
+ * No bare "stop" inside a sentence: it suppressed interested replies such as "on travaille non-stop sur l'app".
+ * A reply that is only "stop" is still an opt-out.
+ */
+private val hardStop = Regex(
+    "(?i)(désinscri|unsubscribe|ne plus me contacter|ne plus recevoir|merci de ne plus|retirez[- ]moi|remove me|opt[- ]out)|^\\s*stop\\s*[.!]*\\s*$",
+)
 
-/** Keeps the reply itself: cuts at the first quoted line, then at [ReplyLimits.REPLY_CHARS] characters. */
+/** First line of a quoted thread or of a forwarded header block (Gmail, Outlook, Apple Mail, French and English). */
+private val quotedHeader = Regex(
+    "^(>|de :|from:|envoyé :|sent:|-----original message-----|-----message d'origine-----|le .* a écrit|on .* wrote)",
+    RegexOption.IGNORE_CASE,
+)
+
+/**
+ * Keeps the reply itself: cuts at the first quoted line, header block or signature separator, then at
+ * [ReplyLimits.REPLY_CHARS] characters. The quoted thread is our own email and carries the unsubscribe
+ * wording that would otherwise trigger the hard stop.
+ */
 internal fun trimQuoted(body: String): String =
-    body.lines().takeWhile { line -> !line.startsWith(">") && !line.contains("a écrit") && !line.contains("wrote:") }.joinToString("\n").take(ReplyLimits.REPLY_CHARS)
+    body.lines()
+        .takeWhile { line ->
+            val t = line.trim()
+            !(quotedHeader.containsMatchIn(t) || t == "--" || t == "__" || "a écrit" in t || "wrote:" in t)
+        }
+        .joinToString("\n").trimEnd().take(ReplyLimits.REPLY_CHARS)
 
 /** True when the start of the reply holds an unambiguous request to stop. */
 internal fun isHardStop(trimmed: String): Boolean = hardStop.containsMatchIn(trimmed.take(ReplyLimits.HARD_STOP_SCAN_CHARS))

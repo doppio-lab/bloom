@@ -77,6 +77,45 @@ class ReplyHelpersTest {
     }
 
     @Test
+    fun `the quoted email below an Outlook style header is cut before the hard-stop check`() {
+        val body = "Oui, intéressé\n\nDe : Prénom <x@doppio-studio.fr>\nEnvoyé : lundi 13 octobre 2026 09:12\nObjet : app mobile\n\nTexte de notre email avec lien de désinscription"
+        val trimmed = trimQuoted(body)
+        assertEquals("Oui, intéressé", trimmed)
+        assertFalse(isHardStop(trimmed))
+    }
+
+    @Test
+    fun `every usual quoted-header style is cut`() {
+        val reply = "Pas maintenant, revenez en janvier.\n\n"
+        listOf(
+            "From: x@doppio-studio.fr\nSent: Monday",
+            "-----Original Message-----\nFrom: x",
+            "-----Message d'origine-----\nDe : x",
+            "Le lun. 13 oct. 2026, Prénom a écrit :\n> notre email",
+            "On Mon, Oct 13, 2026, Prénom wrote:\n> our email",
+            "sent: Monday 13",
+            "> notre email cité",
+            "--\nSignature\ndésinscription",
+        ).forEach { quoted ->
+            assertEquals("Pas maintenant, revenez en janvier.", trimQuoted(reply + quoted), "header: $quoted")
+        }
+    }
+
+    @Test
+    fun `the prospect's own words are kept`() {
+        val body = "Bonjour,\nde notre côté on est plutôt satisfaits de l'app.\nMerci"
+        assertEquals(body, trimQuoted(body))
+    }
+
+    @Test
+    fun `the word stop inside an interested reply is not a hard stop`() {
+        assertFalse(isHardStop("On travaille non-stop sur l'app, intéressé"))
+        assertFalse(isHardStop("Stop, c'est justement notre sujet, on en parle ?"))
+        assertTrue(isHardStop("Je souhaite ne plus recevoir vos emails"))
+        assertTrue(isHardStop("Merci de ne plus m'écrire"))
+    }
+
+    @Test
     fun `trimQuoted caps the length`() {
         assertEquals(4_000, trimQuoted("x".repeat(10_000)).length)
     }
