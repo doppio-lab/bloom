@@ -73,6 +73,9 @@ class SourceConstantsTest {
         assertEquals(90L, Retention.DEMAND_DAYS)
         assertEquals(120L, Retention.FACT_DAYS)
         assertEquals(180L, Retention.SIGNAL_DAYS)
+        assertEquals(365L, Retention.REPLY_BODY_DAYS)
+        // The longest recheck window: a key older than this is never asked for again
+        assertEquals(lab.doppio.bloom.data.discovery.DiscoverySource.DEFAULT_RECHECK_DAYS, Retention.SEEN_KEY_DAYS)
         assertEquals(3, DraftRepository.MAX_SEND_ATTEMPTS)
         assertEquals(15L, DraftRepository.RETRY_STEP_MINUTES)
         assertEquals(20_000L, REQUEST_TIMEOUT_MILLIS)

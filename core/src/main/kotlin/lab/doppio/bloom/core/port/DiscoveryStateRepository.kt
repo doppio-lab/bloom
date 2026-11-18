@@ -22,6 +22,9 @@ interface DiscoveryStateRepository {
     /** Demands are only useful while the buyer is choosing: drop them after 90 days. [now] defaults to the clock. */
     suspend fun purgeOldDemands(now: Instant? = null): Int
 
+    /** Keys checked longer ago than the longest recheck window are never read again: dropped. [now] defaults to the clock. */
+    suspend fun purgeOldSeen(now: Instant? = null): Int
+
     /** Job board remembered for an account. Null: never looked. A null ref inside: looked, none found. */
     suspend fun jobBoard(accountId: AccountId): Pair<BoardRef?, Instant>?
 

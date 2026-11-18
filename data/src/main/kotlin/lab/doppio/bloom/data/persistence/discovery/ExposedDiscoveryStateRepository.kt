@@ -58,6 +58,11 @@ class ExposedDiscoveryStateRepository(private val clock: Clock = Clock.systemDef
         DemandsTable.deleteWhere { DemandsTable.createdAt.less(limit) }
     }
 
+    override suspend fun purgeOldSeen(now: Instant?): Int = dbQuery {
+        val limit = (now ?: clock.instant()).minus(Retention.SEEN_KEY_DAYS, ChronoUnit.DAYS)
+        DiscoverySeenTable.deleteWhere { DiscoverySeenTable.checkedAt.less(limit) }
+    }
+
     override suspend fun jobBoard(accountId: AccountId): Pair<BoardRef?, Instant>? = dbQuery {
         AccountJobBoardsTable.selectAll().where { AccountJobBoardsTable.accountId eq accountId }.firstOrNull()?.let { row ->
             val provider = row[AccountJobBoardsTable.provider]?.let { runCatching { BoardProvider.valueOf(it) }.getOrNull() }

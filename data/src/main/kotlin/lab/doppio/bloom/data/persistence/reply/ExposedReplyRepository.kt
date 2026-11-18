@@ -1,8 +1,11 @@
 package lab.doppio.bloom.data.persistence.reply
 
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import lab.doppio.bloom.core.model.ReplyIntent
+import lab.doppio.bloom.core.model.Retention
 import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.port.ReplyRow
 import lab.doppio.bloom.data.persistence.account.AccountsTable
@@ -13,12 +16,15 @@ import org.jetbrains.exposed.sql.JoinType
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.neq
+import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.insert
 import org.jetbrains.exposed.sql.insertIgnore
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.update
 
-class ExposedReplyRepository : ReplyRepository {
+class ExposedReplyRepository(private val clock: Clock = Clock.systemDefaultZone()) : ReplyRepository {
 
     override suspend fun saveReply(
         enrollmentId: Long?, from: String, subject: String?, body: String, intent: ReplyIntent,
@@ -51,6 +57,11 @@ class ExposedReplyRepository : ReplyRepository {
 
     override suspend fun markReplyHandled(id: Long) {
         dbQuery { RepliesTable.update({ RepliesTable.id eq id }) { it[handled] = true } }
+    }
+
+    override suspend fun purgeOldReplyBodies(now: Instant?): Int = dbQuery {
+        val limit = (now ?: clock.instant()).minus(Retention.REPLY_BODY_DAYS, ChronoUnit.DAYS)
+        RepliesTable.update({ (RepliesTable.receivedAt less limit) and (RepliesTable.body neq "") }) { it[body] = "" }
     }
 
     override suspend fun isSuppressed(email: String): Boolean = dbQuery {

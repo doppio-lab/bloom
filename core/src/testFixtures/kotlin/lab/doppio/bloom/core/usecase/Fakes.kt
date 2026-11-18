@@ -188,6 +188,7 @@ class FakeReplyRepository : ReplyRepository {
     override suspend fun openReplies(): List<ReplyRow> = open.filter { it.id !in handled }
     override suspend fun countOpenReplies(): Long = openReplies().size.toLong()
     override suspend fun markReplyHandled(id: Long) { handled += id }
+    override suspend fun purgeOldReplyBodies(now: Instant?): Int = 4
     override suspend fun isSuppressed(email: String): Boolean = email in suppressed
     override suspend fun suppress(value: String, reason: String) { suppressed[value] = reason }
 }
@@ -218,6 +219,7 @@ class FakeFactRepository(var dossier: Dossier? = null) : FactRepository {
     override suspend fun factsOf(accountId: AccountId, maxAgeDays: Long): List<Fact> = facts.filter { it.accountId == accountId }
     override suspend fun saveSignals(signals: List<Signal>) {}
     override suspend fun signalsOf(accountId: AccountId, maxAgeDays: Long): List<Signal> = signals.filter { it.accountId == accountId }
+    override suspend fun purgeOldSignals(now: Instant?): Int = 5
     override suspend fun dominantSignal(accountId: AccountId): SignalType? = null
     override suspend fun saveDossier(d: Dossier) { dossier = d }
     override suspend fun dossier(accountId: AccountId): Dossier? = dossier
@@ -258,6 +260,7 @@ class FakeDiscoveryStateRepository : DiscoveryStateRepository {
     override suspend fun openDemands(limit: Int): List<Demand> = emptyList()
     override suspend fun dismissDemand(key: String): Boolean = true
     override suspend fun purgeOldDemands(now: Instant?): Int = 3
+    override suspend fun purgeOldSeen(now: Instant?): Int = 6
     override suspend fun jobBoard(accountId: AccountId): Pair<BoardRef?, Instant>? = null
     override suspend fun saveJobBoard(accountId: AccountId, ref: BoardRef?) {}
 }

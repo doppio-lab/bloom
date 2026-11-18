@@ -20,7 +20,7 @@ class RunPeriodicJobsTest {
         jobs, discovery, RunDiscovery(discovery),
         ResearchBatch(FakeAccountRepository(), FakeFactRepository(), research, clock),
         FakeCoach(), events, FakeContactRepository(), FakeOfficerRepository(), FakeDiscoveryStateRepository(),
-        SendingPolicy(), clock,
+        FakeReplyRepository(), FakeFactRepository(), SendingPolicy(), clock,
     )
 
     private fun at(date: String, hour: Int) = ZonedDateTime.of(LocalDate.parse(date), java.time.LocalTime.of(hour, 0), ZoneId.of("Europe/Paris"))
@@ -75,7 +75,7 @@ class RunPeriodicJobsTest {
         run(at("2026-12-01", 4))
         run(at("2026-12-15", 10))
         assertEquals(1, events.types.count { it == EventType.GDPR_PURGE })
-        assertEquals("""{"contacts":2,"officers":1,"demands":3}""", events.events.first { it.first == EventType.GDPR_PURGE }.second)
+        assertEquals("""{"contacts":2,"officers":1,"demands":3,"replyBodies":4,"signals":5,"seenKeys":6}""", events.events.first { it.first == EventType.GDPR_PURGE }.second)
     }
 
     @Test
@@ -90,7 +90,8 @@ class RunPeriodicJobsTest {
         val failing = object : lab.doppio.bloom.core.port.Coach { override suspend fun weeklyMemo(): String = error("coach down") }
         val r = RunPeriodicJobs(
             jobs, discovery, RunDiscovery(discovery), ResearchBatch(FakeAccountRepository(), FakeFactRepository(), research, clock),
-            failing, events, FakeContactRepository(), FakeOfficerRepository(), FakeDiscoveryStateRepository(), SendingPolicy(), clock,
+            failing, events, FakeContactRepository(), FakeOfficerRepository(), FakeDiscoveryStateRepository(),
+            FakeReplyRepository(), FakeFactRepository(), SendingPolicy(), clock,
         )
         r(at("2026-11-02", 8))
         assertEquals("coach down", jobs.finished.first { it.first == "coach" }.second)

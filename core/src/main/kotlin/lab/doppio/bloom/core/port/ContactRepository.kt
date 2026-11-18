@@ -20,6 +20,9 @@ interface ContactRepository {
 
     suspend fun markInbound(contactId: ContactId)
 
-    /** RGPD : purge des contacts sans échange depuis 3 ans (recommandation CNIL). Les oppositions restent. [now] defaults to the clock. */
+    /**
+     * RGPD : purge des contacts sans échange depuis 3 ans (recommandation CNIL). Les oppositions restent.
+     * Everything a purged contact left behind goes with it: enrollments, drafts, replies and events. [now] defaults to the clock.
+     */
     suspend fun purgeStaleContacts(now: Instant? = null): Int
 }

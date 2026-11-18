@@ -1,5 +1,6 @@
 package lab.doppio.bloom.data.persistence
 
+import lab.doppio.bloom.data.persistence.discovery.DiscoverySeenTable
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.Demand
 import lab.doppio.bloom.data.TestDatabase
@@ -44,5 +45,18 @@ class DiscoveryStateRepositoryTest {
         assertFalse(discovery.wasSeen("ft:1"))
         discovery.markSeen("ft:1", kept = false, reason = "ESN")
         assertTrue(discovery.wasSeen("ft:1"))
+    }
+
+    @Test
+    fun `les clés plus vieilles que toute fenêtre de relecture sont purgées`() = runTest {
+        val now = Instant.now()
+        discovery.markSeen("ft:old", kept = true)
+        discovery.markSeen("ft:recent", kept = true)
+        dbQuery { DiscoverySeenTable.update({ DiscoverySeenTable.key eq "ft:old" }) { it[checkedAt] = now.minus(400, ChronoUnit.DAYS) } }
+
+        assertEquals(1, discovery.purgeOldSeen(now))
+
+        assertFalse(discovery.wasSeen("ft:old", withinDays = 1000))
+        assertTrue(discovery.wasSeen("ft:recent"))
     }
 }

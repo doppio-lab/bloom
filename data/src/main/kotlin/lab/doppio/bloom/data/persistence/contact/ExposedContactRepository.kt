@@ -10,9 +10,13 @@ import lab.doppio.bloom.core.model.Persona
 import lab.doppio.bloom.core.model.Retention
 import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.data.persistence.dbQuery
+import lab.doppio.bloom.data.persistence.event.EventsTable
+import lab.doppio.bloom.data.persistence.reply.RepliesTable
+import lab.doppio.bloom.data.persistence.sequence.EnrollmentsTable
 import org.jetbrains.exposed.sql.ResultRow
 import org.jetbrains.exposed.sql.SortOrder
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
+import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.isNull
 import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
 import org.jetbrains.exposed.sql.and
@@ -59,8 +63,15 @@ class ExposedContactRepository(private val clock: Clock = Clock.systemDefaultZon
 
     override suspend fun purgeStaleContacts(now: Instant?): Int = dbQuery {
         val limit = (now ?: clock.instant()).minus(Retention.CONTACT_DAYS, ChronoUnit.DAYS)
-        ContactsTable.deleteWhere {
-            (ContactsTable.createdAt.less(limit)) and (ContactsTable.lastInboundAt.isNull() or ContactsTable.lastInboundAt.less(limit))
-        }
+        val contactIds = ContactsTable.selectAll()
+            .where { (ContactsTable.createdAt.less(limit)) and (ContactsTable.lastInboundAt.isNull() or ContactsTable.lastInboundAt.less(limit)) }
+            .map { it[ContactsTable.id] }
+        if (contactIds.isEmpty()) return@dbQuery 0
+        // Enrollments and drafts follow by cascade, but a reply keeps its row (ON DELETE SET NULL) and events have no
+        // foreign key: delete them here, in the same transaction, or a purged contact's emails and history would stay.
+        val enrollmentIds = EnrollmentsTable.selectAll().where { EnrollmentsTable.contactId inList contactIds }.map { it[EnrollmentsTable.id] }
+        if (enrollmentIds.isNotEmpty()) RepliesTable.deleteWhere { RepliesTable.enrollmentId inList enrollmentIds }
+        EventsTable.deleteWhere { EventsTable.contactId inList contactIds }
+        ContactsTable.deleteWhere { ContactsTable.id inList contactIds }
     }
 }

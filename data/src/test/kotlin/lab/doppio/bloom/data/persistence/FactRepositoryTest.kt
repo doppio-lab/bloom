@@ -58,4 +58,19 @@ class FactRepositoryTest {
         assertEquals(listOf("2026-11-09T00:00:00Z"), stored.filter { it.type == SignalType.HIRING_MOBILE }.map { it.observedAt })
         assertEquals(2, stored.count { it.type == SignalType.PUBLIC_TENDER })
     }
+
+    @Test
+    fun `signals older than the score window are purged`() = runTest {
+        val account = accounts.upsertAccount(Account(name = "Acme"))
+        facts.saveSignals(
+            listOf(
+                Signal(account, SignalType.FUNDING, 0.5, now.minus(200, java.time.temporal.ChronoUnit.DAYS).toString(), emptyList()),
+                Signal(account, SignalType.FUNDING, 0.5, now.minus(10, java.time.temporal.ChronoUnit.DAYS).toString(), listOf("recent")),
+            ),
+        )
+
+        assertEquals(1, facts.purgeOldSignals())
+
+        assertEquals(listOf("recent"), facts.signalsOf(account, maxAgeDays = 1000).single().factIds)
+    }
 }

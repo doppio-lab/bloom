@@ -16,7 +16,10 @@ class EventPayloadsTest {
     }
 
     @Test
-    fun `gdpr purge counts`() = assertEquals("""{"contacts":2,"officers":1,"demands":3}""", GdprPurgePayload(2, 1, 3).toJson())
+    fun `gdpr purge counts`() = assertEquals(
+        """{"contacts":2,"officers":1,"demands":3,"replyBodies":4,"signals":5,"seenKeys":6}""",
+        GdprPurgePayload(2, 1, 3, 4, 5, 6).toJson(),
+    )
 
     @Test
     fun `discovery from job offers`() = assertEquals("""{"source":"jobs","offers":4}""", AccountDiscoveredPayload("jobs", offers = 4).toJson())

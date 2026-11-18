@@ -16,8 +16,10 @@ import lab.doppio.bloom.core.port.ContactRepository
 import lab.doppio.bloom.core.port.Discovery
 import lab.doppio.bloom.core.port.DiscoveryStateRepository
 import lab.doppio.bloom.core.port.EventRepository
+import lab.doppio.bloom.core.port.FactRepository
 import lab.doppio.bloom.core.port.JobRunRepository
 import lab.doppio.bloom.core.port.OfficerRepository
+import lab.doppio.bloom.core.port.ReplyRepository
 import org.slf4j.LoggerFactory
 
 /** The periodic jobs. [key] is what the job_runs table stores, so it never changes. */
@@ -34,7 +36,8 @@ enum class JobName(val key: String) {
  *  - découverte : chaque nuit entre 2h et 5h, suivie de la recherche ;
  *  - recherche (agent IA) : une fois par jour, à partir de 5h si la découverte ne l'a pas lancée ;
  *  - note du coach : une fois par semaine, à partir du lundi 7h ;
- *  - purge RGPD : une fois par mois, à partir du 1er à 4h.
+ *  - purge RGPD : une fois par mois, à partir du 1er à 4h (contacts et ce qu'ils laissent, officiers, demandes,
+ *    textes des anciennes réponses, signaux et clés de découverte périmés).
  */
 class RunPeriodicJobs(
     private val jobRunRepo: JobRunRepository,
@@ -46,6 +49,8 @@ class RunPeriodicJobs(
     private val contactRepo: ContactRepository,
     private val officerRepo: OfficerRepository,
     private val discoveryState: DiscoveryStateRepository,
+    private val replyRepo: ReplyRepository,
+    private val factRepo: FactRepository,
     policy: SendingPolicy,
     private val clock: Clock,
 ) {
@@ -84,7 +89,11 @@ class RunPeriodicJobs(
             val purged = contactRepo.purgeStaleContacts()
             val officers = officerRepo.purgeStaleOfficers()
             val demands = discoveryState.purgeOldDemands()
-            eventRepo.logEvent(EventType.GDPR_PURGE, payload = GdprPurgePayload(purged, officers, demands).toJson())
+            // Not personal data but nothing reads them any more: the tables would grow without bound
+            val replyBodies = replyRepo.purgeOldReplyBodies()
+            val signals = factRepo.purgeOldSignals()
+            val seenKeys = discoveryState.purgeOldSeen()
+            eventRepo.logEvent(EventType.GDPR_PURGE, payload = GdprPurgePayload(purged, officers, demands, replyBodies, signals, seenKeys).toJson())
         }
     }
 

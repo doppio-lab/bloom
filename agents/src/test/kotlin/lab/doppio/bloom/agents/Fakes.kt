@@ -150,6 +150,7 @@ class FakeFactRepository(private val facts: List<Fact>, private val dossier: Dos
     override suspend fun saveFacts(facts: List<Fact>) = TODO()
     override suspend fun saveSignals(signals: List<Signal>) = TODO()
     override suspend fun signalsOf(accountId: AccountId, maxAgeDays: Long): List<Signal> = TODO()
+    override suspend fun purgeOldSignals(now: Instant?): Int = TODO()
     override suspend fun dominantSignal(accountId: AccountId): SignalType? = TODO()
     override suspend fun saveDossier(d: Dossier) = TODO()
 }

@@ -21,7 +21,7 @@ data class ReplyReceivedPayload(val intent: ReplyIntent) {
 }
 
 @Serializable
-data class GdprPurgePayload(val contacts: Int, val officers: Int, val demands: Int) {
+data class GdprPurgePayload(val contacts: Int, val officers: Int, val demands: Int, val replyBodies: Int, val signals: Int, val seenKeys: Int) {
     fun toJson(): String = encode(serializer(), this)
 }
 
