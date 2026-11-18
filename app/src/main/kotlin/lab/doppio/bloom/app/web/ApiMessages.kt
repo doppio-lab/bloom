@@ -6,6 +6,7 @@ internal object ApiMessages {
     const val STARTED = "lancée"
     const val NOT_REQUESTED = "non demandée"
     const val ALREADY_RUNNING = "déjà en cours"
+    const val NOT_LEADER = "cette instance ne tient pas les tâches de fond, réessayer dans une minute"
     const val DEMAND_DISMISSED = "écartée"
     const val ACCOUNT_EXCLUDED = "écarté"
     const val ACCOUNT_RESTORED = "réintégré"

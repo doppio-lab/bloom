@@ -21,7 +21,7 @@ val webModule: Module = module {
     }
     single {
         DiscoveryRoutes(
-            runDiscovery = get(), researchBatch = get(), eventRepo = get(), toComplete = get(), addContact = get(),
+            runDiscovery = get(), leader = get(), researchBatch = get(), eventRepo = get(), toComplete = get(), addContact = get(),
             accountRepo = get(), discoveryState = get(), contactBook = get(), importAccounts = get(),
             // Declared only when a Dropcontact key is configured
             findContactEmail = getOrNull<FindContactEmail>(),

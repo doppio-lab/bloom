@@ -72,7 +72,9 @@ class RunPeriodicJobs(
             log.warn("Lecture de Codeur en échec", it)
         }
 
-        if (now.hour in 2..4) job(JobName.DISCOVERY, today, spawn) {
+        // A manual run in progress ("Chercher maintenant") would make the night job a no-op recorded as done for the
+        // day: it is not claimed, so the next tick retries while the window lasts
+        if (now.hour in 2..4 && !runDiscovery.running) job(JobName.DISCOVERY, today, spawn) {
             runDiscovery()
             if (jobRunRepo.claimJob(JobName.RESEARCH.key, today)) run(JobName.RESEARCH) { researchBatch() }
         }

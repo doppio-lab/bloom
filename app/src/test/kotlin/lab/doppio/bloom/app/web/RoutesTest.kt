@@ -281,4 +281,15 @@ class RoutesTest {
         val response = client.post("/api/accounts") { admin(); contentType(ContentType.Application.Json); setBody(body) }
         assertEquals(HttpStatusCode.BadRequest, response.status)
     }
+
+    @Test
+    fun `a manual discovery is refused on an instance that does not run the loops`() = routeTest { ports ->
+        client.get("/health") // the application starts with the first call
+        ports.instanceLock.held = false
+        ports.instanceLock.free = false
+        ports.leader.ensureLeader()
+        val response = client.post("/api/discovery/run") { admin() }
+        assertEquals(HttpStatusCode.Conflict, response.status)
+        assertEquals("""{"status":"cette instance ne tient pas les tâches de fond, réessayer dans une minute"}""", response.bodyAsText())
+    }
 }

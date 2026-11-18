@@ -4,8 +4,10 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import lab.doppio.bloom.app.outreach.LeaderGate
 import lab.doppio.bloom.app.outreach.Scheduler
 import org.koin.core.module.Module
+import org.koin.core.module.dsl.singleOf
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 import org.koin.dsl.onClose
@@ -20,5 +22,6 @@ val LOOPS = named("loops")
 val schedulerModule: Module = module {
     single(LOOPS) { CoroutineScope(SupervisorJob() + Dispatchers.Default) } onClose { it?.cancel() }
     single(BACKGROUND) { CoroutineScope(SupervisorJob() + Dispatchers.Default) } onClose { it?.cancel() }
+    singleOf(::LeaderGate)
     single { Scheduler(get(), get(), get(), get(), get(), get(), intervals = get()) }
 }

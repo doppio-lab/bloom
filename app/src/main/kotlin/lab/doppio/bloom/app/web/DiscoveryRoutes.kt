@@ -12,6 +12,7 @@ import io.ktor.server.routing.post
 import io.ktor.server.routing.route
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import lab.doppio.bloom.app.outreach.LeaderGate
 import lab.doppio.bloom.core.discovery.CompanyNames
 import lab.doppio.bloom.core.model.DiscoveryReport
 import lab.doppio.bloom.core.model.EventType
@@ -43,6 +44,7 @@ private fun bookCsv(book: List<BookEntry>): String {
 /** Discovery, contact book and blacklist endpoints. Built by Koin (see webModule). */
 class DiscoveryRoutes(
     private val runDiscovery: RunDiscovery,
+    private val leader: LeaderGate,
     private val researchBatch: ResearchBatch,
     private val eventRepo: EventRepository,
     private val toComplete: ListToComplete,
@@ -60,6 +62,8 @@ class DiscoveryRoutes(
 
         /** Lancer la découverte sans attendre la nuit. Elle tourne en tâche de fond (plusieurs minutes). */
         post("/discovery/run") {
+            // Only the instance that runs the loops discovers: two runs at once would merge the same accounts twice
+            if (!leader.isLeader) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to ApiMessages.NOT_LEADER))
             if (runDiscovery.running) return@post call.respond(HttpStatusCode.Conflict, mapOf("status" to ApiMessages.ALREADY_RUNNING))
             background.launch {
                 runCatching { runDiscovery(); researchBatch() }

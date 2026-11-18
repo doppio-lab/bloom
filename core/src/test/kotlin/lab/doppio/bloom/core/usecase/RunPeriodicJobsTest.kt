@@ -1,8 +1,13 @@
 package lab.doppio.bloom.core.usecase
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import lab.doppio.bloom.core.model.EventType
 import lab.doppio.bloom.core.model.SendingPolicy
+import lab.doppio.bloom.core.port.Discovery
+import lab.doppio.bloom.core.model.DiscoveryReport
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -34,6 +39,35 @@ class RunPeriodicJobsTest {
         assertEquals(1, discovery.runs)
         assertTrue("discovery" in names && "research" in names)
         assertTrue(jobs.finished.containsAll(listOf("discovery" to null, "research" to null)))
+    }
+
+    @Test
+    fun `a manual discovery in progress does not make the night run count as done`() = runTest {
+        val release = CompletableDeferred<Unit>()
+        val slow = object : Discovery {
+            var runs = 0
+            override suspend fun run(): DiscoveryReport { runs++; release.await(); return DiscoveryReport() }
+            override suspend fun pollDemands(): Int = 0
+        }
+        val manual = RunDiscovery(slow)
+        val periodic = RunPeriodicJobs(
+            jobs, slow, manual, ResearchBatch(FakeAccountRepository(), FakeFactRepository(), research, clock),
+            FakeCoach(), events, FakeContactRepository(), FakeOfficerRepository(), FakeDiscoveryStateRepository(),
+            FakeReplyRepository(), FakeFactRepository(), SendingPolicy(), clock,
+        )
+        val handClick = launch { manual() }
+        runCurrent()
+        assertTrue(manual.running)
+
+        periodic(at("2026-11-04", 3))
+        assertTrue("discovery" !in names, "the night job is not claimed while the manual run goes on")
+        assertEquals(1, slow.runs)
+
+        release.complete(Unit)
+        handClick.join()
+        periodic(at("2026-11-04", 4))
+        assertTrue("discovery" in names, "the next tick of the window runs it")
+        assertEquals(2, slow.runs)
     }
 
     @Test

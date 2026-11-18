@@ -6,7 +6,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import lab.doppio.bloom.core.port.DraftRepository
-import lab.doppio.bloom.core.port.InstanceLock
 import lab.doppio.bloom.core.usecase.PlanDrafts
 import lab.doppio.bloom.core.usecase.ProcessReplies
 import lab.doppio.bloom.core.usecase.RunPeriodicJobs
@@ -40,7 +39,7 @@ data class LoopIntervals(
  *  - nuit : tâches périodiques (découverte, recherche, coach, purge).
  */
 class Scheduler(
-    instanceLock: InstanceLock,
+    private val gate: LeaderGate,
     private val draftRepo: DraftRepository,
     private val planDrafts: PlanDrafts,
     private val sendNextApproved: SendNextApproved,
@@ -49,7 +48,6 @@ class Scheduler(
     private val intervals: LoopIntervals = LoopIntervals(),
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
-    private val gate = LeaderGate(instanceLock)
 
     private companion object {
         /** A standby instance asks for the loops' lock again after this long. */
