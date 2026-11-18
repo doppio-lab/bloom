@@ -36,6 +36,10 @@ class UseCaseMessagesPinTest {
             "Cette personne s'est opposée à la prospection",
             assertFailsWith<IllegalArgumentException> { add(account, AddContact.Request("Jane", "CTO", email = "jane@acme.test")) }.message,
         )
+        assertEquals(
+            "Adresse email invalide : « a@b.fr, c@d.fr »",
+            assertFailsWith<IllegalArgumentException> { add(account, AddContact.Request("Jane", "CTO", email = "a@b.fr, c@d.fr")) }.message,
+        )
         assertEquals("saisie manuelle (profil public LinkedIn ou site de l'entreprise)", add(account, AddContact.Request("Jane", "CTO")).contact.dataSource)
         assertEquals(
             "Annuaire des entreprises (dirigeant publié au registre)",

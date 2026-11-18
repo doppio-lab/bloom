@@ -8,6 +8,7 @@ import jakarta.mail.internet.InternetAddress
 import jakarta.mail.internet.MimeMessage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import lab.doppio.bloom.core.model.EmailAddress
 import lab.doppio.bloom.core.model.Mailbox
 import lab.doppio.bloom.core.port.MailSender
 import lab.doppio.bloom.core.port.SendRefused
@@ -60,8 +61,11 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
         inReplyTo: String?,
         messageId: String,
     ): String = withContext(Dispatchers.IO) {
+        // One valid address: a list would send to several people and a line break would inject a header
+        val recipient = EmailAddress.normalize(to) ?: throw IllegalArgumentException(EmailAddress.invalidMessage(to))
         val unsubscribeUrl = unsubscribeUrl(contactId)
         val fullBody = body + footer(contactId, language)
+        val cleanSubject = EmailAddress.singleLine(if (inReplyTo != null && !subject.startsWith("Re:")) "Re: $subject" else subject)
 
         if (config.dryRun) {
             log.info("[DRY RUN] {} -> {} | {}\n{}", mailbox.address, to, subject, fullBody)
@@ -71,8 +75,8 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
             override fun updateMessageID() { setHeader("Message-ID", messageId) }
         }
         msg.setFrom(InternetAddress(mailbox.address, mailbox.displayName, "UTF-8"))
-        msg.setRecipients(Message.RecipientType.TO, InternetAddress.parse(to))
-        msg.setSubject(if (inReplyTo != null && !subject.startsWith("Re:")) "Re: $subject" else subject, "UTF-8")
+        msg.setRecipient(Message.RecipientType.TO, InternetAddress(recipient))
+        msg.setSubject(cleanSubject, "UTF-8")
         msg.setText(fullBody, "UTF-8", "plain")
         // RFC 8058 : désinscription en un clic, exigée par Gmail et Yahoo pour les expéditeurs en volume
         msg.setHeader("List-Unsubscribe", "<$unsubscribeUrl>, <mailto:${mailbox.address}?subject=unsubscribe>")

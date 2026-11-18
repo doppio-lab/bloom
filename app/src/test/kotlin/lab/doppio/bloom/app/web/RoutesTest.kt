@@ -262,4 +262,23 @@ class RoutesTest {
         assertTrue("\"error\"" in response.bodyAsText(), response.bodyAsText())
         assertTrue(ports.sequences.enrollments.isEmpty())
     }
+
+    // --- Email input ---------------------------------------------------------------------------
+
+    @Test
+    fun `a contact whose email is a list is refused with a 400 before anything is written`() = routeTest { ports ->
+        val body = """{"accountId":10,"fullName":"Jane Doe","role":"CTO","persona":"CTO","email":"a@x.fr, b@y.fr","dataSource":"test"}"""
+        val response = client.post("/api/contacts") { admin(); contentType(ContentType.Application.Json); setBody(body) }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertEquals("""{"error":"Adresse email invalide : « a@x.fr, b@y.fr »"}""", response.bodyAsText())
+        assertTrue(ports.contacts.contacts.isEmpty())
+    }
+
+    @Test
+    fun `an account whose contact has an invalid email is refused before the account is created`() = routeTest {
+        // upsertAccount is not implemented by the fake: reaching it would answer 500, not 400
+        val body = """{"account":{"name":"Acme"},"contacts":[{"accountId":0,"fullName":"Jane","role":"CTO","persona":"CTO","email":"nope","dataSource":"test"}],"researchNow":false}"""
+        val response = client.post("/api/accounts") { admin(); contentType(ContentType.Application.Json); setBody(body) }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+    }
 }

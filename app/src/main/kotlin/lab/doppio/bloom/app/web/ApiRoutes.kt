@@ -11,6 +11,7 @@ import io.ktor.server.routing.route
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import lab.doppio.bloom.core.model.Contact
+import lab.doppio.bloom.core.model.EmailAddress
 import lab.doppio.bloom.core.model.Deal
 import lab.doppio.bloom.core.model.DealStage
 import lab.doppio.bloom.core.model.DraftStatus
@@ -76,8 +77,10 @@ class ApiRoutes(
 
         post("/accounts") {
             val req = call.receive<NewAccount>()
+            // Every address is checked before anything is written: a bad one must not leave a half-created account
+            val contacts = req.contacts.map { it.copy(email = EmailAddress.orNull(it.email)) }
             val id = accountRepo.upsertAccount(req.account)
-            req.contacts.forEach { contactRepo.addContact(it.copy(accountId = id)) }
+            contacts.forEach { contactRepo.addContact(it.copy(accountId = id)) }
             // The research takes minutes: it runs in the background, the dossier appears when it is done
             if (req.researchNow) launchResearch(id)
             call.respond(HttpStatusCode.Created, mapOf("id" to id.toString(), "research" to if (req.researchNow) ApiMessages.STARTED else ApiMessages.NOT_REQUESTED))
@@ -97,7 +100,7 @@ class ApiRoutes(
         }
 
         post("/contacts") {
-            val c = call.receive<Contact>()
+            val c = call.receive<Contact>().let { it.copy(email = EmailAddress.orNull(it.email)) }
             call.respond(HttpStatusCode.Created, mapOf("id" to contactRepo.addContact(c)))
         }
 
