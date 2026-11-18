@@ -30,10 +30,7 @@ internal object SiteToolTexts {
     fun unknownCategory(categories: Collection<String>) =
         "Refusé : catégorie inconnue. Choisis parmi ${categories.joinToString(", ")}, ou n'enregistre rien."
     const val QUOTE_NOT_FOUND = "Refusé : citation introuvable mot pour mot sur la page. Copie le texte exact."
-    fun recorded(factId: String) = "Enregistré sous l'identifiant $factId."
-
-    /** The fact stored for a verified quote. */
-    fun quoteFact(meaning: String, quote: String) = "$meaning (« $quote »)"
+    fun recorded(factId: String, meaning: String) = "Enregistré sous l'identifiant $factId (ce que tu en retiens : $meaning)."
 }
 
 /** What the model reads about the coach's metrics tools, and what those tools answer back. */

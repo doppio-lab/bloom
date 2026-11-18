@@ -28,7 +28,8 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
         .replace('\u00A0', ' ').replace('\u202F', ' ')
         .replace(Regex("\\s+"), " ")
 
-    internal val sameSite = Regex("^https?://([a-z0-9-]+\\.)*${Regex.escape(domain)}(/.*)?$", RegexOption.IGNORE_CASE)
+    // https only: the researcher must not be sent to a plain-text page an attacker could tamper with
+    internal val sameSite = Regex("^https://([a-z0-9-]+\\.)*${Regex.escape(domain)}(/.*)?$", RegexOption.IGNORE_CASE)
 
     @Tool
     @LLMDescription(SiteToolTexts.READ_PAGE)
@@ -65,13 +66,15 @@ class SiteResearchTools(private val accountId: Long, private val domain: String,
         }
         val cat = category.uppercase()
         if (cat !in categories) return SiteToolTexts.unknownCategory(categories)
-        val f = fact(accountId, FactKind.WEB_PAGE, SiteToolTexts.quoteFact(meaning, normalized), url, excerpt = normalized, at = clock.instant())
+        // The statement is the verbatim quote only: a figure the model adds in [meaning] must never become a
+        // sourced fact for the writer and MessageGuard. The meaning stays in the conversation with the model.
+        val f = fact(accountId, FactKind.WEB_PAGE, normalized, url, excerpt = normalized, at = clock.instant())
         recorded += f
         when (cat) {
             "AI_USAGE" -> signals += Signal(accountId, SignalType.AI_ADOPTION, ResearchLimits.AI_USAGE_STRENGTH, clock.instant().toString(), listOf(f.id))
             "MOBILE_PROJECT" -> signals += Signal(accountId, SignalType.PRODUCT_LAUNCH, ResearchLimits.MOBILE_PROJECT_STRENGTH, clock.instant().toString(), listOf(f.id))
             "APP_ISSUE" -> signals += Signal(accountId, SignalType.QUALITY_COMPLAINTS, ResearchLimits.APP_ISSUE_STRENGTH, clock.instant().toString(), listOf(f.id))
         }
-        return SiteToolTexts.recorded(f.id)
+        return SiteToolTexts.recorded(f.id, meaning.trim())
     }
 }

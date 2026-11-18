@@ -169,8 +169,8 @@ class AgentTextsPinTest {
         assertEquals("Refusé : la citation doit faire entre 12 et 300 caractères.", tools.recordQuote("https://acme.fr/", "court", "m", "OTHER"))
         assertEquals("Refusé : citation introuvable mot pour mot sur la page. Copie le texte exact.", tools.recordQuote("https://acme.fr/", "Notre équipe mobile compte douze", "m", "OTHER"))
         val ok = tools.recordQuote("https://acme.fr/", "Notre équipe mobile recrute", "Recrutement mobile", "HIRING")
-        assertEquals("Enregistré sous l'identifiant ${tools.recorded.single().id}.", ok)
-        assertEquals("Recrutement mobile (« Notre équipe mobile recrute »)", tools.recorded.single().statement)
+        assertEquals("Enregistré sous l'identifiant ${tools.recorded.single().id} (ce que tu en retiens : Recrutement mobile).", ok)
+        assertEquals("Notre équipe mobile recrute", tools.recorded.single().statement)
         listOf("a", "b", "c", "d", "e").forEach { tools.readPage("https://acme.fr/$it") }
         assertEquals("Limite de 6 pages atteinte. Termine ton analyse.", tools.readPage("https://acme.fr/f"))
     }

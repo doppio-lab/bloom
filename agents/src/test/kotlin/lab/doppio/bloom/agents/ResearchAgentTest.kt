@@ -21,8 +21,8 @@ class SiteResearchToolsTest {
 
     @Test
     fun `sameSite accepts the domain and its subdomains only`() {
-        val ok = listOf("https://acme.fr", "https://acme.fr/", "http://www.acme.fr/x?y=1", "https://careers.acme.fr/jobs", "HTTPS://ACME.FR/Path")
-        val ko = listOf("https://acme.fr.evil.com/", "https://evilacme.fr/", "https://example.com/acme.fr", "ftp://acme.fr/", "https://acme.frx/", "//acme.fr/")
+        val ok = listOf("https://acme.fr", "https://acme.fr/", "https://www.acme.fr/x?y=1", "https://careers.acme.fr/jobs", "HTTPS://ACME.FR/Path")
+        val ko = listOf("http://acme.fr/x", "http://www.acme.fr/", "https://acme.fr.evil.com/", "https://evilacme.fr/", "https://example.com/acme.fr", "ftp://acme.fr/", "https://acme.frx/", "//acme.fr/")
         ok.forEach { assertTrue(tools.sameSite.matches(it), it) }
         ko.forEach { assertFalse(tools.sameSite.matches(it), it) }
     }
@@ -67,6 +67,17 @@ class SiteResearchToolsTest {
         assertEquals("https://acme.fr/", fact.sourceUrl)
         assertEquals(fixedClock.instant().toString(), fact.retrievedAt)
         assertTrue(tools.signals.isEmpty(), "HIRING adds a fact but no signal")
+    }
+
+    @Test
+    fun `a recorded fact states the verbatim quote, never the model's interpretation`() = runTest {
+        tools.readPage("https://acme.fr/")
+        val answer = tools.recordQuote("https://acme.fr/", "Notre équipe mobile recrute", "L'équipe compte 40 développeurs", "HIRING")
+        val fact = tools.recorded.single()
+        assertEquals("Notre équipe mobile recrute", fact.statement)
+        assertFalse("40" in fact.statement, "a figure invented by the model must not become a sourced fact")
+        assertEquals("Notre équipe mobile recrute", fact.excerpt)
+        assertTrue(answer.startsWith("Enregistré"), answer)
     }
 
     @Test
