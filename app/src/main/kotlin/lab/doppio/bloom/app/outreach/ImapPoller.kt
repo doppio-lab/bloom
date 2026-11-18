@@ -45,8 +45,14 @@ class ImapPoller(private val config: MailConfig, private val clock: java.time.Cl
         }
     }
 
+    internal fun imapProperties(): Properties = Properties().apply {
+        put("mail.store.protocol", "imaps")
+        put("mail.imaps.connectiontimeout", MAIL_SOCKET_TIMEOUT_MS)
+        put("mail.imaps.timeout", MAIL_SOCKET_TIMEOUT_MS)
+    }
+
     private fun <T> withInbox(mb: Mailbox, mode: Int, block: (Folder) -> T): T {
-        val session = Session.getInstance(Properties().apply { put("mail.store.protocol", "imaps") })
+        val session = Session.getInstance(imapProperties())
         val store = session.getStore("imaps")
         store.connect(config.imapHost, mb.address, mb.password)
         try {

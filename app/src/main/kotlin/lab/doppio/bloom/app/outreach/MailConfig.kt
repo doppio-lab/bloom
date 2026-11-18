@@ -15,3 +15,9 @@ data class MailConfig(
     /** Tant que dryRun est vrai, rien ne part : les emails sont journalisés. Valeur par défaut. */
     val dryRun: Boolean,
 )
+
+/**
+ * Socket timeouts (connect, read and write) of the SMTP and IMAP sessions, in milliseconds. Jakarta Mail waits forever
+ * by default, so a server that stopped answering would hold the sending or the reply loop until the next restart.
+ */
+internal const val MAIL_SOCKET_TIMEOUT_MS = "30000"

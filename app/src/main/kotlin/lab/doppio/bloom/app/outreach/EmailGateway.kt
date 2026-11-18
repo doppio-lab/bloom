@@ -18,14 +18,19 @@ import java.util.UUID
 class EmailGateway(private val config: MailConfig, private val tokens: UnsubscribeTokens) : MailSender {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    internal fun smtpProperties(): Properties = Properties().apply {
+        put("mail.smtp.host", config.smtpHost)
+        put("mail.smtp.port", config.smtpPort.toString())
+        put("mail.smtp.auth", "true")
+        put("mail.smtp.starttls.enable", "true")
+        put("mail.smtp.starttls.required", "true")
+        put("mail.smtp.connectiontimeout", MAIL_SOCKET_TIMEOUT_MS)
+        put("mail.smtp.timeout", MAIL_SOCKET_TIMEOUT_MS)
+        put("mail.smtp.writetimeout", MAIL_SOCKET_TIMEOUT_MS)
+    }
+
     private fun session(mailbox: Mailbox): Session = Session.getInstance(
-        Properties().apply {
-            put("mail.smtp.host", config.smtpHost)
-            put("mail.smtp.port", config.smtpPort.toString())
-            put("mail.smtp.auth", "true")
-            put("mail.smtp.starttls.enable", "true")
-            put("mail.smtp.starttls.required", "true")
-        },
+        smtpProperties(),
         object : jakarta.mail.Authenticator() {
             override fun getPasswordAuthentication() = jakarta.mail.PasswordAuthentication(mailbox.address, mailbox.password)
         },
