@@ -68,7 +68,9 @@ class EmailGateway(private val config: MailConfig, private val tokens: Unsubscri
         val cleanSubject = EmailAddress.singleLine(if (inReplyTo != null && !subject.startsWith("Re:")) "Re: $subject" else subject)
 
         if (config.dryRun) {
-            log.info("[DRY RUN] {} -> {} | {}\n{}", mailbox.address, to, subject, fullBody)
+            // INFO keeps personal data out of the logs: the recipient and the body only show at DEBUG
+            log.info("[DRY RUN] {} -> contact {} | {}", mailbox.address, contactId, cleanSubject)
+            log.debug("[DRY RUN] to {}\n{}", recipient, fullBody)
             return@withContext messageId
         }
         val msg = object : MimeMessage(session(mailbox)) {

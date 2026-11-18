@@ -132,7 +132,7 @@ class ApiRoutes(
         get("/board") { call.respond(getBoard()) }
 
         post("/accounts/{id}/meeting") {
-            val req = runCatching { call.receive<MeetingRequest>() }.getOrDefault(MeetingRequest())
+            val req = call.receiveOrDefault(MeetingRequest())
             when (bookMeeting(call.parameters["id"]!!.toLong(), req.replyId)) {
                 BookMeeting.Result.Booked -> call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.MEETING_BOOKED))
                 BookMeeting.Result.AlreadyBooked -> call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.MEETING_ALREADY_BOOKED))
@@ -146,7 +146,7 @@ class ApiRoutes(
         }
 
         post("/drafts/{id}/approve") {
-            val req = runCatching { call.receive<DecisionRequest>() }.getOrDefault(DecisionRequest())
+            val req = call.receiveOrDefault(DecisionRequest())
             when (val result = decideDraft.approve(call.parameters["id"]!!.toLong(), req.subject, req.body)) {
                 DecideDraft.Result.Done -> call.respond(HttpStatusCode.OK, mapOf("status" to DraftStatus.APPROVED.name))
                 DecideDraft.Result.NotFound -> call.respond(HttpStatusCode.NotFound)

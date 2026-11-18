@@ -33,11 +33,20 @@ private val log = LoggerFactory.getLogger("DiscoveryRoutes")
 
 private val lenientJson = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
 
+/**
+ * A quoted CSV cell. A value starting with =, +, -, @, tab or CR would be run as a formula by a spreadsheet
+ * (a company name or a role is typed by anyone): a leading quote makes it text.
+ */
+internal fun csvCell(value: String): String {
+    val safe = if (value.isNotEmpty() && value[0] in "=+-@\t\r") "'$value" else value
+    return "\"" + safe.replace("\"", "\"\"") + "\""
+}
+
 private fun bookCsv(book: List<BookEntry>): String {
     val lines = listOf(ApiMessages.CSV_HEADER) + book.flatMap { e ->
         e.contacts.map { c -> listOf(e.name, c.contact.fullName, c.contact.role, c.contact.email.orEmpty(), c.contact.linkedinUrl.orEmpty(), ApiMessages.CSV_STATUS_CONTACT, c.contact.dataSource) } +
             e.officers.map { o -> listOf(e.name, o.fullName, o.role, "", "", ApiMessages.CSV_STATUS_SUGGESTION, o.sourceUrl) }
-    }.map { cells -> cells.joinToString(";") { "\"" + it.replace("\"", "\"\"") + "\"" } }
+    }.map { cells -> cells.joinToString(";") { csvCell(it) } }
     return "﻿" + lines.joinToString("\r\n")
 }
 
@@ -111,7 +120,7 @@ class DiscoveryRoutes(
         /** Blacklist an account: it leaves every list, its sequences stop, and discovery never brings it back. */
         post("/accounts/{id}/exclude") {
             val id = call.parameters["id"]!!.toLong()
-            val reason = runCatching { call.receive<ExcludeRequest>().reason }.getOrDefault("").ifBlank { ApiMessages.EXCLUDED_BY_HAND }
+            val reason = call.receiveOrDefault(ExcludeRequest("")).reason.ifBlank { ApiMessages.EXCLUDED_BY_HAND }
             accountRepo.excludeAccount(id, reason)
             eventRepo.logEvent(EventType.ACCOUNT_EXCLUDED, id)
             call.respond(HttpStatusCode.OK, mapOf("status" to ApiMessages.ACCOUNT_EXCLUDED))

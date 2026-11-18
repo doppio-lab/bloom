@@ -75,6 +75,14 @@ class RoutesTest {
     }
 
     @Test
+    fun `an unreadable decision body is a 400, never the original draft approved`() = routeTest { ports ->
+        val id = ports.pendingDraft()
+        val response = client.post("/api/drafts/$id/approve") { admin(); contentType(ContentType.Application.Json); setBody("{\"subject\": ") }
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertEquals(DraftStatus.PENDING_REVIEW, ports.drafts.status(id))
+    }
+
+    @Test
     fun `rejecting a draft answers 200`() = routeTest { ports ->
         val id = ports.pendingDraft()
         val response = client.post("/api/drafts/$id/reject") { admin() }
