@@ -51,6 +51,7 @@ import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.port.ReplyRow
 import lab.doppio.bloom.core.port.Researcher
 import lab.doppio.bloom.core.port.SequenceRepository
+import lab.doppio.bloom.core.port.Transactions
 import lab.doppio.bloom.core.scoring.ScoreBreakdown
 import java.time.Clock
 import java.time.Instant
@@ -365,4 +366,9 @@ class FakeInstanceLock(var held: Boolean = true, var free: Boolean = true) : Ins
     }
 
     override fun isHeld(): Boolean = held
+}
+
+/** No database to roll back: the block just runs. A test that needs a rollback uses the real repositories. */
+class FakeTransactions : Transactions {
+    override suspend fun <T> atomically(block: suspend () -> T): T = block()
 }

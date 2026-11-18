@@ -14,6 +14,7 @@ import lab.doppio.bloom.core.usecase.GetBoard
 import lab.doppio.bloom.core.usecase.GetOverview
 import lab.doppio.bloom.core.usecase.ImportAccounts
 import lab.doppio.bloom.core.usecase.ListToComplete
+import lab.doppio.bloom.core.usecase.CreateAccount
 import lab.doppio.bloom.core.usecase.PlanDrafts
 import lab.doppio.bloom.core.usecase.PostponeContactSequences
 import lab.doppio.bloom.core.usecase.ProcessReplies
@@ -30,6 +31,7 @@ import org.koin.dsl.module
 
 /** What the application does. Free of Ktor and of the database, they only see ports. */
 val useCasesModule: Module = module {
+    singleOf(::CreateAccount)
     singleOf(::StopContactSequences)
     singleOf(::PostponeContactSequences)
     singleOf(::UnsubscribeContact)

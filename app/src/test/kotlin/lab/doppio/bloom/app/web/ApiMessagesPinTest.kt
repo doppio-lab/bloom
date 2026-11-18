@@ -66,10 +66,10 @@ class ApiMessagesPinTest {
     }
 
     @Test
-    fun `an unreadable body answers the generic internal error`() = routeTest {
+    fun `an unreadable body is a client mistake, not an internal error`() = routeTest {
         val response = client.post("/api/deals") { admin(); contentType(json); setBody("{") }
-        assertEquals(HttpStatusCode.InternalServerError, response.status)
-        assertEquals("""{"error":"erreur interne"}""", response.bodyAsText())
+        assertEquals(HttpStatusCode.BadRequest, response.status)
+        assertEquals("""{"error":"requête invalide"}""", response.bodyAsText())
     }
 
     @Test

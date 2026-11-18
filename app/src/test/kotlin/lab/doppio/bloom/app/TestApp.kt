@@ -32,10 +32,12 @@ import lab.doppio.bloom.core.port.ReplyClassifier
 import lab.doppio.bloom.core.port.ReplyRepository
 import lab.doppio.bloom.core.port.Researcher
 import lab.doppio.bloom.core.port.SequenceRepository
+import lab.doppio.bloom.core.port.Transactions
 import lab.doppio.bloom.core.usecase.FakeAccountRepository
 import lab.doppio.bloom.core.usecase.FakeAgentRunRepository
 import lab.doppio.bloom.core.usecase.FakeDealRepository
 import lab.doppio.bloom.core.usecase.FakeInstanceLock
+import lab.doppio.bloom.core.usecase.FakeTransactions
 import lab.doppio.bloom.core.usecase.FakeClassifier
 import lab.doppio.bloom.core.usecase.FakeCoach
 import lab.doppio.bloom.core.usecase.FakeContactRepository
@@ -95,6 +97,7 @@ class TestPorts {
         single<JobRunRepository> { FakeJobRunRepository() }
         single<DiscoveryStateRepository> { FakeDiscoveryStateRepository() }
         single<InstanceLock> { FakeInstanceLock() }
+        single<Transactions> { FakeTransactions() }
         single<Drafter> { FakeDrafter() }
         single<Researcher> { FakeResearcher() }
         single<ReplyClassifier> { FakeClassifier() }

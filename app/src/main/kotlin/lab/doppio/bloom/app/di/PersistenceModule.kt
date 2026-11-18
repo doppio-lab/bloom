@@ -12,8 +12,10 @@ import lab.doppio.bloom.core.port.InstanceLock
 import lab.doppio.bloom.core.port.JobRunRepository
 import lab.doppio.bloom.core.port.OfficerRepository
 import lab.doppio.bloom.core.port.ReplyRepository
+import lab.doppio.bloom.core.port.Transactions
 import lab.doppio.bloom.core.port.SequenceRepository
 import lab.doppio.bloom.data.persistence.PostgresInstanceLock
+import lab.doppio.bloom.data.persistence.ExposedTransactions
 import lab.doppio.bloom.data.persistence.account.ExposedAccountRepository
 import lab.doppio.bloom.data.persistence.agentrun.ExposedAgentRunRepository
 import lab.doppio.bloom.data.persistence.contact.ExposedContactRepository
@@ -47,4 +49,5 @@ val persistenceModule: Module = module {
     singleOf(::ExposedAgentRunRepository) { bind<AgentRunRepository>() }
     singleOf(::ExposedDiscoveryStateRepository) { bind<DiscoveryStateRepository>() }
     singleOf(::PostgresInstanceLock) { bind<InstanceLock>() }
+    singleOf(::ExposedTransactions) { bind<Transactions>() }
 }

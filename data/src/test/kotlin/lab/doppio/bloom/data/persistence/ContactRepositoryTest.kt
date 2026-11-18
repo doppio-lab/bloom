@@ -14,6 +14,9 @@ import lab.doppio.bloom.core.model.DraftStatus
 import lab.doppio.bloom.core.model.Draft
 import lab.doppio.bloom.core.model.Channel
 import kotlinx.coroutines.test.runTest
+import kotlin.test.assertTrue
+import kotlin.test.assertFailsWith
+import lab.doppio.bloom.data.persistence.ExposedTransactions
 import lab.doppio.bloom.core.model.Account
 import lab.doppio.bloom.core.model.Contact
 import lab.doppio.bloom.core.model.Persona
@@ -96,5 +99,22 @@ class ContactRepositoryTest {
         assertEquals(listOf(kept), dbQuery { EventsTable.selectAll().map { it[EventsTable.contactId] } })
         assertEquals(listOf(keptEnrollment), sequences.activeEnrollments().map { it.id })
         assertEquals(1, drafts.draftsByStatus(DraftStatus.SENT).size)
+    }
+
+    @Test
+    fun `un compte et ses contacts sont créés ensemble ou pas du tout`() = runTest {
+        val transactions = ExposedTransactions()
+        val person = Contact(accountId = 0, fullName = "Alex Martin", role = "CTO", persona = Persona.CTO, email = "alex@velomoov.fr", dataSource = "test")
+        suspend fun create(vararg people: Contact) = transactions.atomically {
+            val id = accounts.upsertAccount(Account(name = "Velomoov"))
+            people.forEach { contacts.addContact(it.copy(accountId = id)) }
+            id
+        }
+
+        assertFailsWith<Exception> { create(person, person.copy(fullName = "Alex Bis")) }
+        assertTrue(accounts.accountsByScore(10).isEmpty(), "the duplicate email rolled the account back")
+
+        val id = create(person)
+        assertEquals(1, contacts.contactsOf(id).size)
     }
 }

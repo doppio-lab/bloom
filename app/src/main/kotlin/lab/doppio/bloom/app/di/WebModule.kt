@@ -12,7 +12,7 @@ import org.koin.dsl.module
 val webModule: Module = module {
     single {
         ApiRoutes(
-            overview = get(), accountRepo = get(), contactRepo = get(), factRepo = get(), enrollContact = get(),
+            overview = get(), accountRepo = get(), contactRepo = get(), factRepo = get(), enrollContact = get(), createAccount = get(),
             reviewQueue = get(), decideDraft = get(), completeTask = get(),
             getBoard = get(), bookMeeting = get(), completeContactEmail = get(),
             replyRepo = get(), dealRepo = get(),

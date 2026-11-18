@@ -7,6 +7,7 @@ import io.ktor.server.application.install
 import io.ktor.server.auth.Authentication
 import io.ktor.server.auth.UserIdPrincipal
 import io.ktor.server.auth.basic
+import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.calllogging.CallLogging
 import io.ktor.server.plugins.calllogging.processingTimeMillis
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
@@ -17,6 +18,7 @@ import io.ktor.server.request.httpMethod
 import io.ktor.server.request.uri
 import io.ktor.server.response.respond
 import kotlinx.serialization.json.Json
+import java.sql.SQLException
 import kotlin.time.Duration.Companion.minutes
 
 /** Name of the Basic auth provider and of its rate limit, and the only user it accepts. */
@@ -41,12 +43,32 @@ internal fun Application.installJson() {
     install(ContentNegotiation) { json(Json { encodeDefaults = true; ignoreUnknownKeys = true }) }
 }
 
+/** Postgres SQLSTATE of a violated unique constraint (duplicate contact email, second active enrollment...). */
+private const val UNIQUE_VIOLATION = "23505"
+
+/** How far down a cause chain an SQLException is looked for. */
+private const val MAX_CAUSE_DEPTH = 10
+
+/**
+ * HTTP status and message for an exception. A client mistake (a refused value, a malformed body) is 400, a duplicate
+ * is 409 (the unique index speaks for the business rule), anything else is an internal error whose details stay in the log.
+ */
+internal fun errorStatus(e: Throwable): Pair<HttpStatusCode, String> {
+    val chain = generateSequence(e) { it.cause }.take(MAX_CAUSE_DEPTH).toList()
+    return when {
+        e is IllegalArgumentException -> HttpStatusCode.BadRequest to (e.message ?: ApiMessages.INVALID_REQUEST)
+        e is BadRequestException -> HttpStatusCode.BadRequest to ApiMessages.INVALID_REQUEST
+        chain.any { it is SQLException && it.sqlState == UNIQUE_VIOLATION } -> HttpStatusCode.Conflict to ApiMessages.ALREADY_PRESENT
+        else -> HttpStatusCode.InternalServerError to ApiMessages.INTERNAL_ERROR
+    }
+}
+
 internal fun Application.installStatusPages() {
     install(StatusPages) {
-        exception<IllegalArgumentException> { call, e -> call.respond(HttpStatusCode.BadRequest, mapOf("error" to e.message)) }
         exception<Throwable> { call, e ->
-            this@installStatusPages.environment.log.error("Erreur", e)
-            call.respond(HttpStatusCode.InternalServerError, mapOf("error" to ApiMessages.INTERNAL_ERROR))
+            val (status, message) = errorStatus(e)
+            if (status == HttpStatusCode.InternalServerError) this@installStatusPages.environment.log.error("Erreur", e)
+            call.respond(status, mapOf("error" to message))
         }
     }
 }

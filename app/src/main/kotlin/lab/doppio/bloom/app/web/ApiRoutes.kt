@@ -27,6 +27,7 @@ import lab.doppio.bloom.core.port.ReplyRow
 import lab.doppio.bloom.core.port.Researcher
 import lab.doppio.bloom.core.usecase.BookMeeting
 import lab.doppio.bloom.core.usecase.CompleteContactEmail
+import lab.doppio.bloom.core.usecase.CreateAccount
 import lab.doppio.bloom.core.usecase.CompleteTask
 import lab.doppio.bloom.core.usecase.DecideDraft
 import lab.doppio.bloom.core.usecase.EnrollContact
@@ -46,6 +47,7 @@ class ApiRoutes(
     private val contactRepo: ContactRepository,
     private val factRepo: FactRepository,
     private val enrollContact: EnrollContact,
+    private val createAccount: CreateAccount,
     private val reviewQueue: ReviewQueue,
     private val decideDraft: DecideDraft,
     private val completeTask: CompleteTask,
@@ -77,10 +79,7 @@ class ApiRoutes(
 
         post("/accounts") {
             val req = call.receive<NewAccount>()
-            // Every address is checked before anything is written: a bad one must not leave a half-created account
-            val contacts = req.contacts.map { it.copy(email = EmailAddress.orNull(it.email)) }
-            val id = accountRepo.upsertAccount(req.account)
-            contacts.forEach { contactRepo.addContact(it.copy(accountId = id)) }
+            val id = createAccount(req.account, req.contacts)
             // The research takes minutes: it runs in the background, the dossier appears when it is done
             if (req.researchNow) launchResearch(id)
             call.respond(HttpStatusCode.Created, mapOf("id" to id.toString(), "research" to if (req.researchNow) ApiMessages.STARTED else ApiMessages.NOT_REQUESTED))
