@@ -33,6 +33,9 @@ internal fun maskedUri(uri: String) = uri.replace(unsubscribeToken, "/u/***")
 
 internal fun Application.installCallLogging() {
     install(CallLogging) {
+        // The format below is plain text, so the colours bring nothing. Left on, Ktor swaps System.out for a
+        // Jansi stream while the server runs, which also takes the logs out of Gradle's test output capture.
+        disableDefaultColors()
         format { call -> "${call.response.status()}: ${call.request.httpMethod.value} - ${maskedUri(call.request.uri)} in ${call.processingTimeMillis()}ms" }
     }
 }

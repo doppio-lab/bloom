@@ -5,8 +5,8 @@ import lab.doppio.bloom.core.model.Demand
 import lab.doppio.bloom.data.TestDatabase
 import lab.doppio.bloom.data.persistence.discovery.DemandsTable
 import lab.doppio.bloom.data.persistence.discovery.ExposedDiscoveryStateRepository
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.update
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.jdbc.update
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.test.BeforeTest

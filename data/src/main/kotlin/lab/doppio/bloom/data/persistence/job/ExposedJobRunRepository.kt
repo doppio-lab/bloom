@@ -6,10 +6,10 @@ import java.time.LocalDate
 import lab.doppio.bloom.core.model.Limits
 import lab.doppio.bloom.core.port.JobRunRepository
 import lab.doppio.bloom.data.persistence.dbQuery
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.eq
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.less
-import org.jetbrains.exposed.sql.update
-import org.jetbrains.exposed.sql.upsert
+import org.jetbrains.exposed.v1.core.eq
+import org.jetbrains.exposed.v1.core.less
+import org.jetbrains.exposed.v1.jdbc.update
+import org.jetbrains.exposed.v1.jdbc.upsert
 
 class ExposedJobRunRepository(private val clock: Clock = Clock.systemDefaultZone()) : JobRunRepository {
 

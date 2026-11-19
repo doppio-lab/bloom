@@ -13,7 +13,7 @@ import lab.doppio.bloom.data.persistence.account.ExposedAccountRepository
 import lab.doppio.bloom.data.persistence.contact.ExposedContactRepository
 import lab.doppio.bloom.data.persistence.draft.ExposedDraftRepository
 import lab.doppio.bloom.data.persistence.sequence.ExposedSequenceRepository
-import org.jetbrains.exposed.sql.selectAll
+import org.jetbrains.exposed.v1.jdbc.selectAll
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.test.BeforeTest
@@ -73,7 +73,7 @@ class DraftRepositoryTest {
         assertEquals(DraftStatus.FAILED, drafts.draft(d.id)!!.status)
         assertNull(drafts.nextToSend())
         // The error a human reads in the review queue
-        val lastError = org.jetbrains.exposed.sql.transactions.transaction {
+        val lastError = org.jetbrains.exposed.v1.jdbc.transactions.transaction {
             lab.doppio.bloom.data.persistence.draft.DraftsTable.selectAll().single()[lab.doppio.bloom.data.persistence.draft.DraftsTable.lastError]
         }
         assertEquals("Interrompu pendant l'envoi : vérifier la boîte d'envoi avant de relancer", lastError)
