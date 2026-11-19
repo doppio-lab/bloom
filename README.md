@@ -127,6 +127,12 @@ Pour un autre modèle : `ollama pull <modèle>` puis `LLM_MODEL=<modèle>`. Il d
 produire du JSON structuré (c'est le cas de `mistral-small3.2`, `qwen3`, `gpt-oss`). Compter 16 Go de mémoire
 libre pour le modèle par défaut.
 
+Certains modèles sont servis par le moteur MLX d'Ollama (la colonne `RUNNER` de `ollama ps` affiche alors
+`mlx`, c'est le cas de `qwen3.6:35b`). Ce moteur ne sait pas contraindre la sortie à un schéma et répond
+`501 structured output is unavailable`. Bloom le détecte au premier appel, l'écrit une fois dans les logs, puis
+décrit le format JSON dans le prompt : le dossier, les brouillons et le classement des réponses fonctionnent
+aussi avec ces modèles.
+
 Ce qu'il faut attendre d'un modèle local, mesuré sur un Mac M5 Pro avec `mistral-small3.2` : 1 à 2 minutes pour
 la recherche d'un compte, 30 secondes pour un brouillon. Les sorties structurées et le garde-fou fonctionnent.
 En revanche l'exploration du site est moins fine qu'avec Anthropic : dans nos essais le modèle lisait bien les

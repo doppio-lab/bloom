@@ -1,16 +1,23 @@
 package lab.doppio.bloom.agents
 
+import ai.koog.http.client.KoogHttpClientException
+import ai.koog.prompt.Prompt
 import ai.koog.prompt.executor.clients.anthropic.AnthropicLLMClient
 import ai.koog.prompt.executor.clients.anthropic.AnthropicModels
 import ai.koog.prompt.executor.clients.openai.OpenAIClientSettings
 import ai.koog.prompt.executor.clients.openai.OpenAILLMClient
 import ai.koog.prompt.executor.llms.MultiLLMPromptExecutor
 import ai.koog.prompt.executor.model.PromptExecutor
+import ai.koog.prompt.executor.model.executeStructured
 import ai.koog.prompt.executor.ollama.client.ContextWindowStrategy
 import ai.koog.prompt.executor.ollama.client.OllamaClient
 import ai.koog.prompt.llm.LLMCapability
 import ai.koog.prompt.llm.LLMProvider
 import ai.koog.prompt.llm.LLModel
+import ai.koog.prompt.structure.StructuredResponse
+import org.slf4j.LoggerFactory
+import java.net.HttpURLConnection
+import java.util.concurrent.ConcurrentHashMap
 
 enum class LlmProvider {
     /** Anthropic API, paid. The default, meant for production. */
@@ -64,7 +71,41 @@ class Llm(
     /** Summary logged at startup, without secrets. */
     fun describe(): String = "$label (principal : ${research.id}, rapide : ${fast.id})"
 
+    /** Ids of the models whose server refused a schema: they get the format in the prompt from then on. */
+    @PublishedApi
+    internal val promptedJson: MutableSet<String> = ConcurrentHashMap.newKeySet()
+
+    /**
+     * One structured call. The server constrains the output to the schema of [T] when [model] declares it can.
+     * A server that cannot says so with a 501 (Ollama does for a model served by its MLX runner): the same
+     * call is then made with the format described in the prompt, and that choice is kept for the model.
+     */
+    suspend inline fun <reified T> structured(prompt: Prompt, model: LLModel): StructuredResponse<T> {
+        if (model.id in promptedJson) return executor.executeStructured<T>(prompt, model.withoutSchema()).getOrThrow()
+        return try {
+            executor.executeStructured<T>(prompt, model).getOrThrow()
+        } catch (e: Exception) {
+            if (!refusesSchema(e)) throw e
+            noteSchemaRefused(model)
+            executor.executeStructured<T>(prompt, model.withoutSchema()).getOrThrow()
+        }
+    }
+
+    @PublishedApi
+    internal fun noteSchemaRefused(model: LLModel) {
+        if (promptedJson.add(model.id)) {
+            log.warn("Le serveur de {} ne sait pas contraindre la sortie à un schéma : le format JSON est décrit dans le prompt", model.id)
+        }
+    }
+
     companion object {
+        private val log = LoggerFactory.getLogger(Llm::class.java)
+
+        /** True when the failure is the server saying it does not implement structured output. */
+        @PublishedApi
+        internal fun refusesSchema(e: Throwable): Boolean =
+            generateSequence(e) { it.cause }.any { it is KoogHttpClientException && it.statusCode == HttpURLConnection.HTTP_NOT_IMPLEMENTED }
+
         /** Builds the real executor and models for the configured provider. */
         fun from(config: LlmConfig): Llm {
             val executor: PromptExecutor
@@ -116,6 +157,10 @@ class Llm(
             LLModel(provider = provider, id = id, capabilities = capabilities, contextLength = contextLength)
     }
 }
+
+/** The same model, declared without schema support: Koog then describes the format in the prompt. */
+@PublishedApi
+internal fun LLModel.withoutSchema(): LLModel = copy(capabilities = capabilities?.filterNot { it is LLMCapability.Schema })
 
 /** Names under which agent runs are recorded in agent_runs, read back by the dashboard. */
 object AgentName {

@@ -3,7 +3,6 @@ package lab.doppio.bloom.agents
 import lab.doppio.bloom.core.model.latestPerTopic
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.model.executeStructured
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.guard.GuardInput
@@ -74,13 +73,13 @@ class WriterAgent(
         var feedback = ""
         do {
             output = tracker.track(AgentName.WRITER, account.id, llm.writer) {
-                val r = llm.executor.executeStructured<DraftOutput>(
+                val r = llm.structured<DraftOutput>(
                     prompt = prompt("draft-${enrollment.id}-${step.index}-$attempt") {
                         system(Prompts.writer(contact.language, senderName))
                         user(context + feedback)
                     },
                     model = llm.writer,
-                ).getOrThrow()
+                )
                 r.data to r
             }
             violations = MessageGuard.check(

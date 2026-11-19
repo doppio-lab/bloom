@@ -2,7 +2,6 @@ package lab.doppio.bloom.agents
 
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.model.executeStructured
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.model.ReplyClassification
@@ -41,13 +40,13 @@ class ReplyClassifierAgent(private val llm: Llm, private val tracker: RunTracker
             return ReplyClassification(ReplyIntent.UNSUBSCRIBE, 1.0, null, null, OutputTexts.KEYWORD_STOP_SUMMARY, null)
         }
         val c = tracker.track(AgentName.REPLY_CLASSIFIER, accountId, llm.fast) {
-            val r = llm.executor.executeStructured<Classification>(
+            val r = llm.structured<Classification>(
                 prompt = prompt("reply") {
                     system(Prompts.replyClassifierSystem(today))
                     user(Prompts.replyInput(subject, trimmed))
                 },
                 model = llm.fast,
-            ).getOrThrow()
+            )
             r.data to r
         }
         val intent = ReplyIntent.entries.firstOrNull { it.name == c.intent.uppercase() } ?: ReplyIntent.OTHER
