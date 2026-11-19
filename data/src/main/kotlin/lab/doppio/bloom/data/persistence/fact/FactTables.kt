@@ -1,8 +1,8 @@
 package lab.doppio.bloom.data.persistence.fact
 
-import org.jetbrains.exposed.sql.Table
-import org.jetbrains.exposed.sql.javatime.CurrentTimestamp
-import org.jetbrains.exposed.sql.javatime.timestamp
+import org.jetbrains.exposed.v1.core.Table
+import org.jetbrains.exposed.v1.javatime.CurrentTimestamp
+import org.jetbrains.exposed.v1.javatime.timestamp
 
 internal object FactsTable : Table("facts") {
     val id = text("id")

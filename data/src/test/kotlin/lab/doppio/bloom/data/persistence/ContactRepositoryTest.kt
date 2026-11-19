@@ -8,8 +8,8 @@ import lab.doppio.bloom.data.TestDatabase
 import lab.doppio.bloom.data.persistence.account.ExposedAccountRepository
 import lab.doppio.bloom.data.persistence.contact.ExposedContactRepository
 import lab.doppio.bloom.data.persistence.contact.ContactsTable
-import org.jetbrains.exposed.sql.SqlExpressionBuilder.inList
-import org.jetbrains.exposed.sql.update
+import org.jetbrains.exposed.v1.core.inList
+import org.jetbrains.exposed.v1.jdbc.update
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import kotlin.test.BeforeTest

@@ -127,6 +127,12 @@ Pour un autre modèle : `ollama pull <modèle>` puis `LLM_MODEL=<modèle>`. Il d
 produire du JSON structuré (c'est le cas de `mistral-small3.2`, `qwen3`, `gpt-oss`). Compter 16 Go de mémoire
 libre pour le modèle par défaut.
 
+Certains modèles sont servis par le moteur MLX d'Ollama (la colonne `RUNNER` de `ollama ps` affiche alors
+`mlx`, c'est le cas de `qwen3.6:35b`). Ce moteur ne sait pas contraindre la sortie à un schéma et répond
+`501 structured output is unavailable`. Bloom le détecte au premier appel, l'écrit une fois dans les logs, puis
+décrit le format JSON dans le prompt : le dossier, les brouillons et le classement des réponses fonctionnent
+aussi avec ces modèles.
+
 Ce qu'il faut attendre d'un modèle local, mesuré sur un Mac M5 Pro avec `mistral-small3.2` : 1 à 2 minutes pour
 la recherche d'un compte, 30 secondes pour un brouillon. Les sorties structurées et le garde-fou fonctionnent.
 En revanche l'exploration du site est moins fine qu'avec Anthropic : dans nos essais le modèle lisait bien les
@@ -451,7 +457,7 @@ Vélomoov;velomoov.fr;123456789;;MOBILITY_TRANSPORT;120;Recommandé par Julie;Cl
 
 ## État du code
 
-- Les quatre modules compilent (Kotlin 2.3.10, Koog 1.3.0, Ktor 3.3, Exposed 0.61) et les tests de `core`
+- Les quatre modules compilent (Kotlin 2.4.21, Koog 1.3.0, Ktor 3.6, Exposed 1.6) et les tests de `core`
   passent (score, garde-fou, séquences, exclusions, noms d'entreprise, CSV). Les tests de `data` tournent sur
   un vrai Postgres migré par Flyway (Testcontainers). La CI GitHub Actions lance `./gradlew build` et construit
   l'image Docker sur chaque PR.

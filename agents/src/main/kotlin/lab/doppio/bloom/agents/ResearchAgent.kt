@@ -4,7 +4,6 @@ import ai.koog.agents.core.agent.AIAgent
 import ai.koog.agents.core.tools.ToolRegistry
 import ai.koog.agents.core.tools.annotations.LLMDescription
 import ai.koog.prompt.dsl.prompt
-import ai.koog.prompt.executor.model.executeStructured
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import lab.doppio.bloom.core.model.Account
@@ -141,13 +140,13 @@ class ResearchAgent(
     private suspend fun synthesize(account: Account, facts: List<Fact>) {
         val known = facts.associateBy { it.id }
         val output = tracker.track(AgentName.RESEARCH_SYNTHESIS, account.id, llm.research) {
-            val r = llm.executor.executeStructured<DossierOutput>(
+            val r = llm.structured<DossierOutput>(
                 prompt = prompt("dossier-${account.id}") {
                     system(Prompts.synthesis)
                     user(Prompts.synthesisInput(account, facts))
                 },
                 model = llm.research,
-            ).getOrThrow()
+            )
             r.data to r
         }
         val grounding = facts.joinToString(" ") { it.statement + " " + it.excerpt.orEmpty() }
